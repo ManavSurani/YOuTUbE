@@ -777,7 +777,7 @@ fun SettingsDialog(onDismiss: () -> Unit) {
         title = { Text("About YOuTUbE", color = TextPrimaryDark, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Version 1.0.0 (Android)", color = TextSecondaryDark, fontSize = 13.sp)
+                Text("Version 1.0.1 (Android)", color = TextSecondaryDark, fontSize = 13.sp)
                 HorizontalDivider(color = BorderDark)
                 Text("Built with open-source tools:", color = TextSecondaryDark, fontSize = 12.sp)
                 Text("• yt-dlp & youtubedl-android", color = TextSecondaryDark, fontSize = 11.sp)

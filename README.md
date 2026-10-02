@@ -28,7 +28,7 @@ Designed strictly around the official YouTube dark and light aesthetics: zero cl
 
 ### Android (Android 8.0+)
 - **APK Package:** `Output/YOuTUbE.apk` (~135.2 MB)
-- **SHA-256 Checksum:** `A118A974C64BE4A991B80FA7C391E20F5B7BA8691132A806DB9B9AEFBBCE4036`
+- **SHA-256 Checksum:** `A661171D82FCF76828EF4274550D7B9EFEB25A78E79684D0DB56D9306E3D2E30`
 - **Installation:** Transfer `YOuTUbE.apk` to your Android device, open it, and allow installation from unknown apps. Works with Android share sheet: share any video from the YouTube app directly into YOuTUbE!
 
 ---

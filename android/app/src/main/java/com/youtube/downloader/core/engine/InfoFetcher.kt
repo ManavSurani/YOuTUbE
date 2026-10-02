@@ -38,7 +38,8 @@ object InfoFetcher {
                 channel = ytdlInfo.uploader ?: "",
                 durationSeconds = ytdlInfo.duration.toLong(),
                 thumbnailUrl = ytdlInfo.thumbnail ?: "",
-                qualities = qualityList
+                qualities = qualityList,
+                url = url
             )
 
             Result.success(info)

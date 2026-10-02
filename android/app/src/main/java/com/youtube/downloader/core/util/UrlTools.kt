@@ -6,53 +6,74 @@ import java.util.regex.Pattern
 object UrlTools {
     private val VIDEO_ID_REGEX = Pattern.compile("^[a-zA-Z0-9_-]{11}$")
 
-    fun isYouTubeUrl(url: String): Boolean {
-        val trimmed = url.trim()
-        if (trimmed.isEmpty()) return false
-        val lower = trimmed.lowercase()
-        return lower.contains("youtube.com") || lower.contains("youtu.be")
-    }
-
-    fun cleanUrl(rawUrl: String): String? {
+    fun extractVideoId(rawUrl: String): String? {
         val trimmed = rawUrl.trim()
-        if (!isYouTubeUrl(trimmed)) return null
+        if (trimmed.isEmpty()) return null
 
-        try {
-            val uri = URI(if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) "https://$trimmed" else trimmed)
-            val host = uri.host?.lowercase() ?: return null
+        val fullUrl = if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) {
+            "https://$trimmed"
+        } else {
+            trimmed
+        }
+
+        return try {
+            val uri = URI(fullUrl)
+            var host = uri.host?.lowercase() ?: return null
+            if (host.startsWith("www.")) {
+                host = host.removePrefix("www.")
+            }
+
             val path = uri.path ?: ""
             val query = uri.query ?: ""
 
-            var videoId: String? = null
-
-            // youtu.be/<id>
-            if (host.contains("youtu.be")) {
-                val parts = path.split("/").filter { it.isNotEmpty() }
-                if (parts.isNotEmpty()) videoId = parts[0]
-            }
-            // youtube.com/shorts/<id>
-            else if (path.startsWith("/shorts/")) {
-                val parts = path.removePrefix("/shorts/").split("/").filter { it.isNotEmpty() }
-                if (parts.isNotEmpty()) videoId = parts[0]
-            }
-            // youtube.com/watch?v=<id>
-            else if (path.startsWith("/watch")) {
-                val params = query.split("&")
-                for (p in params) {
-                    val kv = p.split("=")
-                    if (kv.size == 2 && kv[0] == "v") {
-                        videoId = kv[1]
-                        break
+            when {
+                host == "youtube.com" || host == "m.youtube.com" -> {
+                    when {
+                        path.startsWith("/watch") -> {
+                            val params = query.split("&")
+                            var vid: String? = null
+                            for (p in params) {
+                                val kv = p.split("=")
+                                if (kv.size == 2 && kv[0] == "v") {
+                                    vid = kv[1]
+                                    break
+                                }
+                            }
+                            if (vid != null && VIDEO_ID_REGEX.matcher(vid).matches()) vid else null
+                        }
+                        path.startsWith("/shorts/") -> {
+                            val parts = path.split("/").filter { it.isNotEmpty() }
+                            if (parts.size >= 2 && VIDEO_ID_REGEX.matcher(parts[1]).matches()) parts[1] else null
+                        }
+                        path.startsWith("/embed/") -> {
+                            val parts = path.split("/").filter { it.isNotEmpty() }
+                            if (parts.size >= 2 && VIDEO_ID_REGEX.matcher(parts[1]).matches()) parts[1] else null
+                        }
+                        path.startsWith("/live/") -> {
+                            val parts = path.split("/").filter { it.isNotEmpty() }
+                            if (parts.size >= 2 && VIDEO_ID_REGEX.matcher(parts[1]).matches()) parts[1] else null
+                        }
+                        else -> null
                     }
                 }
-            }
-
-            if (videoId != null && VIDEO_ID_REGEX.matcher(videoId).matches()) {
-                return "https://www.youtube.com/watch?v=$videoId"
+                host == "youtu.be" -> {
+                    val pathClean = path.trimStart('/')
+                    val firstSegment = pathClean.split("/").firstOrNull() ?: ""
+                    if (VIDEO_ID_REGEX.matcher(firstSegment).matches()) firstSegment else null
+                }
+                else -> null
             }
         } catch (e: Exception) {
-            return null
+            null
         }
-        return null
+    }
+
+    fun isYouTubeUrl(url: String): Boolean {
+        return extractVideoId(url) != null
+    }
+
+    fun cleanUrl(rawUrl: String): String? {
+        val vid = extractVideoId(rawUrl) ?: return null
+        return "https://www.youtube.com/watch?v=$vid"
     }
 }

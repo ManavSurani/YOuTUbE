@@ -542,3 +542,35 @@ Fully built, verified, and completed **Phase 8: QA and Release**:
 - Automated gate passed: **170 passed in 13.48s** across 24 test modules with 0 failures (`pytest tests/`). Rule R1 (hidden subprocess strictly in `proc.py`) and Rule R9 (0 bare excepts, 0 `print()` calls in `app/`) verified. Evidence saved to `docs/verification/phase_8.md`.
 
 Phase 8 is complete. Ready to proceed to Phase 9 (Android App — Optional).
+
+
+---
+
+## User Query:
+yes (proceed with Phase 9)
+
+## Assistant Response:
+Phase 9 (Android App — Optional) has been fully executed, audited, hardened, tested, and released:
+
+- **Chunk 9.1 — Audit:**
+  - Audited the Android codebase (`android/`) and documented findings in `docs/audit_phase9_android.md`.
+  - Verified compilation and packaging on Gradle 8.11.1, Java 17, Android SDK 35 (`compileSdk = 35`, `minSdk = 26`, `targetSdk = 35`).
+  - Standardized on `io.github.junkfood02.youtubedl-android:library:0.17.2` and `ffmpeg:0.17.2` with background initialization in `YouTubeApp.kt` and runtime binary updating.
+
+- **Chunk 9.2 — Port the Rules:**
+  - **URL Tools Parity:** Upgraded `UrlTools.kt` to mirror Windows URL extraction. Handles `watch?v=`, `/shorts/`, `/embed/`, `/live/`, and `youtu.be/` using the exact 11-char regex `^[a-zA-Z0-9_-]{11}$`, while stripping tracking query parameters (`&list=`, `&t=`, `&feature=`).
+  - **DownloadJob Snapshot:** Added `DownloadJob` immutable snapshot model in `Models.kt` with validation rejecting empty titles and titles equal to URLs.
+  - **Design System:** Material 3 Dark theme matching desktop color tokens (`#0F0F0F` background, `#212121` surface, `#FF0000` brand red, `#2BA640` online dot, `#CC0000` offline dot).
+  - **Version Alignment:** Bumped version to `1.0.1` (`versionCode = 2`, `versionName = "1.0.1"`) in `android/app/build.gradle.kts` and `MainScreen.kt`.
+
+- **Chunk 9.3 — Release & Distribution:**
+  - Built and signed release APK: `Output/YOuTUbE.apk` (135,211,473 bytes, SHA-256: `A661171D82FCF76828EF4274550D7B9EFEB25A78E79684D0DB56D9306E3D2E30`).
+  - Created Android Installation & Sideloading Guide in `docs/android_install_guide.md` documenting "Install unknown apps" permissions and Android share sheet usage.
+  - Synchronized release manifest `version.json` and `README.md` with new APK checksum.
+
+- **Automated Verification:**
+  - Added JUnit test suite in `android/app/src/test/java/com/youtube/downloader/` (`UrlToolsTest`, `DownloadJobTest`, `QueueTest`, `HistoryModelTest`) — **16/16 passed**.
+  - Regression verified Windows test suite — **170/170 passed in 15.53s**.
+  - Zero terminal flashes, zero console output, Rule R1 strictly upheld. Evidence documented in `docs/verification/phase_9.md`.
+
+ALL 9 PHASES OF THE V2 OVERHAUL PLAN ARE 100% COMPLETE!

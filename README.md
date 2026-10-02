@@ -22,8 +22,8 @@ Designed strictly around the official YouTube dark and light aesthetics: zero cl
 ## Downloads & Installation
 
 ### Windows Desktop (10 / 11 64-bit)
-- **Installer:** `Output/YOuTUbE_Setup.exe` (~35.4 MB)
-- **SHA-256 Checksum:** `b50ddb23efac5e8da670f452b3d4dc58fb1cb69d4f2c4f3b2aa11acb4caa3403`
+- **Installer:** `Output/YOuTUbE_Setup.exe` (~36.4 MB)
+- **SHA-256 Checksum:** `7c0a8a6997df7a7fa93234336d76a4f68ddd0915e417f4ec421ae38437b863f9`
 - **Installation:** Run `YOuTUbE_Setup.exe`. Installs to `%LOCALAPPDATA%\Programs\YOuTUbE` with 0 administrator elevation prompts and automatically creates Start Menu and Desktop shortcuts.
 
 ### Android (Android 8.0+)

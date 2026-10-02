@@ -44,7 +44,8 @@ def verify_tool(tool_name: str, bin_dir: Optional[Path] = None) -> bool:
     try:
         code, out = run_hidden([str(exe_path), "--version"], timeout=5)
         return code == 0 and len(out.strip()) > 0
-    except Exception:
+    except Exception as exc:
+        get_logger().debug(f"verify_tool failed for {tool_name}: {exc}")
         return False
 
 
@@ -84,12 +85,24 @@ def install_tool(
                     pct = int((downloaded / total_size) * 100)
                     progress_cb(pct)
 
+        # Integrity check: Content-Length verification
+        if total_size > 0 and downloaded < total_size:
+            get_logger().warning(f"Download incomplete for {tool_key}: {downloaded}/{total_size} bytes.")
+            temp_file.unlink(missing_ok=True)
+            return False
+
         if file_type == "exe":
             target_path = target_dir / target_files[0]
             if temp_file.exists():
                 shutil.move(str(temp_file), str(target_path))
         elif file_type == "zip":
             with zipfile.ZipFile(str(temp_file), "r") as zf:
+                # Test zip integrity
+                if zf.testzip() is not None:
+                    get_logger().error(f"Corrupt zip detected for {tool_key}")
+                    temp_file.unlink(missing_ok=True)
+                    return False
+
                 for member in zf.namelist():
                     member_name = Path(member).name.lower()
                     for tf in target_files:
@@ -134,9 +147,19 @@ def update_ytdlp(bin_dir: Optional[Path] = None) -> bool:
                 bak_exe.unlink(missing_ok=True)
             shutil.move(str(current_exe), str(bak_exe))
 
-        shutil.move(str(new_exe), str(current_exe))
-        get_logger().info("Successfully updated yt-dlp to latest release.")
-        return True
+        try:
+            shutil.move(str(new_exe), str(current_exe))
+            if not verify_tool("yt-dlp.exe", target_dir):
+                raise RuntimeError("Swapped yt-dlp binary failed verification")
+            get_logger().info("Successfully updated yt-dlp to latest release.")
+            return True
+        except Exception as swap_exc:
+            get_logger().warning(f"Failed to swap yt-dlp binary, rolling back: {swap_exc}")
+            if bak_exe.exists():
+                current_exe.unlink(missing_ok=True)
+                shutil.move(str(bak_exe), str(current_exe))
+            new_exe.unlink(missing_ok=True)
+            return False
 
     except Exception as exc:
         get_logger().error(f"yt-dlp update encountered an error: {exc}")

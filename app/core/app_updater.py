@@ -44,14 +44,19 @@ def check_manifest_dict(data: Dict[str, Any], current_version: str = APP_VERSION
     """Evaluate raw manifest dictionary against current version."""
     logger = get_logger()
 
-    latest = str(data.get("latest_version", "")).strip()
-    installer_url = str(data.get("installer_url", "")).strip()
+    latest = str(data.get("latest_version") or data.get("version", "")).strip()
+    installer_url = str(data.get("installer_url") or data.get("download_url", "")).strip()
     sha256 = str(data.get("sha256", "")).strip().lower()
     min_supported = str(data.get("min_supported_version", "")).strip()
     force_update = bool(data.get("force_update", False))
     release_date = str(data.get("release_date", "")).strip()
-    notes_raw = data.get("notes", [])
-    notes = [str(n) for n in notes_raw] if isinstance(notes_raw, list) else []
+    notes_raw = data.get("notes") if "notes" in data else data.get("release_notes", [])
+    if isinstance(notes_raw, str):
+        notes = [n.strip() for n in notes_raw.splitlines() if n.strip()]
+    elif isinstance(notes_raw, list):
+        notes = [str(n) for n in notes_raw]
+    else:
+        notes = []
 
     if not latest or not installer_url or not sha256:
         logger.warning("Manifest missing required fields (latest_version, installer_url, or sha256).")

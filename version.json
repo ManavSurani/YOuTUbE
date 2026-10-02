@@ -1,14 +1,24 @@
 {
+  "latest_version": "1.0.0",
   "version": "1.0.0",
   "min_supported_version": "1.0.0",
   "force_update": false,
+  "installer_url": "https://github.com/Jay/YOuTUbE/releases/download/v1.0.0/YOuTUbE_Setup.exe",
   "download_url": "https://github.com/Jay/YOuTUbE/releases/download/v1.0.0/YOuTUbE_Setup.exe",
   "sha256": "b50ddb23efac5e8da670f452b3d4dc58fb1cb69d4f2c4f3b2aa11acb4caa3403",
+  "release_date": "2026-10-02",
+  "notes": [
+    "YOuTUbE 1.0.0 — Initial Release",
+    "High quality video (up to 8K) and audio downloading",
+    "Queue support for downloading multiple videos sequentially",
+    "Local download history with search and offline playback",
+    "Automatic background tool updates (yt-dlp, ffmpeg, deno)",
+    "Native YouTube dark and light themes"
+  ],
   "android": {
     "version": "1.0.0",
     "version_code": 1,
     "download_url": "https://github.com/Jay/YOuTUbE/releases/download/v1.0.0/YOuTUbE.apk",
     "sha256": "A118A974C64BE4A991B80FA7C391E20F5B7BA8691132A806DB9B9AEFBBCE4036"
-  },
-  "release_notes": "YOuTUbE 1.0.0 — Initial Release\n• Windows Desktop installer (64-bit)\n• Android signed APK (Kotlin & Jetpack Compose)\n• High quality video (up to 8K) and audio downloading\n• Queue support for downloading multiple videos sequentially\n• Local download history with search and offline replay\n• Automatic background tool updates (yt-dlp, ffmpeg, deno)\n• Native YouTube dark and light themes"
+  }
 }

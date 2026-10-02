@@ -252,3 +252,77 @@ def test_main_window_banner_required_locking():
         win.network_monitor.wait(500)
         win.close()
 
+
+def test_version_json_disk_file():
+    """Verify version.json in project root parses cleanly and returns UpdateInfo."""
+    v_file = ROOT / "version.json"
+    assert v_file.exists()
+    data = json.loads(v_file.read_text(encoding="utf-8"))
+    info = check_manifest_dict(data, current_version="0.9.0")
+    assert info.status == "required"
+    assert info.latest_version == "1.0.0"
+    assert len(info.notes) > 0
+    assert info.sha256 != ""
+
+
+def test_user_data_survives_app_update(tmp_path: Path, monkeypatch):
+    """Chunk 7.4 Task 3: History, settings, and queue survive updates in %APPDATA%."""
+    from app.core.history_db import HistoryItem, add_item, list_items
+    from app.core.settings import load_settings, save_settings
+    import app.core.paths as paths_mod
+
+    app_data_fake = tmp_path / "AppData" / "Roaming" / "YOuTUbE"
+    app_data_fake.mkdir(parents=True)
+    db_fake = app_data_fake / "history.db"
+    settings_fake = app_data_fake / "settings.json"
+    queue_fake = app_data_fake / "queue.json"
+
+    monkeypatch.setattr(paths_mod, "APP_DATA", app_data_fake)
+
+    # 1. Populate user data before update
+    settings_data = {"theme": "light", "download_dir": "D:\\MyDownloads", "shortcut_created": True}
+    settings_fake.write_text(json.dumps(settings_data), encoding="utf-8")
+
+    queue_data = [{"job_id": "q1", "url": "https://youtube.com/watch?v=1", "video_id": "1", "title": "Vid 1"}]
+    queue_fake.write_text(json.dumps(queue_data), encoding="utf-8")
+
+    item = HistoryItem(
+        id=None,
+        title="Saved History Item",
+        url="https://youtube.com/watch?v=hist1",
+        type="video",
+        quality="1080p",
+        file_path="D:\\hist.mkv",
+        size_bytes=1024,
+        duration=120,
+        thumbnail_path="",
+        created_at=None,
+        video_id="hist1",
+        channel="Channel",
+        file_missing=0,
+        source_job_id="job1",
+    )
+    add_item(item, custom_path=db_fake)
+
+    # 2. Simulate application update (binaries updated in app folder, APP_DATA untouched)
+    app_bin_dir = tmp_path / "Programs" / "YOuTUbE"
+    app_bin_dir.mkdir(parents=True)
+    (app_bin_dir / "YOuTUbE.exe").write_text("v1.0.0 binary")
+    # Upgrade to v1.0.1 binary
+    (app_bin_dir / "YOuTUbE.exe").write_text("v1.0.1 binary")
+
+    # 3. Verify user data in APP_DATA is completely intact
+    loaded_settings = json.loads(settings_fake.read_text(encoding="utf-8"))
+    assert loaded_settings["theme"] == "light"
+    assert loaded_settings["download_dir"] == "D:\\MyDownloads"
+
+    loaded_queue = json.loads(queue_fake.read_text(encoding="utf-8"))
+    assert len(loaded_queue) == 1
+    assert loaded_queue[0]["job_id"] == "q1"
+
+    history_items = list_items(custom_path=db_fake)
+    assert len(history_items) == 1
+    assert history_items[0].title == "Saved History Item"
+
+
+

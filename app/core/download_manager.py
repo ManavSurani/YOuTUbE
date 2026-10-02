@@ -38,6 +38,7 @@ class DownloadManager(QObject):
         self._worker: Optional[DownloadWorker] = None
         self._failed_jobs: Dict[str, Tuple[DownloadJob, str]] = {}
         self._completed_jobs: List[Tuple[DownloadJob, str]] = []
+        self._repaired_jobs: set = set()
         self._is_offline = False
         self._queue_file = APP_DATA / "queue.json"
 
@@ -214,6 +215,32 @@ class DownloadManager(QObject):
     def _on_worker_failed(self, job: DownloadJob, raw_error: str) -> None:
         if not self._active_job or self._active_job.job_id != job.job_id:
             return
+
+        # Chunk 7.3 Task 3: Auto-repair on extraction failure
+        err_lower = raw_error.lower()
+        is_extraction = any(
+            kw in err_lower
+            for kw in (
+                "unable to extract",
+                "regex",
+                "signature",
+                "n challenge",
+                "nsig",
+                "extractor error",
+            )
+        )
+        if is_extraction and job.job_id not in self._repaired_jobs and not self._is_offline:
+            get_logger().info(f"Extraction failure detected for '{job.title}'. Running yt-dlp auto-repair...")
+            self._repaired_jobs.add(job.job_id)
+            from app.core.tool_manager import update_ytdlp
+            if update_ytdlp():
+                get_logger().info(f"yt-dlp auto-repaired successfully. Retrying '{job.title}'...")
+                self._worker = None
+                self._active_job = None
+                self.stage.emit(job, "Retrying after tool update…")
+                self._waiting_queue.insert(0, job)
+                self._process_next()
+                return
 
         friendly_reason = explain(raw_error)
         get_logger().warning(f"Download failed for '{job.title}': {friendly_reason}")

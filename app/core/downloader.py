@@ -152,6 +152,10 @@ def build_video_cmd(
     else:
         cmd.extend(["-f", "bv*+ba/b"])
 
+    deno_exe = BIN_DIR / "deno.exe"
+    if deno_exe.exists():
+        cmd.extend(["--js-runtimes", f"deno:{deno_exe}"])
+
     cmd.append(url)
     return cmd
 
@@ -189,6 +193,10 @@ def build_audio_cmd(
         cmd.append("--embed-thumbnail")   # best-effort; failure is non-fatal
     else:
         cmd.extend(["-f", "ba", "-x", "--audio-format", fmt_lower])
+
+    deno_exe = BIN_DIR / "deno.exe"
+    if deno_exe.exists():
+        cmd.extend(["--js-runtimes", f"deno:{deno_exe}"])
 
     cmd.append(url)
     return cmd

@@ -5,9 +5,11 @@ All processes are launched with CREATE_NO_WINDOW and SW_HIDE to guarantee
 the user never sees a terminal window.
 """
 
+import os
 import subprocess
 from typing import Any, Sequence, Tuple
 from app.core.logger import get_logger
+from app.core.paths import BIN_DIR
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -25,6 +27,17 @@ def start_hidden(cmd: Sequence[str] | str, **kwargs: Any) -> subprocess.Popen:
     flags = kwargs.pop("creationflags", 0) | CREATE_NO_WINDOW
     startupinfo = kwargs.pop("startupinfo", None) or get_hidden_startupinfo()
 
+    env = kwargs.pop("env", None)
+    if env is None:
+        env = os.environ.copy()
+    else:
+        env = dict(env)
+
+    bin_str = str(BIN_DIR)
+    path_val = env.get("PATH", "")
+    if bin_str not in path_val:
+        env["PATH"] = f"{bin_str};{path_val}" if path_val else bin_str
+
     return subprocess.Popen(
         cmd,
         stdin=subprocess.DEVNULL,
@@ -35,6 +48,7 @@ def start_hidden(cmd: Sequence[str] | str, **kwargs: Any) -> subprocess.Popen:
         errors="replace",
         creationflags=flags,
         startupinfo=startupinfo,
+        env=env,
         **kwargs,
     )
 

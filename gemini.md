@@ -523,3 +523,22 @@ Fully built, verified, and completed **Phase 7: Install, Shortcut, and Updates**
 - **Chunk 7.5 — Build:** Verified PyInstaller `--onedir` build script and Inno Setup compiler integration with SHA-256 hash output.
 - Full test suite: **155/155 passed in 13.02s** across 21 test modules with 0 failures. Zero `print()` calls in `app/`, zero `subprocess` imports outside `app/core/proc.py`. Evidence saved to `docs/verification/phase_7.md`.
 
+
+
+---
+
+## User Query:
+yes (proceed with Phase 8)
+
+## Assistant Response:
+Fully built, verified, and completed **Phase 8: QA and Release**:
+- **Chunk 8.1 — Regression suite & real-world matrix:** Built `tests/test_real_world_matrix.py` covering all 10 real-world scenarios (ASCII, illegal chars sanitized by `--windows-filenames`, emojis, non-English multilingual, long titles trimmed with `--trim-filenames 150`, 4K dual stream format selection, 720p resolution restriction, age-restricted friendly error, private video friendly error, clean URL query stripping `&list=`/`&t=`). All 10/10 passed.
+- **Chunk 8.2 — Stress and edge cases:**
+  - Built `app/core/single_instance.py` using `QLocalServer`/`QLocalSocket` IPC to detect secondary instances, send an activation message to the primary window (bringing it to foreground and restoring if minimized), and cleanly terminating the secondary instance with exit code 0.
+  - Implemented pre-flight disk space validation (< 50MB check) in `app/ui/video_tab.py` and `app/ui/audio_tab.py`, preventing yt-dlp spawn and displaying friendly inline errors when drive space is insufficient.
+  - Hardened and tested queue crash recovery, download directory modification mid-queue, and Downloads folder renaming in `tests/test_phase8_stress_edge_cases.py` (4/4 passed).
+- **Chunk 8.3 — Visual and UX review:** Captured layout screenshots across multiple screen widths and tabs in `docs/screenshots/` (`screenshot_phase8_760px.png`, `screenshot_phase8_1280px.png`, `screenshot_phase8_audio_tab.png`, `screenshot_phase8_history_tab.png`). Verified 0 text clipping, responsive margin scaling, and complete design system compliance.
+- **Chunk 8.4 — Release preparation (v1.0.1):** Bumped application version to `1.0.1` in `app/version.py`, `version.json`, and `installer/setup.iss`.
+- Automated gate passed: **170 passed in 13.48s** across 24 test modules with 0 failures (`pytest tests/`). Rule R1 (hidden subprocess strictly in `proc.py`) and Rule R9 (0 bare excepts, 0 `print()` calls in `app/`) verified. Evidence saved to `docs/verification/phase_8.md`.
+
+Phase 8 is complete. Ready to proceed to Phase 9 (Android App — Optional).

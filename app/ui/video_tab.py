@@ -8,6 +8,7 @@ Fixes:
 
 from enum import Enum, auto
 from pathlib import Path
+import shutil
 from typing import Optional
 import urllib.request
 
@@ -456,6 +457,15 @@ class VideoTab(QWidget):
 
         settings = load_settings()
         out_dir = settings.get("download_dir", str(DEFAULT_DOWNLOADS))
+
+        try:
+            free_bytes = shutil.disk_usage(out_dir).free
+            if free_bytes < 50 * 1024 * 1024:
+                self.inline_msg.show_error("Not enough disk space in download folder.")
+                return None
+        except Exception as exc:
+            get_logger().debug(f"Could not check disk usage: {exc}")
+
         chosen_height = self.quality_combo.currentData()
         quality_label = self.quality_combo.currentText() or "Best"
 

@@ -8,6 +8,7 @@ Fixes:
 
 from enum import Enum, auto
 from pathlib import Path
+import shutil
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
@@ -354,6 +355,15 @@ class AudioTab(QWidget):
 
         settings = load_settings()
         out_dir = settings.get("download_dir", str(DEFAULT_DOWNLOADS))
+
+        try:
+            free_bytes = shutil.disk_usage(out_dir).free
+            if free_bytes < 50 * 1024 * 1024:
+                self.inline_msg.show_error("Not enough disk space in download folder.")
+                return None
+        except Exception as exc:
+            get_logger().debug(f"Could not check disk usage: {exc}")
+
         fmt_key = self.format_combo.currentData() or "best"
         quality_label = self.format_combo.currentText() or "Best original"
 

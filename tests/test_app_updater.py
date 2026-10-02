@@ -260,7 +260,7 @@ def test_version_json_disk_file():
     data = json.loads(v_file.read_text(encoding="utf-8"))
     info = check_manifest_dict(data, current_version="0.9.0")
     assert info.status == "required"
-    assert info.latest_version == "1.0.0"
+    assert info.latest_version == data["latest_version"]
     assert len(info.notes) > 0
     assert info.sha256 != ""
 

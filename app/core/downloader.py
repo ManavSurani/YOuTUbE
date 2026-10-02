@@ -433,8 +433,8 @@ class DownloadWorker(QThread):
             # Clean up the .path file itself
             try:
                 self._path_file.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Could not unlink path file {self._path_file}: {exc}")
 
             self.finished.emit(final_path)
         else:

@@ -7,6 +7,7 @@ the user never sees a terminal window.
 
 import subprocess
 from typing import Any, Sequence, Tuple
+from app.core.logger import get_logger
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -69,11 +70,11 @@ def kill_tree(proc: subprocess.Popen | int) -> None:
             startupinfo=startupinfo,
             check=False,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        get_logger().debug(f"taskkill failed for pid {pid}: {exc}")
 
     if isinstance(proc, subprocess.Popen):
         try:
             proc.kill()
-        except Exception:
-            pass
+        except Exception as exc:
+            get_logger().debug(f"proc.kill failed: {exc}")

@@ -24,8 +24,8 @@ def get_tools_manifest() -> Dict:
     if manifest_path.exists():
         try:
             return json.loads(manifest_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as exc:
+            get_logger().debug(f"Failed to parse tools manifest at {manifest_path}: {exc}")
     return {}
 
 

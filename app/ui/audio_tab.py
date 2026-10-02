@@ -20,8 +20,12 @@ from PySide6.QtWidgets import (
 
 from app.core.downloader import DownloadWorker, build_audio_cmd
 from app.core.errors import explain
-from app.core.history_db import HistoryItem, add_item, save_thumbnail_image
+from app.core.history_db import HistoryItem, add_item
+from app.core.history_service import save_from_job
+from app.core.jobs import DownloadJob
 from app.core.info_fetcher import InfoFetchWorker, VideoInfo
+from app.core.logger import get_logger
+from app.core.paths import DEFAULT_DOWNLOADS
 from app.core.settings import load_settings
 from app.core.url_tools import clean_url, extract_video_id
 from app.ui.video_tab import MediaInfoCard, check_free_space
@@ -39,6 +43,7 @@ class AudioQueueItem:
     embed_meta: bool
     status: str = "waiting"  # "waiting", "downloading", "done", "failed", "cancelled"
     error_reason: str = ""
+    job: Optional[DownloadJob] = None
 
 
 class AudioTab(QWidget):
@@ -345,6 +350,22 @@ class AudioTab(QWidget):
         fmt_label = self.format_combo.currentText()
         embed_art = self.embed_cover_check.isChecked()
         embed_meta = self.embed_meta_check.isChecked()
+        settings = load_settings()
+        out_dir = settings.get("download_dir", str(DEFAULT_DOWNLOADS))
+
+        job = None
+        if self._current_info:
+            try:
+                job = DownloadJob.create(
+                    info=self._current_info,
+                    kind="audio",
+                    quality_label=fmt_label,
+                    audio_format=fmt,
+                    output_dir=out_dir,
+                    thumbnail_bytes=self.info_card.thumb_bytes,
+                )
+            except Exception as exc:
+                get_logger().warning(f"Could not build DownloadJob snapshot for audio: {exc}")
 
         item = AudioQueueItem(
             url=url,
@@ -354,6 +375,7 @@ class AudioTab(QWidget):
             embed_art=embed_art,
             embed_meta=embed_meta,
             status="waiting",
+            job=job,
         )
         self._queue.append(item)
         self._render_queue_ui()
@@ -540,31 +562,34 @@ class AudioTab(QWidget):
             title_saved = self._active_item.title
             self._render_queue_ui()
 
-        try:
-            real_path = Path(file_path)
-            size_bytes = real_path.stat().st_size if real_path.is_file() else 0
-            vid_id = extract_video_id(self.url_input.text().strip()) or "audio"
-            thumb_saved = None
-            if self.info_card.thumb_bytes:
-                saved = save_thumbnail_image(vid_id, self.info_card.thumb_bytes)
-                if saved:
-                    thumb_saved = saved
-
-            add_item(
-                HistoryItem(
-                    id=None,
-                    title=title_saved,
-                    url=self.url_input.text().strip(),
-                    type="audio",
-                    quality=self._active_item.fmt_label if self._active_item else "MP3",
-                    file_path=str(file_path),
-                    size_bytes=size_bytes,
-                    duration=0,
-                    thumbnail_path=thumb_saved,
-                )
-            )
-        except Exception:
-            pass
+        if file_path:
+            logger = get_logger()
+            if self._active_item and self._active_item.job:
+                try:
+                    save_from_job(self._active_item.job, file_path)
+                except Exception as exc:
+                    logger.error(f"Failed to save audio history from job: {exc}")
+            else:
+                try:
+                    real_path = Path(file_path)
+                    size_bytes = real_path.stat().st_size if real_path.is_file() else 0
+                    fallback_url = self._active_item.url if self._active_item else ""
+                    vid_id = extract_video_id(fallback_url) or ""
+                    add_item(
+                        HistoryItem(
+                            id=None,
+                            title=title_saved,
+                            url=fallback_url,
+                            type="audio",
+                            quality=self._active_item.fmt_label if self._active_item else "MP3",
+                            file_path=str(file_path),
+                            size_bytes=size_bytes,
+                            duration=0,
+                            video_id=vid_id,
+                        )
+                    )
+                except Exception as exc:
+                    logger.error(f"Failed to save fallback audio history item: {exc}")
 
         self.download_completed.emit(title_saved)
 

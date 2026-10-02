@@ -38,10 +38,12 @@ def purge_stale_tmp(max_age_days: int = 7) -> None:
             try:
                 if f.is_file() and f.stat().st_mtime < cutoff:
                     f.unlink(missing_ok=True)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                from app.core.logger import get_logger
+                get_logger().debug(f"Failed to unlink stale tmp file {f}: {exc}")
+    except Exception as exc:
+        from app.core.logger import get_logger
+        get_logger().debug(f"Error purging stale tmp dir: {exc}")
 
 
 ensure_dirs()

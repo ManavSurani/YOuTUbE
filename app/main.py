@@ -22,6 +22,8 @@ def main() -> int:
     main_window_holder = []
 
     def on_startup_completed():
+        from app.core.history_service import repair_existing_rows
+        repair_existing_rows()
         win = MainWindow()
         main_window_holder.append(win)
         win.show()

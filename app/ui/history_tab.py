@@ -132,35 +132,11 @@ class HistoryRowWidget(QWidget):
         layout.addLayout(actions_layout)
 
     def _load_thumbnail(self) -> None:
-        if self.item.thumbnail_path and Path(self.item.thumbnail_path).is_file():
-            pix = QPixmap(self.item.thumbnail_path)
-            if not pix.isNull():
-                target_w, target_h = 64, 36
-                scaled = pix.scaled(
-                    target_w, target_h,
-                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                x = max(0, (scaled.width() - target_w) // 2)
-                y = max(0, (scaled.height() - target_h) // 2)
-                cropped = scaled.copy(x, y, target_w, target_h)
-
-                rounded = QPixmap(target_w, target_h)
-                rounded.fill(Qt.GlobalColor.transparent)
-                p = QPainter(rounded)
-                p.setRenderHint(QPainter.RenderHint.Antialiasing)
-                path = QPainterPath()
-                path.addRoundedRect(0, 0, target_w, target_h, 8, 8)
-                p.setClipPath(path)
-                p.drawPixmap(0, 0, cropped)
-                p.end()
-
-                self.thumb_label.setPixmap(rounded)
-                return
-
-        # Placeholder
-        self.thumb_label.setText(self.item.type[:1].upper())
-        self.thumb_label.setStyleSheet("background-color: #272727; border-radius: 8px; font-weight: 600;")
+        from app.core.thumbnails import get_rounded_pixmap
+        vid = self.item.video_id or ""
+        is_audio = (self.item.type.lower() == "audio")
+        pix = get_rounded_pixmap(vid, size=(64, 36), is_audio=is_audio, radius=8)
+        self.thumb_label.setPixmap(pix)
 
     def _play_file(self) -> None:
         p = Path(self.item.file_path)
@@ -184,6 +160,8 @@ class HistoryRowWidget(QWidget):
         self.redownload.emit(self.item.url, self.item.type)
 
     def _delete_prompt(self) -> None:
+        from app.core.history_service import delete as delete_history
+
         msg = QMessageBox(self)
         msg.setWindowTitle("Delete History Item")
         msg.setText(f"Delete \"{self.item.title}\"?")
@@ -195,24 +173,15 @@ class HistoryRowWidget(QWidget):
         msg.exec()
         clicked = msg.clickedButton()
 
-        if clicked == btn_cancel:
+        if clicked == btn_cancel or self.item.id is None:
             return
 
-        if clicked == btn_also_file:
-            try:
-                p = Path(self.item.file_path)
-                if p.is_file():
-                    p.unlink(missing_ok=True)
-            except Exception:
-                pass
+        delete_file = (clicked == btn_also_file)
+        ok, err_msg = delete_history(self.item.id, delete_file=delete_file)
 
-        if self.item.id is not None:
-            delete_item(self.item.id)
-            if self.item.thumbnail_path:
-                try:
-                    Path(self.item.thumbnail_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
+        if not ok:
+            QMessageBox.warning(self, "Delete Failed", err_msg)
+            return
 
         self.deleted.emit()
 

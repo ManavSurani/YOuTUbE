@@ -61,6 +61,7 @@ class AudioTab(QWidget):
         self._current_info: Optional[VideoInfo] = None
         self._fetch_worker: Optional[InfoFetchWorker] = None
         self._last_fetched_url = ""
+        self._preselected_quality: Optional[str] = None
 
         # Test compatibility aliases
         self._is_downloading = False
@@ -272,9 +273,24 @@ class AudioTab(QWidget):
         self._fetch_worker.failed.connect(self._on_info_failed)
         self._fetch_worker.start()
 
+    def preselect_quality(self, quality: str) -> None:
+        """Pre-select requested audio format/quality when video info is fetched."""
+        self._preselected_quality = quality
+
     def _on_info_fetched(self, info: VideoInfo) -> None:
         self._current_info = info
         self.info_card.set_info(info)
+
+        if self._preselected_quality:
+            target = self._preselected_quality.strip().lower()
+            for idx in range(self.format_combo.count()):
+                text = self.format_combo.itemText(idx).lower()
+                data = str(self.format_combo.itemData(idx) or "").lower()
+                if target in text or target in data or text in target:
+                    self.format_combo.setCurrentIndex(idx)
+                    break
+            self._preselected_quality = None
+
         self.set_state(TabState.READY)
 
     def _on_info_failed(self, error_msg: str) -> None:

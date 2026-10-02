@@ -341,14 +341,18 @@ class MainWindow(QMainWindow):
         self.video_tab.set_online(True)
         self.audio_tab.set_online(True)
 
-    def _on_redownload(self, url: str, item_type: str) -> None:
+    def _on_redownload(self, url: str, item_type: str, quality: str = "") -> None:
         if item_type.lower() == "audio":
             self.header.select_tab(1)
             self.audio_tab.url_input.setText(url)
+            if quality:
+                self.audio_tab.preselect_quality(quality)
             self.audio_tab.fetch_url()
         else:
             self.header.select_tab(0)
             self.video_tab.url_input.setText(url)
+            if quality:
+                self.video_tab.preselect_quality(quality)
             self.video_tab.fetch_url()
 
     def closeEvent(self, event) -> None:

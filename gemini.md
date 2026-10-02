@@ -483,3 +483,18 @@ Fully built, verified, and completed **Phase 4: Video and Audio Tabs + Shared Qu
 - **Chunk 4.6 — Queue list:** Created `QueueWidget` showing active, waiting, and failed items with cancel and retry buttons.
 - Visual review passed (`screenshot_phase4.png`). Full test suite: 127/127 passed in 6.78s. Evidence saved to `docs/verification/phase_4.md`.
 
+---
+
+## User Query:
+yes (proceed with Phase 5)
+
+## Assistant Response:
+Fully built, verified, and completed **Phase 5: History Tab Overhaul**:
+- **Chunk 5.1 — Rows and icon actions:** Added `IconButton` in `app/ui/kit/buttons.py` with crisp vector-rendered icons (`play`, `locate`, `folder`, `copy`, `redownload`, `delete`), tooltips on every button, press shrink, hover glow, and checkmark flash on copy. Delete button turns red (`#CC0000`) on hover. Replaced letter badges with `ThumbLabel` (64x36, 6px radius, neutral vector fallback icons). Added background `FileCheckWorker` that verifies file existence without blocking the UI thread and caches results in SQLite.
+- **Chunk 5.2 — Filters, tabs feel, search focus (fixes B12):** Added `FilterChip` (pill buttons with 16px radius, active chip filled with red `#CC0000`). Fixed keyboard focus theft (B12) by setting `ClickFocus` on `search_input` and explicitly clearing focus on tab show so opening History never displays a text cursor. Added friendly illustration-free empty state ("Nothing here yet.").
+- **Chunk 5.3 — Delete flow (fixes B6, B7):** Built custom `HistoryDeleteDialog` (not `QMessageBox`) with three actions: "Delete file too" (Recycle Bin via `send2trash`), "Remove from history only", and "Cancel". If a file is locked in another program, it displays a plain explanation and preserves the row. Added "Clear all" ghost button with confirmation. Deleting a row smoothly animates out via `animate_delete` (fade and collapse over 150ms).
+- **Chunk 5.4 — Re-download and Locate:** Re-download emits `(url, type, quality)` to `MainWindow._on_redownload`, which switches to the appropriate tab, fills URL, pre-selects requested quality, and auto-fetches without auto-starting. "Locate file" opens `QFileDialog` and calls `HistoryService.relink(item.id, path)`, updating the row in place.
+- **Chunk 5.5 — Performance:** Implemented lazy loading in `HistoryTab` (50 rows per batch, loads next 50 on scroll). Benchmarked with 500 rows in SQLite: reloads in under 0.1s (< 1.0s requirement). Set `setSizeConstraint(SetMinAndMaxSize)` and `QSizePolicy.Fixed` preventing row compression or text overlap.
+- Visual review passed (`screenshot_phase5.png`). Full test suite: **137/137 passed in 11.88s**. Evidence saved to `docs/verification/phase_5.md`.
+
+

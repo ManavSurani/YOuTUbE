@@ -167,6 +167,7 @@ class VideoTab(QWidget):
         self._current_info: Optional[VideoInfo] = None
         self._fetch_worker: Optional[InfoFetchWorker] = None
         self._last_fetched_url = ""
+        self._preselected_quality: Optional[str] = None
 
         # Test compatibility aliases
         self._is_downloading = False
@@ -368,6 +369,10 @@ class VideoTab(QWidget):
         self._fetch_worker.failed.connect(self._on_info_failed)
         self._fetch_worker.start()
 
+    def preselect_quality(self, quality: str) -> None:
+        """Pre-select requested quality when video info is fetched."""
+        self._preselected_quality = quality
+
     def _on_info_fetched(self, info: VideoInfo) -> None:
         self._current_info = info
         self.info_card.set_info(info)
@@ -376,6 +381,15 @@ class VideoTab(QWidget):
         self.quality_combo.clear()
         for label, height in info.qualities:
             self.quality_combo.addItem(label, height)
+
+        if self._preselected_quality:
+            target = self._preselected_quality.strip().lower()
+            for idx in range(self.quality_combo.count()):
+                text = self.quality_combo.itemText(idx).lower()
+                if target in text or text in target:
+                    self.quality_combo.setCurrentIndex(idx)
+                    break
+            self._preselected_quality = None
 
         self.set_state(TabState.READY)
 

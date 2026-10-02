@@ -24,7 +24,7 @@ class HistoryItem:
     quality: str
     file_path: str
     size_bytes: int
-    duration: int
+    duration: int = 0
     thumbnail_path: Optional[str] = None
     created_at: Optional[str] = None
     video_id: Optional[str] = None

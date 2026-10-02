@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.downloader import DownloadWorker, build_video_cmd, cleanup_temp_files
+from app.core.downloader import DownloadWorker, build_video_cmd
 from app.core.errors import explain
 from app.core.history_db import HistoryItem, add_item, save_thumbnail_image
 from app.core.info_fetcher import InfoFetchWorker, VideoInfo
@@ -529,9 +529,10 @@ class VideoTab(QWidget):
 
         settings = load_settings()
         out_dir = settings.get("download_dir")
-        container = settings.get("container", "mkv")
-
-        cmd = build_video_cmd(next_item.url, height=next_item.height, container=container, out_dir=out_dir)
+        import uuid
+        job_id = str(uuid.uuid4())
+        cmd = build_video_cmd(next_item.url, height=next_item.height, out_dir=out_dir, job_id=job_id)
+        self._saved_job_id = job_id
         self._saved_cmd = cmd
         self._saved_out_dir = out_dir
         self._is_downloading = True
@@ -548,11 +549,14 @@ class VideoTab(QWidget):
         self._start_worker(initial_percent=0.0)
 
     def _start_worker(self, initial_percent: float = 0.0) -> None:
+        video_id = getattr(self, "_current_video_id", "")
+        job_id = getattr(self, "_saved_job_id", None)
         self._download_worker = DownloadWorker(
             self._saved_cmd,
             out_dir=self._saved_out_dir,
+            job_id=job_id,
+            video_id=video_id,
             is_dual_stream=True,
-            initial_percent=initial_percent,
             parent=self,
         )
         self._download_worker.stage.connect(self._on_stage)
@@ -564,8 +568,6 @@ class VideoTab(QWidget):
     def cancel_download(self) -> None:
         if self._download_worker:
             self._download_worker.cancel()
-        if self._saved_out_dir:
-            cleanup_temp_files(self._saved_out_dir)
 
         self._is_downloading = False
         self._paused_for_offline = False
@@ -582,20 +584,31 @@ class VideoTab(QWidget):
     def _on_stage(self, stage_text: str) -> None:
         self.stage_label.setText(stage_text)
 
-    def _on_progress(self, percent: float, speed: str, eta: str, done: str, total: str) -> None:
+    def _on_progress(self, percent: float, speed: str, eta: str, done_bytes: int, total_bytes: int) -> None:
         pct_int = int(percent)
         self.progress_bar.setValue(pct_int)
         self.percent_label.setText(f"{pct_int}%")
+
+        def _fmt_bytes(b: int) -> str:
+            if b <= 0:
+                return ""
+            for unit in ("B", "KB", "MB", "GB"):
+                if b < 1024:
+                    return f"{b:.1f} {unit}"
+                b /= 1024
+            return f"{b:.1f} TB"
 
         details = []
         if speed:
             details.append(speed)
         if eta:
             details.append(f"ETA {eta}")
-        if done and total:
-            details.append(f"{done} / {total}")
-        elif done:
-            details.append(done)
+        done_s = _fmt_bytes(done_bytes)
+        total_s = _fmt_bytes(total_bytes)
+        if done_s and total_s:
+            details.append(f"{done_s} / {total_s}")
+        elif done_s:
+            details.append(done_s)
 
         self.stats_label.setText(" • ".join(details))
 

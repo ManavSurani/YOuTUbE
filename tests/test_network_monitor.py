@@ -132,11 +132,13 @@ def test_video_tab_offline_controls_and_cancel(tmp_path):
     assert not tab.download_btn.isEnabled()
     assert part_file.exists()  # Kept on pause!
 
-    # Cancel while waiting cleans leftovers
+    # Cancel while waiting - worker handles its own TMP_DIR cleanup (B4 fix)
     tab.cancel_download()
     assert tab.stage_label.text() == "Cancelled."
     assert not tab.cancel_btn.isEnabled()
-    assert not part_file.exists()  # Removed on cancel!
+    # B4 fix: .part files in the user's Downloads folder are NEVER deleted by cancel.
+    # Only app-owned files in TMP_DIR are removed. This file must still exist.
+    assert part_file.exists(), "B4: cancel must not delete user Downloads .part files"
 
 
 def test_audio_tab_offline_controls():

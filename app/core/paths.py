@@ -17,6 +17,7 @@ THUMBS_DIR    = HISTORY_DIR / "thumbs"
 SETTINGS_FILE = APP_DATA / "settings.json"
 LOGS_DIR      = APP_DATA / "logs"
 LOG_FILE      = LOGS_DIR / "app.log"
+APP_LOG_FILE  = LOG_FILE
 DEFAULT_DOWNLOADS = Path.home() / "Downloads"
 
 

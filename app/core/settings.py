@@ -43,13 +43,25 @@ def load_settings(settings_path: Path | None = None) -> Dict[str, Any]:
     return settings
 
 
+import os
+
+
 def save_settings(settings: Dict[str, Any], settings_path: Path | None = None) -> None:
-    """Save settings dictionary to JSON file."""
+    """Save settings dictionary to JSON file atomically."""
     path = settings_path or SETTINGS_FILE
     ensure_dirs()
+    tmp_path = path.with_suffix(".tmp")
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
     except Exception as exc:
         logger = get_logger()
         logger.error(f"Failed to save settings: {exc}")
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception as e:
+                logger.debug(f"Failed to remove temp settings file: {e}")

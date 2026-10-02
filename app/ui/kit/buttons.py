@@ -403,4 +403,8 @@ class IconButton(AnimatedButton):
             painter.drawEllipse(QRectF(cx - 6.5, cy - 6.5, 8.5, 8.5))
             painter.drawLine(QPointF(cx + 0.5, cy + 0.5), QPointF(cx + 5.5, cy + 5.5))
 
+        elif self.icon_name in ("close", "x"):
+            painter.drawLine(QPointF(cx - 4.5, cy - 4.5), QPointF(cx + 4.5, cy + 4.5))
+            painter.drawLine(QPointF(cx + 4.5, cy - 4.5), QPointF(cx - 4.5, cy + 4.5))
+
         painter.end()

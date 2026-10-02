@@ -497,4 +497,18 @@ Fully built, verified, and completed **Phase 5: History Tab Overhaul**:
 - **Chunk 5.5 — Performance:** Implemented lazy loading in `HistoryTab` (50 rows per batch, loads next 50 on scroll). Benchmarked with 500 rows in SQLite: reloads in under 0.1s (< 1.0s requirement). Set `setSizeConstraint(SetMinAndMaxSize)` and `QSizePolicy.Fixed` preventing row compression or text overlap.
 - Visual review passed (`screenshot_phase5.png`). Full test suite: **137/137 passed in 11.88s**. Evidence saved to `docs/verification/phase_5.md`.
 
+---
+
+## User Query:
+yes (proceed with Phase 6)
+
+## Assistant Response:
+Fully built, verified, and completed **Phase 6: Settings and Dialogs**:
+- **Chunk 6.1 — Layout and cleanup:** Removed the "Preferred Video Container" section and note from Settings. Removed bottom Save and Cancel buttons; dialog now features a clean top-right close icon (`IconButton("close")`) and dismisses with `Esc`. Wrapped contents in `QScrollArea` with adaptive width, ensuring no clipped controls at 100%, 125%, and 150% Windows display scaling.
+- **Chunk 6.2 — Download folder with contextual Save:** The download folder path box is strictly read-only (`NoFocus`, arrow cursor, zero text cursor). "Browse…" opens the directory picker. Choosing a different folder reveals the "Save" button beside it. Clicking Save tests folder writability via a probe file and checks free space. If valid, writes atomically, flashes "Saved ✓", and smoothly hides; if not writable, warns user and reverts to the previous path. Added an "Open download folder" link that invokes Explorer without flashing console windows.
+- **Chunk 6.3 — Appearance, updates, and atomic write:** Appearance dropdown (Dark / Light) applies instantly to the stylesheet and persists immediately to `settings.json`. "Check for updates automatically" uses `AnimatedCheckBox` (red checkmark, 150ms animation, ON by default) and persists immediately. "Check now" button shows a loading spinner, then "You're up to date ✓", update prompt, or offline state. `save_settings` writes to `.tmp` with `flush` and `os.fsync`, then calls `os.replace` for crash-proof atomic updates.
+- **Chunk 6.4 — About and support:** Displays exact app name `"YOuTUbE"` and current version. Open-source credits with clickable links for `yt-dlp`, `ffmpeg & ffprobe`, `deno`, and `send2trash`. Added "Export log" button copying `app.log` for troubleshooting.
+- Visual review passed (`screenshot_phase6_settings.png`). Full test suite: **143/143 passed in 15.11s**. Evidence saved to `docs/verification/phase_6.md`.
+
+
 

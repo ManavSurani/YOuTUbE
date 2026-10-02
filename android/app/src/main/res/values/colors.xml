@@ -1,0 +1,10 @@
+<resources>
+    <color name="bg_dark">#0F0F0F</color>
+    <color name="surface_dark">#212121</color>
+    <color name="border_dark">#272727</color>
+    <color name="brand_red">#FF0000</color>
+    <color name="accent_blue">#3EA6FF</color>
+    <color name="status_green">#2BA640</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#AAAAAA</color>
+</resources>

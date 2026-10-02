@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Red rounded square tile -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M 128,24 L 384,24 A 104,104 0 0,1 488,128 L 488,384 A 104,104 0 0,1 384,488 L 128,488 A 104,104 0 0,1 24,384 L 24,128 A 104,104 0 0,1 128,24 Z" />
+    <!-- White download arrow stem -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 224,112 L 288,112 L 288,252 L 224,252 Z" />
+    <!-- White download arrow head -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 150,240 L 362,240 L 256,368 Z" />
+    <!-- White tray line -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 164,396 L 348,396 A 14,14 0 0,1 362,410 A 14,14 0 0,1 348,424 L 164,424 A 14,14 0 0,1 150,410 A 14,14 0 0,1 164,396 Z" />
+</vector>

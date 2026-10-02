@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">YOuTUbE</string>
+    <string name="tab_video">Video</string>
+    <string name="tab_audio">Audio</string>
+    <string name="tab_history">History</string>
+    <string name="download_button">Download</string>
+    <string name="queue_button">Add to queue</string>
+    <string name="cancel_button">Cancel</string>
+    <string name="fetch_button">Fetch</string>
+    <string name="url_placeholder">Paste a YouTube link</string>
+    <string name="online_status">Online</string>
+    <string name="offline_status">Offline</string>
+    <string name="offline_message">Internet is off. You can still view your history.</string>
+</resources>

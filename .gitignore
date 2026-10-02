@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.log
+
+# PyInstaller build artifacts
+dist/
+build/*.spec
+*.spec
+
+# Installer output (large binaries)
+Output/
+
+# Screenshot dev artifacts
+New folder/
+screenshot_*.png
+
+# Android build
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# Python virtual envs
+venv/
+.venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db

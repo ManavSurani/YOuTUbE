@@ -1,10 +1,20 @@
+"""Main application window using custom Header and QStackedWidget.
+
+Fixes:
+  B10: Replaces QTabWidget corner widget with 52px Header (Settings button is never clipped).
+  B14: Enables DwmSetWindowAttribute immersive dark title bar on Windows 10/11.
+Centers content in maximum ~1100px width with 760x520 minimum window dimensions.
+"""
+
+import ctypes
+from ctypes import wintypes
+from pathlib import Path
 import sys
 import time
-from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPainter
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -13,8 +23,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QStackedWidget,
     QSystemTrayIcon,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -26,42 +36,39 @@ from app.core.app_updater import (
     launch_silent_installer,
     should_check_update,
 )
+from app.core.logger import get_logger
 from app.core.network_monitor import NetworkMonitor
 from app.core.settings import load_settings, save_settings
 from app.ui.audio_tab import AudioTab
+from app.ui.header import Header, get_asset_path
 from app.ui.history_tab import HistoryTab
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.video_tab import VideoTab
 from app.version import APP_NAME, APP_VERSION
 
 
-def get_asset_path(filename: str) -> Path:
-    """Return path to asset file whether running from source or frozen binary."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        base = Path(sys._MEIPASS) / "assets"
-    else:
-        base = Path(__file__).resolve().parents[2] / "assets"
-    return base / filename
-
-
-class StatusDot(QWidget):
-    """An 8px circular status indicator dot."""
-
-    def __init__(self, color_hex: str = "#2BA640", parent: QWidget | None = None):
-        super().__init__(parent)
-        self._color = QColor(color_hex)
-        self.setFixedSize(8, 8)
-
-    def set_color(self, color_hex: str) -> None:
-        self._color = QColor(color_hex)
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(self._color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(0, 0, 8, 8)
+def apply_dark_title_bar(window_hwnd: int, is_dark: bool = True) -> None:
+    """Set Windows title bar to immersive dark mode (Win10 20H1+ and Win11)."""
+    try:
+        dwm = ctypes.windll.dwmapi
+        val = ctypes.c_int(1 if is_dark else 0)
+        # 20 is DWMWA_USE_IMMERSIVE_DARK_MODE
+        res = dwm.DwmSetWindowAttribute(
+            wintypes.HWND(window_hwnd),
+            ctypes.c_uint(20),
+            ctypes.byref(val),
+            ctypes.sizeof(val),
+        )
+        if res != 0:
+            # 19 was used on earlier Windows 10 builds
+            dwm.DwmSetWindowAttribute(
+                wintypes.HWND(window_hwnd),
+                ctypes.c_uint(19),
+                ctypes.byref(val),
+                ctypes.sizeof(val),
+            )
+    except Exception as exc:
+        get_logger().debug(f"apply_dark_title_bar skipped/failed: {exc}")
 
 
 class UpdateBanner(QWidget):
@@ -100,8 +107,6 @@ class UpdateBanner(QWidget):
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar, 1)
 
-        layout.addStretch(1)
-
         self.update_btn = QPushButton("Update now", self)
         self.update_btn.setObjectName("updateBtn")
         self.update_btn.clicked.connect(self._on_update_clicked)
@@ -115,7 +120,7 @@ class UpdateBanner(QWidget):
     def show_update(self, info: UpdateInfo) -> None:
         self._info = info
         if info.status == "required":
-            self.msg_label.setText(f"Version {info.latest_version} is required. Please update now.")
+            self.msg_label.setText(f"Version {info.latest_version} is required. Downloads are paused.")
             self.later_btn.setVisible(False)
         else:
             self.msg_label.setText(f"Version {info.latest_version} is available.")
@@ -175,13 +180,13 @@ class UpdateBanner(QWidget):
 
 
 class MainWindow(QMainWindow):
-    """Main application window."""
+    """Main application window with custom animated Header and centered layout."""
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.resize(760, 560)
-        self.setMinimumSize(640, 480)
+        self.resize(800, 600)
+        self.setMinimumSize(760, 520)
 
         icon_path = get_asset_path("icon.ico")
         if icon_path.exists():
@@ -191,57 +196,59 @@ class MainWindow(QMainWindow):
         central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
 
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
+        root_layout = QVBoxLayout(central_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        # Update banner at the very top (hidden by default)
-        self.update_banner = UpdateBanner(self)
-        layout.addWidget(self.update_banner)
+        # 1. Custom Header (Full width, 52px height)
+        self.header = Header(self)
+        self.header.tab_changed.connect(self._on_tab_changed)
+        self.header.settings_clicked.connect(self._open_settings)
+        root_layout.addWidget(self.header)
 
-        self.tab_widget = QTabWidget(self)
-        layout.addWidget(self.tab_widget)
+        # Convenient aliases for tests and status management
+        self.status_dot = self.header.status_dot
+        self.status_label = self.header.status_label
+        self.settings_btn = self.header.settings_btn
 
-        # Top-right status area
-        self.status_container = QWidget(self)
-        status_layout = QHBoxLayout(self.status_container)
-        status_layout.setContentsMargins(0, 0, 8, 0)
-        status_layout.setSpacing(6)
+        # 2. Centered content wrapper (max width 1100 px)
+        outer_content = QWidget(self)
+        outer_layout = QHBoxLayout(outer_content)
+        outer_layout.setContentsMargins(16, 8, 16, 16)
+        outer_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        self.status_dot = StatusDot("#2BA640", self.status_container)
-        self.status_label = QLabel("Online", self.status_container)
-        self.status_label.setProperty("role", "success")
+        self.content_container = QWidget(outer_content)
+        self.content_container.setMaximumWidth(1100)
+        inner_layout = QVBoxLayout(self.content_container)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(12)
 
-        status_layout.addWidget(self.status_dot)
-        status_layout.addWidget(self.status_label)
+        # Update banner
+        self.update_banner = UpdateBanner(self.content_container)
+        inner_layout.addWidget(self.update_banner)
 
-        # Settings button
-        self.settings_btn = QPushButton("Settings", self.status_container)
-        self.settings_btn.setProperty("role", "secondary")
-        self.settings_btn.setFixedHeight(28)
-        self.settings_btn.clicked.connect(self._open_settings)
-        status_layout.addWidget(self.settings_btn)
+        # 3. Stacked widget for tabs
+        self.stacked_widget = QStackedWidget(self.content_container)
+        inner_layout.addWidget(self.stacked_widget, 1)
 
-        status_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        outer_layout.addWidget(self.content_container)
+        root_layout.addWidget(outer_content, 1)
 
-        self.tab_widget.setCornerWidget(self.status_container, Qt.Corner.TopRightCorner)
-
-        # Tabs
+        # Initialize tab pages
         self.video_tab = VideoTab(self)
         self.video_tab.download_completed.connect(self._on_download_finished_notification)
-        self.tab_widget.addTab(self.video_tab, "Video")
+        self.stacked_widget.addWidget(self.video_tab)
 
         self.audio_tab = AudioTab(self)
         self.audio_tab.download_completed.connect(self._on_download_finished_notification)
-        self.tab_widget.addTab(self.audio_tab, "Audio")
+        self.stacked_widget.addWidget(self.audio_tab)
 
         self.history_tab = HistoryTab(self)
         self.history_tab.redownload_requested.connect(self._on_redownload)
-        self.tab_widget.addTab(self.history_tab, "History")
+        self.stacked_widget.addWidget(self.history_tab)
 
         # System tray icon for finish notifications
         self.tray_icon = QSystemTrayIcon(self)
-        icon_path = get_asset_path("icon.ico")
         if icon_path.exists():
             self.tray_icon.setIcon(QIcon(str(icon_path)))
         self.tray_icon.show()
@@ -256,9 +263,29 @@ class MainWindow(QMainWindow):
         self._update_worker: Optional[UpdateCheckWorker] = None
         self._check_for_updates()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # Apply dark title bar (B14 fix)
+        try:
+            settings = load_settings()
+            is_dark = settings.get("theme", "dark").lower() != "light"
+            apply_dark_title_bar(int(self.winId()), is_dark=is_dark)
+        except Exception as exc:
+            get_logger().debug(f"Title bar theming skipped: {exc}")
+
+    def _on_tab_changed(self, index: int) -> None:
+        self.stacked_widget.setCurrentIndex(index)
+        # Refresh history tab if switched to history
+        if index == 2 and hasattr(self.history_tab, "refresh_items"):
+            self.history_tab.refresh_items()
+
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self)
         dialog.exec()
+        # Re-apply title bar in case theme changed
+        settings = load_settings()
+        is_dark = settings.get("theme", "dark").lower() != "light"
+        apply_dark_title_bar(int(self.winId()), is_dark=is_dark)
 
     def _on_download_finished_notification(self, title: str) -> None:
         if not self.isActiveWindow():
@@ -299,12 +326,7 @@ class MainWindow(QMainWindow):
                 self.audio_tab.format_combo.setEnabled(False)
 
     def _on_went_offline(self) -> None:
-        self.status_dot.set_color("#CC0000")
-        self.status_label.setText("Offline")
-        self.status_label.setProperty("role", "error")
-        self.status_label.style().unpolish(self.status_label)
-        self.status_label.style().polish(self.status_label)
-
+        self.header.set_online(False)
         self.video_tab.set_online(False)
         self.audio_tab.set_online(False)
 
@@ -315,22 +337,17 @@ class MainWindow(QMainWindow):
         )
 
     def _on_came_online(self) -> None:
-        self.status_dot.set_color("#2BA640")
-        self.status_label.setText("Online")
-        self.status_label.setProperty("role", "success")
-        self.status_label.style().unpolish(self.status_label)
-        self.status_label.style().polish(self.status_label)
-
+        self.header.set_online(True)
         self.video_tab.set_online(True)
         self.audio_tab.set_online(True)
 
     def _on_redownload(self, url: str, item_type: str) -> None:
         if item_type.lower() == "audio":
-            self.tab_widget.setCurrentIndex(1)
+            self.header.select_tab(1)
             self.audio_tab.url_input.setText(url)
             self.audio_tab.fetch_url()
         else:
-            self.tab_widget.setCurrentIndex(0)
+            self.header.select_tab(0)
             self.video_tab.url_input.setText(url)
             self.video_tab.fetch_url()
 

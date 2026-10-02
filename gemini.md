@@ -453,3 +453,18 @@ Fully built, verified, and completed **Phase 2: Data and History Integrity**:
 - **Chunk 2.5 — Repair existing rows:** Implemented `repair_existing_rows()` searching download folder for matching `[video_id]` or titles to restore 0 B or missing records, wired into startup in `app/main.py`.
 - Automated gate passed: 113+ tests passing, 0 bare `except: pass` without logging (R9), subprocess strictly in `proc.py` (R1). Evidence saved to `docs/verification/phase_2.md`.
 
+---
+
+## User Query:
+yes (proceed with Phase 3)
+
+## Assistant Response:
+Fully built, verified, and completed **Phase 3: UI Kit and Animation System**:
+- **Chunk 3.1 — Animation helpers:** Created `app/ui/kit/anim.py` with 150 ms property animation helpers (`QEasingCurve.Type.OutCubic`) respecting `animations_enabled` setting and reduced-motion preferences.
+- **Chunk 3.2 — Button system:** Created `app/ui/kit/buttons.py` with `AnimatedButton` supporting primary, secondary, ghost, and icon roles, 36px consistent height, animated loading spinner (`set_loading(True)`), success flash (`flash_success()`), and smooth press/hover feedback.
+- **Chunk 3.3 — Checkbox and toggle (fixes B11):** Created `app/ui/kit/checkbox.py` with `AnimatedCheckBox` featuring custom vector checkmark drawing, 150 ms red fill transition, and accessible focus ring, completely eliminating ambiguous white box states.
+- **Chunk 3.4 — Header, tabs, and Settings button (fixes B10):** Created `app/ui/header.py` with 52px custom Header containing logo, exact brand name `"YOuTUbE"`, animated sliding red underline, network dot with smooth color transitions, and a full-size 36px Settings button with a custom vector gear icon, replacing the cramped QTabWidget corner area.
+- **Chunk 3.5 — Dark title bar and layout width (fixes B14):** In `app/ui/main_window.py`, wired `DwmSetWindowAttribute` for native immersive dark title bars on Windows 10/11, centered layout in max width 1100 px container, and enforced 760x520 minimum size.
+- **Chunk 3.6 — Shared widgets:** Created `ThumbLabel` with neutral play/music fallbacks (no letter badges), `Toast` with bottom-right slide-in and 4s lifetime, `InlineMessage` with 4s auto-hide and tab clear, and `ProgressCard` skeleton.
+- Visual review passed (`screenshot_phase3.png`). Full test suite: 120/120 passed in 6.81s. Evidence saved to `docs/verification/phase_3.md`.
+

@@ -6,11 +6,13 @@ DARK_TOKENS: Dict[str, str] = {
     "bg": "#0F0F0F",
     "surface": "#212121",
     "surface_hover": "#272727",
+    "surface_pressed": "#1F1F1F",
     "border": "#303030",
     "text": "#F1F1F1",
     "text_muted": "#AAAAAA",
     "accent": "#FF0000",
     "accent_hover": "#CC0000",
+    "accent_pressed": "#B30000",
     "info": "#3EA6FF",
     "success": "#2BA640",
     "error": "#FF4E45",
@@ -20,11 +22,13 @@ LIGHT_TOKENS: Dict[str, str] = {
     "bg": "#FFFFFF",
     "surface": "#F2F2F2",
     "surface_hover": "#E5E5E5",
+    "surface_pressed": "#DADADA",
     "border": "#E0E0E0",
     "text": "#0F0F0F",
     "text_muted": "#606060",
     "accent": "#FF0000",
     "accent_hover": "#CC0000",
+    "accent_pressed": "#B30000",
     "info": "#065FD4",
     "success": "#2BA640",
     "error": "#CC0000",
@@ -273,15 +277,19 @@ QCheckBox {{
 }}
 
 QCheckBox::indicator {{
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     border: 1px solid {c["border"]};
     border-radius: 4px;
     background-color: {c["surface"]};
 }}
 
+QCheckBox::indicator:hover {{
+    border: 1px solid {c["text_muted"]};
+}}
+
 QCheckBox::indicator:checked {{
-    background-color: {c["text"]};
-    border: 1px solid {c["text"]};
+    background-color: {c["accent"]};
+    border: 1px solid {c["accent"]};
 }}
 """

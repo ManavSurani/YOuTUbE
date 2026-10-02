@@ -97,11 +97,13 @@ def test_network_monitor_clean_exit():
 
 
 def test_video_tab_offline_controls_and_cancel(tmp_path):
-    from app.ui.video_tab import VideoTab
+    from app.ui.video_tab import VideoTab, TabState
 
     tab = VideoTab()
+    tab.set_state(TabState.READY)
     assert tab.url_input.isEnabled()
     assert tab.download_btn.isEnabled()
+    assert tab.quality_combo.isEnabled()
 
     # Disconnect
     tab.set_online(False)
@@ -121,10 +123,7 @@ def test_video_tab_offline_controls_and_cancel(tmp_path):
     part_file = tmp_path / "video.mkv.part"
     part_file.write_text("partial_download_bytes")
 
-    tab._is_downloading = True
-    tab._saved_cmd = ["dummy_cmd"]
-    tab._saved_out_dir = str(tmp_path)
-
+    tab.set_state(TabState.DOWNLOADING)
     tab.set_online(False)
     assert tab._paused_for_offline is True
     assert tab.stage_label.text() == "Waiting for internet…"
@@ -134,37 +133,30 @@ def test_video_tab_offline_controls_and_cancel(tmp_path):
 
     # Cancel while waiting - worker handles its own TMP_DIR cleanup (B4 fix)
     tab.cancel_download()
-    assert tab.stage_label.text() == "Cancelled."
-    assert not tab.cancel_btn.isEnabled()
-    # B4 fix: .part files in the user's Downloads folder are NEVER deleted by cancel.
-    # Only app-owned files in TMP_DIR are removed. This file must still exist.
+    assert tab.cancel_btn.isHidden()
     assert part_file.exists(), "B4: cancel must not delete user Downloads .part files"
 
 
 def test_audio_tab_offline_controls():
     from app.ui.audio_tab import AudioTab
+    from app.ui.video_tab import TabState
 
     tab = AudioTab()
+    tab.set_state(TabState.READY)
     assert tab.url_input.isEnabled()
     assert tab.download_btn.isEnabled()
     assert tab.format_combo.isEnabled()
-    assert tab.embed_cover_check.isEnabled()
-    assert tab.embed_meta_check.isEnabled()
 
     tab.set_online(False)
     assert not tab.url_input.isEnabled()
     assert not tab.fetch_btn.isEnabled()
     assert not tab.format_combo.isEnabled()
-    assert not tab.embed_cover_check.isEnabled()
-    assert not tab.embed_meta_check.isEnabled()
     assert not tab.download_btn.isEnabled()
 
     tab.set_online(True)
     assert tab.url_input.isEnabled()
     assert tab.fetch_btn.isEnabled()
     assert tab.format_combo.isEnabled()
-    assert tab.embed_cover_check.isEnabled()
-    assert tab.embed_meta_check.isEnabled()
     assert tab.download_btn.isEnabled()
 
 

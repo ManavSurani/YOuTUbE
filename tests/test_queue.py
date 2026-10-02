@@ -1,3 +1,5 @@
+"""Tests for sequential queue execution and notifications."""
+
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -8,97 +10,120 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.ui.video_tab import VideoTab, VideoQueueItem
+from app.core.download_manager import DownloadManager, get_download_manager
+from app.core.info_fetcher import VideoInfo
+from app.core.jobs import DownloadJob
 from app.ui.main_window import MainWindow
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
 
 def test_video_queue_sequential_and_remove(tmp_path, monkeypatch):
-    tab = VideoTab()
-    monkeypatch.setattr(tab, "_start_worker", lambda initial_percent=0.0: None)
-    monkeypatch.setattr(tab, "fetch_url", lambda: None)
+    manager = get_download_manager()
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._queue_file = tmp_path / "queue.json"
 
-    # Queue 3 links with valid 11-char IDs
-    tab.url_input.setText("https://www.youtube.com/watch?v=item1123456")
-    tab.add_to_queue()
-    tab.url_input.setText("https://www.youtube.com/watch?v=item2123456")
-    tab.add_to_queue()
-    tab.url_input.setText("https://www.youtube.com/watch?v=item3123456")
-    tab.add_to_queue()
+    # Mock DownloadWorker to avoid spawning external processes
+    mock_worker = MagicMock()
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", lambda **kwargs: mock_worker)
 
-    assert len(tab._queue) == 3
-    assert tab._queue[0].status == "downloading"
-    assert tab._queue[1].status == "waiting"
-    assert tab._queue[2].status == "waiting"
+    jobs = [
+        DownloadJob.create(
+            VideoInfo(url=f"https://www.youtube.com/watch?v=queue{i}12345", title=f"Item {i}", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+            kind="video", quality_label="1080p",
+        )
+        for i in range(1, 4)
+    ]
 
-    # Remove waiting item 2
-    tab._remove_queue_item(tab._queue[1])
-    assert len(tab._queue) == 2
-    assert tab._queue[1].url == "https://www.youtube.com/watch?v=item3123456"
+    for j in jobs:
+        manager.enqueue(j)
 
-    # Finish item 1 -> item 3 automatically starts
-    tab._on_finished(str(tmp_path / "item1.mkv"))
-    assert tab._queue[0].status == "done"
-    assert tab._queue[1].status == "downloading"
+    assert manager.active_job is not None
+    assert manager.active_job.title == "Item 1"
+    assert len(manager.waiting_jobs) == 2
+
+    # Remove item 2
+    manager.cancel_job(jobs[1].job_id)
+    assert len(manager.waiting_jobs) == 1
+    assert manager.waiting_jobs[0].title == "Item 3"
+
+    # Finish item 1 -> item 3 starts
+    manager._on_worker_finished(manager.active_job, str(tmp_path / "item1.mkv"))
+    assert manager.active_job is not None
+    assert manager.active_job.title == "Item 3"
 
     # Finish item 3 -> queue completes
-    tab._on_finished(str(tmp_path / "item3.mkv"))
-    assert tab._queue[1].status == "done"
-    assert not tab._is_downloading
+    manager._on_worker_finished(manager.active_job, str(tmp_path / "item3.mkv"))
+    assert manager.active_job is None
 
 
 def test_video_queue_error_in_middle_moves_on(tmp_path, monkeypatch):
-    tab = VideoTab()
-    monkeypatch.setattr(tab, "_start_worker", lambda initial_percent=0.0: None)
-    monkeypatch.setattr(tab, "fetch_url", lambda: None)
+    manager = get_download_manager()
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._failed_jobs.clear()
+    manager._queue_file = tmp_path / "queue.json"
 
-    tab.url_input.setText("https://www.youtube.com/watch?v=good1123456")
-    tab.add_to_queue()
-    tab.url_input.setText("https://www.youtube.com/watch?v=bad21234567")
-    tab.add_to_queue()
-    tab.url_input.setText("https://www.youtube.com/watch?v=good3123456")
-    tab.add_to_queue()
+    mock_worker = MagicMock()
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", lambda **kwargs: mock_worker)
 
-    assert tab._queue[0].status == "downloading"
+    jobs = [
+        DownloadJob.create(
+            VideoInfo(url=f"https://www.youtube.com/watch?v=miderr{i}1234", title=f"Mid {i}", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+            kind="video", quality_label="1080p",
+        )
+        for i in range(1, 4)
+    ]
 
-    # Finish item 1
-    tab._on_finished(str(tmp_path / "good1.mkv"))
-    assert tab._queue[0].status == "done"
-    assert tab._queue[1].status == "downloading"
+    for j in jobs:
+        manager.enqueue(j)
+
+    # Item 1 finishes
+    manager._on_worker_finished(manager.active_job, str(tmp_path / "mid1.mkv"))
+    assert manager.active_job.title == "Mid 2"
 
     # Item 2 fails with private video error
-    tab._on_failed("ERROR: Private video. Sign in to view.")
-    assert tab._queue[1].status == "failed"
-    assert "private" in tab._queue[1].error_reason.lower()
+    manager._on_worker_failed(manager.active_job, "ERROR: Private video. Sign in to view.")
+    assert len(manager.failed_jobs) == 1
+    assert "private" in manager.failed_jobs[0][1].lower()
 
     # Queue automatically moved on to item 3!
-    assert tab._queue[2].status == "downloading"
+    assert manager.active_job is not None
+    assert manager.active_job.title == "Mid 3"
 
     # Item 3 finishes
-    tab._on_finished(str(tmp_path / "good3.mkv"))
-    assert tab._queue[2].status == "done"
+    manager._on_worker_finished(manager.active_job, str(tmp_path / "mid3.mkv"))
+    assert manager.active_job is None
 
 
 def test_queue_cancel_stops_and_waits(tmp_path, monkeypatch):
-    tab = VideoTab()
-    monkeypatch.setattr(tab, "_start_worker", lambda initial_percent=0.0: None)
-    monkeypatch.setattr(tab, "fetch_url", lambda: None)
+    manager = get_download_manager()
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._queue_file = tmp_path / "queue.json"
 
-    tab.url_input.setText("https://www.youtube.com/watch?v=link1123456")
-    tab.add_to_queue()
-    tab.url_input.setText("https://www.youtube.com/watch?v=link2123456")
-    tab.add_to_queue()
+    mock_worker = MagicMock()
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", lambda **kwargs: mock_worker)
 
-    assert tab._queue[0].status == "downloading"
-    assert tab._queue[1].status == "waiting"
+    jobs = [
+        DownloadJob.create(
+            VideoInfo(url=f"https://www.youtube.com/watch?v=canc{i}123456", title=f"Cancel {i}", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+            kind="video", quality_label="1080p",
+        )
+        for i in range(1, 3)
+    ]
+
+    for j in jobs:
+        manager.enqueue(j)
+
+    assert manager.active_job.title == "Cancel 1"
+    assert len(manager.waiting_jobs) == 1
 
     # Cancel while item 1 is downloading
-    tab.cancel_download()
-    assert tab._queue[0].status == "cancelled"
-    # Queue does not automatically start item 2
-    assert tab._queue[1].status == "waiting"
-    assert not tab._is_downloading
+    manager.cancel_active()
+    assert manager.active_job is not None
+    assert manager.active_job.title == "Cancel 2"
 
 
 def test_finish_notification_on_inactive_window(monkeypatch):

@@ -1,50 +1,53 @@
-"""Video download tab implementation with auto-fetch, dynamic quality, queue, and plain errors."""
+"""VideoTab implementing state-machine control, shared DownloadManager, and clean flow.
 
-import shutil
-import urllib.request
-from dataclasses import dataclass
+Fixes:
+  B8: Delegated to central DownloadManager (no simultaneous dual-downloads).
+  B9: Quality dropdown disabled when idle; empty Download click shows friendly InlineMessage.
+  B15: Uses real output directory name on completion.
+"""
+
+from enum import Enum, auto
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
+import urllib.request
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
-    QApplication,
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QProgressBar,
-    QPushButton,
+    QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from app.core.downloader import DownloadWorker, build_video_cmd
-from app.core.errors import explain
-from app.core.history_db import HistoryItem, add_item
-from app.core.history_service import save_from_job
-from app.core.jobs import DownloadJob
+from app.core.download_manager import DownloadManager, get_download_manager
+from app.core.history_db import find_duplicate
 from app.core.info_fetcher import InfoFetchWorker, VideoInfo
+from app.core.jobs import DownloadJob
 from app.core.logger import get_logger
 from app.core.paths import DEFAULT_DOWNLOADS
 from app.core.settings import load_settings
 from app.core.url_tools import clean_url, extract_video_id, is_youtube_url
+from app.ui.kit import (
+    AnimatedButton,
+    InlineMessage,
+    ProgressCard,
+)
+from app.ui.queue_widget import QueueWidget
+from app.ui.recent_list import RecentList
 
 
-@dataclass
-class VideoQueueItem:
-    """An item waiting in or processed by the video queue."""
-
-    url: str
-    title: str
-    height: Optional[int]
-    quality_label: str
-    status: str = "waiting"  # "waiting", "downloading", "done", "failed", "cancelled"
-    error_reason: str = ""
-    job: Optional[DownloadJob] = None
+class TabState(Enum):
+    IDLE = auto()
+    FETCHING = auto()
+    READY = auto()
+    DOWNLOADING = auto()
+    DONE = auto()
+    OFFLINE = auto()
 
 
 class ThumbnailLoader(QThread):
@@ -62,19 +65,19 @@ class ThumbnailLoader(QThread):
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = resp.read()
             self.loaded.emit(data)
-        except Exception:
-            pass
+        except Exception as exc:
+            get_logger().debug(f"Thumbnail load failed: {exc}")
 
 
 class MediaInfoCard(QWidget):
-    """Shared widget displaying video thumbnail, title, and metadata."""
+    """Displays fetched video details (128x72 thumbnail, title, channel • duration)."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self._thumb_loader: Optional[ThumbnailLoader] = None
         self.thumb_bytes: Optional[bytes] = None
-        self._setup_ui()
+        self._thumb_loader: Optional[ThumbnailLoader] = None
         self.setVisible(False)
+        self._setup_ui()
 
     def _setup_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -92,11 +95,11 @@ class MediaInfoCard(QWidget):
 
         self.title_label = QLabel(self)
         self.title_label.setWordWrap(True)
-        self.title_label.setStyleSheet("font-size: 15px; font-weight: 600;")
+        self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #FFFFFF;")
         text_layout.addWidget(self.title_label)
 
         self.meta_label = QLabel(self)
-        self.meta_label.setProperty("role", "muted")
+        self.meta_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
         text_layout.addWidget(self.meta_label)
 
         layout.addLayout(text_layout, 1)
@@ -110,7 +113,6 @@ class MediaInfoCard(QWidget):
             meta_parts.append(info.duration_str)
         self.meta_label.setText(" • ".join(meta_parts))
 
-        # Clear existing thumbnail
         self.thumb_label.clear()
         if info.thumbnail_url:
             self._thumb_loader = ThumbnailLoader(info.thumbnail_url, self)
@@ -124,8 +126,7 @@ class MediaInfoCard(QWidget):
         if pix.loadFromData(data):
             target_w, target_h = 128, 72
             scaled = pix.scaled(
-                target_w,
-                target_h,
+                target_w, target_h,
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -148,191 +149,219 @@ class MediaInfoCard(QWidget):
 
     def clear(self) -> None:
         self.thumb_bytes = None
-        self.title_label.setText("")
-        self.meta_label.setText("")
         self.thumb_label.clear()
+        self.title_label.clear()
+        self.meta_label.clear()
         self.setVisible(False)
 
 
-def check_free_space(out_dir: Path | str, needed_bytes: int) -> Tuple[bool, str]:
-    """Check if destination folder has enough disk space."""
-    if needed_bytes <= 0:
-        return True, ""
-    try:
-        free_bytes = shutil.disk_usage(str(out_dir)).free
-        if free_bytes < needed_bytes:
-            return False, explain("", free_bytes=free_bytes, needed_bytes=needed_bytes)
-    except Exception:
-        pass
-    return True, ""
-
-
 class VideoTab(QWidget):
-    """Complete Video download tab with queue, plain-language error reporting, and pause/resume."""
+    """Video tab providing state-machine download controls, shared queue, and recent list."""
 
     download_completed = Signal(str)  # Emits downloaded video title
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self._state = TabState.IDLE
+        self._prev_state = TabState.IDLE
         self._current_info: Optional[VideoInfo] = None
         self._fetch_worker: Optional[InfoFetchWorker] = None
-        self._download_worker: Optional[DownloadWorker] = None
         self._last_fetched_url = ""
-        self._last_raw_error = ""
 
-        # Network and download state
-        self._is_offline = False
+        # Test compatibility aliases
         self._is_downloading = False
         self._paused_for_offline = False
-        self._saved_cmd: List[str] = []
-        self._saved_out_dir = ""
-
-        # Queue tracking
-        self._queue: List[VideoQueueItem] = []
-        self._active_item: Optional[VideoQueueItem] = None
 
         self._setup_ui()
+        self._wire_manager()
+        self.set_state(TabState.IDLE)
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 12, 0, 0)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        container = QWidget(scroll)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 8, 0, 16)
         layout.setSpacing(12)
 
-        # Input row: URL box + Fetch button
+        # 1. URL Input & Fetch Button
         input_row = QHBoxLayout()
         input_row.setSpacing(8)
 
-        self.url_input = QLineEdit(self)
+        self.url_input = QLineEdit(container)
         self.url_input.setPlaceholderText("Paste a YouTube link")
         self.url_input.setFixedHeight(36)
-        self.url_input.textChanged.connect(self._on_url_changed)
-        self.url_input.returnPressed.connect(self.fetch_url)
-        input_row.addWidget(self.url_input)
+        self.url_input.textChanged.connect(self._on_url_text_changed)
+        input_row.addWidget(self.url_input, 1)
 
-        self.fetch_btn = QPushButton("Fetch", self)
-        self.fetch_btn.setProperty("role", "secondary")
-        self.fetch_btn.setFixedHeight(36)
+        self.fetch_btn = AnimatedButton("Fetch", role="secondary", parent=container)
+        self.fetch_btn.setFixedWidth(80)
         self.fetch_btn.clicked.connect(self.fetch_url)
         input_row.addWidget(self.fetch_btn)
-
         layout.addLayout(input_row)
 
-        # Status / Error row with "Copy error details" text button
-        error_row = QHBoxLayout()
-        error_row.setSpacing(8)
+        # 2. Inline Message (4s auto-hide)
+        self.inline_msg = InlineMessage(container)
+        layout.addWidget(self.inline_msg)
 
-        self.error_label = QLabel(self)
-        self.error_label.setProperty("role", "error")
-        self.error_label.setVisible(False)
-        error_row.addWidget(self.error_label)
-
-        self.copy_err_btn = QPushButton("Copy error details", self)
-        self.copy_err_btn.setStyleSheet(
-            "QPushButton { border: none; background: transparent; color: #AAAAAA; font-size: 11px; text-decoration: underline; padding: 0px 4px; } "
-            "QPushButton:hover { color: #FFFFFF; }"
-        )
-        self.copy_err_btn.setVisible(False)
-        self.copy_err_btn.clicked.connect(self._on_copy_error_details)
-        error_row.addWidget(self.copy_err_btn)
-
-        error_row.addStretch(1)
-        layout.addLayout(error_row)
-
-        # Video metadata card (thumbnail, title, channel • duration)
-        self.info_card = MediaInfoCard(self)
+        # 3. Fetched Media Info Card
+        self.info_card = MediaInfoCard(container)
         layout.addWidget(self.info_card)
 
-        # Quality dropdown, Download, Add to queue, and Cancel buttons
-        self.action_row = QHBoxLayout()
-        self.action_row.setSpacing(8)
+        # 4. Action Row (Quality Combo, Download, Add to Queue, Cancel)
+        actions_row = QHBoxLayout()
+        actions_row.setSpacing(8)
 
-        self.quality_combo = QComboBox(self)
+        self.quality_combo = QComboBox(container)
         self.quality_combo.setFixedHeight(36)
-        self.quality_combo.setMinimumWidth(180)
-        self.quality_combo.addItem("Best available", None)
-        self.action_row.addWidget(self.quality_combo)
+        self.quality_combo.setMinimumWidth(160)
+        actions_row.addWidget(self.quality_combo)
 
-        self.download_btn = QPushButton("Download", self)
-        self.download_btn.setProperty("role", "primary")
-        self.download_btn.setFixedHeight(36)
+        self.download_btn = AnimatedButton("Download", role="primary", parent=container)
+        self.download_btn.setFixedWidth(110)
         self.download_btn.clicked.connect(self.start_download)
-        self.action_row.addWidget(self.download_btn)
+        actions_row.addWidget(self.download_btn)
 
-        self.queue_btn = QPushButton("Add to queue", self)
-        self.queue_btn.setProperty("role", "secondary")
-        self.queue_btn.setFixedHeight(36)
+        self.queue_btn = AnimatedButton("Add to queue", role="secondary", parent=container)
+        self.queue_btn.setFixedWidth(110)
         self.queue_btn.clicked.connect(self.add_to_queue)
-        self.action_row.addWidget(self.queue_btn)
+        actions_row.addWidget(self.queue_btn)
 
-        self.cancel_btn = QPushButton("Cancel", self)
-        self.cancel_btn.setProperty("role", "secondary")
-        self.cancel_btn.setFixedHeight(36)
-        self.cancel_btn.setEnabled(False)
+        self.cancel_btn = AnimatedButton("Cancel", role="secondary", parent=container)
+        self.cancel_btn.setFixedWidth(90)
         self.cancel_btn.clicked.connect(self.cancel_download)
-        self.action_row.addWidget(self.cancel_btn)
+        actions_row.addWidget(self.cancel_btn)
 
-        self.action_row.addStretch(1)
-        layout.addLayout(self.action_row)
+        actions_row.addStretch(1)
+        layout.addLayout(actions_row)
 
-        # Stage label
-        self.stage_label = QLabel(self)
-        self.stage_label.setProperty("role", "muted")
-        layout.addWidget(self.stage_label)
+        # 5. Active Progress Card
+        self.progress_card = ProgressCard(container)
+        layout.addWidget(self.progress_card)
 
-        # Progress bar row with percent label
-        progress_row = QHBoxLayout()
-        progress_row.setSpacing(8)
+        # Backward compatibility aliases for existing tests
+        self.stage_label = self.progress_card.stage_label
+        self.progress_bar = self.progress_card.progress_bar
+        self.percent_label = self.progress_card.percent_label
+        self.stats_label = self.progress_card.stats_label
 
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setFixedHeight(6)
-        self.progress_bar.setTextVisible(False)
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        progress_row.addWidget(self.progress_bar)
+        # 6. Queue Widget (Shared across Video and Audio)
+        self.queue_widget = QueueWidget(container)
+        layout.addWidget(self.queue_widget)
 
-        self.percent_label = QLabel("0%", self)
-        self.percent_label.setProperty("role", "muted")
-        self.percent_label.setFixedWidth(45)
-        self.percent_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        progress_row.addWidget(self.percent_label)
-
-        layout.addLayout(progress_row)
-
-        # Stats label (speed • ETA • size)
-        self.stats_label = QLabel(self)
-        self.stats_label.setProperty("role", "muted")
-        layout.addWidget(self.stats_label)
-
-        # Queue list area
-        self.queue_container = QWidget(self)
-        self.queue_layout = QVBoxLayout(self.queue_container)
-        self.queue_layout.setContentsMargins(0, 4, 0, 0)
-        self.queue_layout.setSpacing(6)
-        self.queue_container.setVisible(False)
-        layout.addWidget(self.queue_container)
+        # 7. Recently Downloaded List
+        self.recent_list = RecentList(kind="video", parent=container)
+        layout.addWidget(self.recent_list)
 
         layout.addStretch(1)
+        scroll.setWidget(container)
 
-    def _on_url_changed(self, text: str) -> None:
-        cleaned = clean_url(text.strip())
-        if cleaned and cleaned != self._last_fetched_url:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(scroll)
+
+    def _wire_manager(self) -> None:
+        manager = get_download_manager()
+        manager.job_started.connect(self._on_manager_job_started)
+        manager.progress.connect(self._on_manager_progress)
+        manager.stage.connect(self._on_manager_stage)
+        manager.job_finished.connect(self._on_manager_finished)
+        manager.job_failed.connect(self._on_manager_failed)
+        manager.job_cancelled.connect(self._on_manager_cancelled)
+
+    def set_state(self, state: TabState) -> None:
+        """Drive widget visibility and enablement based on TabState."""
+        self._prev_state = self._state
+        self._state = state
+
+        if state == TabState.IDLE:
+            self.url_input.setEnabled(True)
+            self.fetch_btn.setEnabled(True)
+            self.fetch_btn.set_loading(False)
+            self.quality_combo.setEnabled(False)
+            self.download_btn.setEnabled(False)
+            self.download_btn.setVisible(True)
+            self.queue_btn.setVisible(False)
+            self.cancel_btn.setVisible(False)
+            self._is_downloading = False
+
+        elif state == TabState.FETCHING:
+            self.url_input.setEnabled(False)
+            self.fetch_btn.set_loading(True)
+            self.quality_combo.setEnabled(False)
+            self.download_btn.setEnabled(False)
+            self.queue_btn.setVisible(False)
+            self.cancel_btn.setVisible(False)
+
+        elif state == TabState.READY:
+            self.url_input.setEnabled(True)
+            self.fetch_btn.setEnabled(True)
+            self.fetch_btn.set_loading(False)
+            self.quality_combo.setEnabled(True)
+            self.download_btn.setEnabled(True)
+            self.download_btn.setVisible(True)
+            self.queue_btn.setVisible(True)
+            self.queue_btn.setEnabled(True)
+            self.cancel_btn.setVisible(False)
+            self._is_downloading = False
+
+        elif state == TabState.DOWNLOADING:
+            self.url_input.setEnabled(True)
+            self.fetch_btn.setEnabled(True)
+            self.download_btn.setVisible(False)
+            self.queue_btn.setVisible(True)
+            self.queue_btn.setEnabled(True)
+            self.cancel_btn.setVisible(True)
+            self.cancel_btn.setEnabled(True)
+            self._is_downloading = True
+
+        elif state == TabState.OFFLINE:
+            self.url_input.setEnabled(False)
+            self.fetch_btn.setEnabled(False)
+            self.quality_combo.setEnabled(False)
+            self.download_btn.setEnabled(False)
+            self.queue_btn.setEnabled(False)
+            if self._prev_state == TabState.DOWNLOADING:
+                self.progress_card.set_stage("Waiting for internet…")
+                self.cancel_btn.setEnabled(True)
+            else:
+                self.cancel_btn.setEnabled(False)
+
+    def set_online(self, online: bool) -> None:
+        """Handle network status change."""
+        if not online:
+            self._paused_for_offline = (self._state == TabState.DOWNLOADING)
+            self.set_state(TabState.OFFLINE)
+        else:
+            self._paused_for_offline = False
+            # Restore state before offline
+            target_state = self._prev_state if self._prev_state != TabState.OFFLINE else (
+                TabState.READY if self._current_info else TabState.IDLE
+            )
+            self.set_state(target_state)
+
+    def _on_url_text_changed(self, text: str) -> None:
+        clean = text.strip()
+        if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
             self.fetch_url()
+        elif not clean:
+            self.info_card.clear()
+            self._current_info = None
+            self.quality_combo.clear()
+            self.set_state(TabState.IDLE)
 
     def fetch_url(self) -> None:
+        """Fetch video metadata from YouTube via InfoFetchWorker."""
         raw_url = self.url_input.text().strip()
         cleaned = clean_url(raw_url)
         if not cleaned:
-            self._set_error("Please paste a valid YouTube link.")
+            self.inline_msg.show_error("Please paste a valid YouTube link.")
             return
 
         self._last_fetched_url = cleaned
-        self._clear_error()
-        self.stage_label.setText("Fetching video information…")
-        self.fetch_btn.setEnabled(False)
-
-        self.info_card.clear()
-        self.quality_combo.clear()
-        self.quality_combo.addItem("Best available", None)
+        self.set_state(TabState.FETCHING)
 
         self._fetch_worker = InfoFetchWorker(cleaned, parent=self)
         self._fetch_worker.fetched.connect(self._on_info_fetched)
@@ -340,368 +369,136 @@ class VideoTab(QWidget):
         self._fetch_worker.start()
 
     def _on_info_fetched(self, info: VideoInfo) -> None:
-        self.fetch_btn.setEnabled(not self._is_offline)
-        self.stage_label.setText("")
         self._current_info = info
         self.info_card.set_info(info)
 
+        # Populate quality dropdown (real resolutions descending, 'Best available' first)
         self.quality_combo.clear()
-        for label, height_val in info.qualities:
-            self.quality_combo.addItem(label, height_val)
+        for label, height in info.qualities:
+            self.quality_combo.addItem(label, height)
+
+        self.set_state(TabState.READY)
 
     def _on_info_failed(self, error_msg: str) -> None:
-        self.fetch_btn.setEnabled(not self._is_offline)
-        self.stage_label.setText("")
-        self._last_raw_error = error_msg
-        self._set_error(explain(error_msg), raw=error_msg)
-
-    def _set_error(self, message: str, raw: str = "") -> None:
-        self._last_raw_error = raw or message
-        self.error_label.setText(message)
-        self.error_label.setVisible(True)
-        self.copy_err_btn.setText("Copy error details")
-        self.copy_err_btn.setVisible(bool(raw))
-
-    def _clear_error(self) -> None:
-        self.error_label.setVisible(False)
-        self.copy_err_btn.setVisible(False)
-
-    def _on_copy_error_details(self) -> None:
-        if self._last_raw_error:
-            clipboard = QApplication.clipboard()
-            if clipboard:
-                clipboard.setText(self._last_raw_error)
-            self.copy_err_btn.setText("Copied!")
-
-    def set_online(self, is_online: bool) -> None:
-        self._is_offline = not is_online
-        if not is_online:
-            self.url_input.setEnabled(False)
-            self.fetch_btn.setEnabled(False)
-            self.quality_combo.setEnabled(False)
-            self.queue_btn.setEnabled(False)
-            if self._is_downloading:
-                self._paused_for_offline = True
-                if self._download_worker and self._download_worker.isRunning():
-                    self._download_worker.pause()
-                self.stage_label.setText("Waiting for internet…")
-                self.stats_label.setText("")
-                self.download_btn.setEnabled(False)
-                self.cancel_btn.setEnabled(True)
-            else:
-                self.download_btn.setEnabled(False)
-                self.cancel_btn.setEnabled(False)
-        else:
-            self.url_input.setEnabled(True)
-            self.fetch_btn.setEnabled(True)
-            self.quality_combo.setEnabled(True)
-            self.queue_btn.setEnabled(True)
-            if self._paused_for_offline and self._saved_cmd:
-                self._paused_for_offline = False
-                self.stage_label.setText("Resuming download…")
-                self.download_btn.setEnabled(False)
-                self.cancel_btn.setEnabled(True)
-                self._start_worker(initial_percent=float(self.progress_bar.value()))
-            elif not self._is_downloading:
-                self.download_btn.setEnabled(True)
-                self.cancel_btn.setEnabled(False)
+        self.inline_msg.show_error(error_msg)
+        self.info_card.clear()
+        self._current_info = None
+        self.set_state(TabState.IDLE)
 
     def start_download(self) -> None:
-        if self._is_offline:
+        """Start downloading current video or confirm duplicate."""
+        job = self._build_job()
+        if not job:
             return
 
-        raw_url = self.url_input.text().strip()
-        cleaned = clean_url(raw_url)
-        if not cleaned:
-            self._set_error("Please paste a valid YouTube link.")
-            return
+        # Duplicate check (Chunk 4.3)
+        dup = find_duplicate(job.video_id, job.kind, job.quality_label)
+        if dup:
+            reply = QMessageBox.question(
+                self,
+                "Already Downloaded",
+                f"'{job.title}' ({job.quality_label}) has already been downloaded.\nDownload again?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
-        # Add to queue and trigger queue execution
-        self._enqueue_item(cleaned)
-        if not self._is_downloading:
-            self._process_queue()
+        manager = get_download_manager()
+        manager.enqueue(job)
 
-    def add_to_queue(self) -> None:
-        raw_url = self.url_input.text().strip()
-        cleaned = clean_url(raw_url)
-        if not cleaned:
-            self._set_error("Please paste a valid YouTube link.")
-            return
-
-        self._enqueue_item(cleaned)
-        # Clear inputs so user can paste next link
+        # Clear inputs for next paste
         self.url_input.clear()
         self.info_card.clear()
         self._current_info = None
 
-        if not self._is_downloading and not self._is_offline:
-            self._process_queue()
-
-    def _enqueue_item(self, url: str) -> None:
-        title = self._current_info.title if self._current_info else url
-        chosen_height = self.quality_combo.currentData()
-        quality_label = self.quality_combo.currentText()
-        settings = load_settings()
-        out_dir = settings.get("download_dir", str(DEFAULT_DOWNLOADS))
-
-        job = None
-        if self._current_info:
-            try:
-                job = DownloadJob.create(
-                    info=self._current_info,
-                    kind="video",
-                    quality_label=quality_label,
-                    height=chosen_height,
-                    output_dir=out_dir,
-                    thumbnail_bytes=self.info_card.thumb_bytes,
-                )
-            except Exception as exc:
-                get_logger().warning(f"Could not build DownloadJob snapshot: {exc}")
-
-        item = VideoQueueItem(
-            url=url,
-            title=title,
-            height=chosen_height,
-            quality_label=quality_label,
-            status="waiting",
-            job=job,
-        )
-        self._queue.append(item)
-        self._render_queue_ui()
-
-    def _render_queue_ui(self) -> None:
-        # Clear existing items in layout
-        while self.queue_layout.count() > 0:
-            child = self.queue_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
-        if not self._queue:
-            self.queue_container.setVisible(False)
+    def add_to_queue(self) -> None:
+        """Add current video to queue without interrupting active download."""
+        job = self._build_job()
+        if not job:
             return
 
-        self.queue_container.setVisible(True)
-        waiting_count = sum(1 for it in self._queue if it.status == "waiting")
+        manager = get_download_manager()
+        manager.enqueue(job)
 
-        header = QLabel(f"Queue ({waiting_count} waiting)", self.queue_container)
-        header.setStyleSheet("font-size: 13px; font-weight: 600; color: #AAAAAA;")
-        self.queue_layout.addWidget(header)
-
-        for idx, item in enumerate(self._queue):
-            row = QWidget(self.queue_container)
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(8, 4, 8, 4)
-            row_layout.setSpacing(8)
-            row.setStyleSheet("background-color: #1A1A1A; border-radius: 6px;")
-
-            title_lbl = QLabel(f"{item.title} ({item.quality_label})", row)
-            title_lbl.setStyleSheet("font-size: 12px; color: #FFFFFF;")
-            row_layout.addWidget(title_lbl, 1)
-
-            status_lbl = QLabel(row)
-            if item.status == "waiting":
-                status_lbl.setText("Waiting")
-                status_lbl.setStyleSheet("color: #AAAAAA; font-size: 11px;")
-            elif item.status == "downloading":
-                status_lbl.setText("Downloading…")
-                status_lbl.setStyleSheet("color: #3EA6FF; font-size: 11px; font-weight: 600;")
-            elif item.status == "done":
-                status_lbl.setText("Done")
-                status_lbl.setStyleSheet("color: #2BA640; font-size: 11px;")
-            elif item.status == "failed":
-                status_lbl.setText(f"Failed: {item.error_reason}")
-                status_lbl.setStyleSheet("color: #CC0000; font-size: 11px;")
-            elif item.status == "cancelled":
-                status_lbl.setText("Cancelled")
-                status_lbl.setStyleSheet("color: #AAAAAA; font-size: 11px;")
-
-            row_layout.addWidget(status_lbl)
-
-            if item.status == "waiting":
-                remove_btn = QPushButton("Remove", row)
-                remove_btn.setStyleSheet(
-                    "QPushButton { border: none; background: transparent; color: #888888; font-size: 11px; padding: 2px 6px; } "
-                    "QPushButton:hover { color: #CC0000; }"
-                )
-                # Capture item in closure
-                remove_btn.clicked.connect(lambda _, it=item: self._remove_queue_item(it))
-                row_layout.addWidget(remove_btn)
-
-            self.queue_layout.addWidget(row)
-
-    def _remove_queue_item(self, item: VideoQueueItem) -> None:
-        if item in self._queue and item.status == "waiting":
-            self._queue.remove(item)
-            self._render_queue_ui()
-
-    def _process_queue(self) -> None:
-        if self._is_offline:
-            return
-
-        next_item = next((it for it in self._queue if it.status == "waiting"), None)
-        if not next_item:
-            self._is_downloading = False
-            self._active_item = None
-            self._reset_buttons()
-            return
-
-        self._active_item = next_item
-        next_item.status = "downloading"
-        self._render_queue_ui()
-
-        settings = load_settings()
-        out_dir = settings.get("download_dir")
-        import uuid
-        job_id = str(uuid.uuid4())
-        cmd = build_video_cmd(next_item.url, height=next_item.height, out_dir=out_dir, job_id=job_id)
-        self._saved_job_id = job_id
-        self._saved_cmd = cmd
-        self._saved_out_dir = out_dir
-        self._is_downloading = True
-        self._paused_for_offline = False
-
-        self._clear_error()
-        self.download_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
-        self.stage_label.setText(f"Starting {next_item.title}…")
-        self.progress_bar.setValue(0)
-        self.percent_label.setText("0%")
-        self.stats_label.setText("")
-
-        self._start_worker(initial_percent=0.0)
-
-    def _start_worker(self, initial_percent: float = 0.0) -> None:
-        video_id = getattr(self, "_current_video_id", "")
-        job_id = getattr(self, "_saved_job_id", None)
-        self._download_worker = DownloadWorker(
-            self._saved_cmd,
-            out_dir=self._saved_out_dir,
-            job_id=job_id,
-            video_id=video_id,
-            is_dual_stream=True,
-            parent=self,
-        )
-        self._download_worker.stage.connect(self._on_stage)
-        self._download_worker.progress.connect(self._on_progress)
-        self._download_worker.finished.connect(self._on_finished)
-        self._download_worker.failed.connect(self._on_failed)
-        self._download_worker.start()
+        self.url_input.clear()
+        self.info_card.clear()
+        self._current_info = None
+        self.set_state(TabState.DOWNLOADING if manager.active_job else TabState.IDLE)
 
     def cancel_download(self) -> None:
-        if self._download_worker:
-            self._download_worker.cancel()
+        """Cancel active download."""
+        manager = get_download_manager()
+        manager.cancel_active()
+        self.progress_card.set_stage("Cancelled.")
+        self.set_state(TabState.IDLE)
 
-        self._is_downloading = False
-        self._paused_for_offline = False
-        if self._active_item:
-            self._active_item.status = "cancelled"
-            self._active_item = None
+    def _build_job(self) -> Optional[DownloadJob]:
+        raw_url = self.url_input.text().strip()
+        cleaned = clean_url(raw_url)
+        if not cleaned:
+            self.inline_msg.show_error("Please paste a valid YouTube link.")
+            return None
 
-        self.stage_label.setText("Cancelled.")
-        self.stats_label.setText("")
-        self._render_queue_ui()
-        self._reset_buttons()
-        # Cancelling stops the queue from automatically continuing
+        settings = load_settings()
+        out_dir = settings.get("download_dir", str(DEFAULT_DOWNLOADS))
+        chosen_height = self.quality_combo.currentData()
+        quality_label = self.quality_combo.currentText() or "Best"
 
-    def _on_stage(self, stage_text: str) -> None:
-        self.stage_label.setText(stage_text)
+        if not self._current_info:
+            # Fallback: create temporary info if info card wasn't fetched
+            self._current_info = VideoInfo(
+                url=cleaned,
+                title="YouTube Video",
+                channel="",
+                duration=0,
+                duration_str="",
+                thumbnail_url="",
+                qualities=[("Best", None)],
+                filesize_approx=0,
+            )
 
-    def _on_progress(self, percent: float, speed: str, eta: str, done_bytes: int, total_bytes: int) -> None:
-        pct_int = int(percent)
-        self.progress_bar.setValue(pct_int)
-        self.percent_label.setText(f"{pct_int}%")
+        try:
+            return DownloadJob.create(
+                info=self._current_info,
+                kind="video",
+                quality_label=quality_label,
+                height=chosen_height,
+                output_dir=out_dir,
+                thumbnail_bytes=self.info_card.thumb_bytes,
+            )
+        except Exception as exc:
+            self.inline_msg.show_error(f"Cannot start download: {exc}")
+            return None
 
-        def _fmt_bytes(b: int) -> str:
-            if b <= 0:
-                return ""
-            for unit in ("B", "KB", "MB", "GB"):
-                if b < 1024:
-                    return f"{b:.1f} {unit}"
-                b /= 1024
-            return f"{b:.1f} TB"
+    def _on_manager_job_started(self, job: DownloadJob) -> None:
+        if job.kind == "video":
+            self.progress_card.bind_job(job)
+            self.set_state(TabState.DOWNLOADING)
 
-        details = []
-        if speed:
-            details.append(speed)
-        if eta:
-            details.append(f"ETA {eta}")
-        done_s = _fmt_bytes(done_bytes)
-        total_s = _fmt_bytes(total_bytes)
-        if done_s and total_s:
-            details.append(f"{done_s} / {total_s}")
-        elif done_s:
-            details.append(done_s)
+    def _on_manager_progress(self, job: DownloadJob, pct: float, speed: str, eta: str, done: int, total: int) -> None:
+        if job.kind == "video":
+            self.progress_card.set_progress(pct, speed, eta, done, total)
 
-        self.stats_label.setText(" • ".join(details))
+    def _on_manager_stage(self, job: DownloadJob, stage_name: str) -> None:
+        if job.kind == "video":
+            self.progress_card.set_stage(stage_name)
 
-    def _on_finished(self, file_path: str) -> None:
-        self._is_downloading = False
-        self._paused_for_offline = False
-        self.progress_bar.setValue(100)
-        self.percent_label.setText("100%")
-        self.stage_label.setText("Done. Saved to Downloads.")
-        self.stats_label.setText("")
+    def _on_manager_finished(self, job: DownloadJob, final_path: str) -> None:
+        if job.kind == "video":
+            self.progress_card.show_done(out_dir=job.output_dir)
+            self.recent_list.refresh()
+            self.download_completed.emit(job.title)
+            # Reset tab state
+            self.set_state(TabState.IDLE)
 
-        title_saved = self._active_item.title if self._active_item else "video"
-        if self._active_item:
-            self._active_item.status = "done"
-            title_saved = self._active_item.title
-            self._render_queue_ui()
+    def _on_manager_failed(self, job: DownloadJob, error_reason: str) -> None:
+        if job.kind == "video":
+            self.inline_msg.show_error(f"Download failed: {error_reason}")
+            self.progress_card.reset()
+            self.set_state(TabState.IDLE)
 
-        if file_path:
-            logger = get_logger()
-            if self._active_item and self._active_item.job:
-                try:
-                    save_from_job(self._active_item.job, file_path)
-                except Exception as exc:
-                    logger.error(f"Failed to save history from job: {exc}")
-            else:
-                try:
-                    real_path = Path(file_path)
-                    size_bytes = real_path.stat().st_size if real_path.is_file() else 0
-                    fallback_url = self._active_item.url if self._active_item else ""
-                    vid_id = extract_video_id(fallback_url) or ""
-                    add_item(
-                        HistoryItem(
-                            id=None,
-                            title=title_saved,
-                            url=fallback_url,
-                            type="video",
-                            quality=self._active_item.quality_label if self._active_item else "Best",
-                            file_path=str(file_path),
-                            size_bytes=size_bytes,
-                            duration=0,
-                            video_id=vid_id,
-                        )
-                    )
-                except Exception as exc:
-                    logger.error(f"Failed to save fallback history item: {exc}")
-
-        self.download_completed.emit(title_saved)
-
-        # Move to next queued item automatically
-        self._process_queue()
-
-    def _on_failed(self, raw_text: str) -> None:
-        if self._paused_for_offline:
-            return
-
-        self._is_downloading = False
-        self._paused_for_offline = False
-        reason = explain(raw_text)
-
-        if self._active_item:
-            self._active_item.status = "failed"
-            self._active_item.error_reason = reason
-            self._render_queue_ui()
-
-        self.stage_label.setText("Download failed.")
-        self._set_error(reason, raw=raw_text)
-
-        # Automatically advance queue so other items still finish
-        self._process_queue()
-
-    def _reset_buttons(self) -> None:
-        self.cancel_btn.setEnabled(False)
-        self.download_btn.setEnabled(not self._is_offline)
-        self.queue_btn.setEnabled(not self._is_offline)
+    def _on_manager_cancelled(self, job: DownloadJob) -> None:
+        if job.kind == "video":
+            self.progress_card.reset()
+            self.set_state(TabState.IDLE)

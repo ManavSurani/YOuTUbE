@@ -468,3 +468,18 @@ Fully built, verified, and completed **Phase 3: UI Kit and Animation System**:
 - **Chunk 3.6 — Shared widgets:** Created `ThumbLabel` with neutral play/music fallbacks (no letter badges), `Toast` with bottom-right slide-in and 4s lifetime, `InlineMessage` with 4s auto-hide and tab clear, and `ProgressCard` skeleton.
 - Visual review passed (`screenshot_phase3.png`). Full test suite: 120/120 passed in 6.81s. Evidence saved to `docs/verification/phase_3.md`.
 
+---
+
+## User Query:
+yes (proceed with Phase 4)
+
+## Assistant Response:
+Fully built, verified, and completed **Phase 4: Video and Audio Tabs + Shared Queue**:
+- **Chunk 4.1 — DownloadManager (fixes B8):** Created `app/core/download_manager.py` singleton orchestrating a single active download worker across the entire application, queue persistence to `APP_DATA / "queue.json"`, network pause/resume, and retry for failed items.
+- **Chunk 4.2 — Tab state machine (fixes B9):** Implemented unified `TabState` machine (IDLE, FETCHING, READY, DOWNLOADING, OFFLINE) in `VideoTab` and `AudioTab`. The Download button and Quality dropdown are completely disabled when idle, eliminating invalid clicks. Empty clicks trigger an `InlineMessage` that auto-hides after 4s.
+- **Chunk 4.3 — Fetch and options:** Populates real resolutions descending with "Best available" first; removed unused container dropdowns and embed checkboxes; added confirmation prompt for duplicate downloads.
+- **Chunk 4.4 — Progress card (fixes B15):** Expanded `ProgressCard` with active job metadata binding, monotonic progress bar, stage transitions, and completion reporting using the real target folder name.
+- **Chunk 4.5 — Recently downloaded:** Created `RecentList` showing the last 5 completed downloads for each tab with Play and Open Folder actions and a "See all in History →" navigation link.
+- **Chunk 4.6 — Queue list:** Created `QueueWidget` showing active, waiting, and failed items with cancel and retry buttons.
+- Visual review passed (`screenshot_phase4.png`). Full test suite: 127/127 passed in 6.78s. Evidence saved to `docs/verification/phase_4.md`.
+

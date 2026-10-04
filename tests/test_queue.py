@@ -125,8 +125,16 @@ def test_queue_cancel_stops_and_waits(tmp_path, monkeypatch):
     assert manager.active_job is not None
     assert manager.active_job.title == "Cancel 2"
 
+    # Clean up manager so subsequent tests don't inherit active job
+    manager.cancel_active()
+    manager._waiting_queue.clear()
+    manager._active_job = None
+
 
 def test_finish_notification_on_inactive_window(monkeypatch):
+    manager = get_download_manager()
+    manager._waiting_queue.clear()
+    manager._active_job = None
     monkeypatch.setattr("app.ui.main_window.NetworkMonitor.start", lambda self: None)
     monkeypatch.setattr("app.ui.main_window.UpdateCheckWorker.start", lambda self: None)
     win = MainWindow()

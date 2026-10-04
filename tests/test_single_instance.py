@@ -46,6 +46,8 @@ def test_single_instance_detection():
     if instance._server:
         instance._server.close()
     QLocalServer.removeServer(SERVER_NAME)
+    for _ in range(5):
+        app.processEvents()
 
 
 def test_secondary_instance_message_ignores_junk_and_accepts_valid_url():

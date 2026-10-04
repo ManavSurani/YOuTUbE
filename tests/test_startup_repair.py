@@ -53,7 +53,7 @@ def test_startup_repair_worker_calls_configured_folder_and_not_ui_thread(isolate
 
     monkeypatch.setattr("app.core.history_service.repair_existing_rows", mock_repair)
 
-    with patch("app.ui.main_window.NetworkMonitor.start"):
+    with patch("app.ui.main_window.NetworkMonitor.start"), patch("app.ui.main_window.UpdateCheckWorker.start"):
         win = MainWindow()
         try:
             worker = maybe_start_history_repair(win)
@@ -83,7 +83,7 @@ def test_startup_repair_skipped_when_version_matches(isolated_settings, monkeypa
     mock_repair = MagicMock()
     monkeypatch.setattr("app.core.history_service.repair_existing_rows", mock_repair)
 
-    with patch("app.ui.main_window.NetworkMonitor.start"):
+    with patch("app.ui.main_window.NetworkMonitor.start"), patch("app.ui.main_window.UpdateCheckWorker.start"):
         win = MainWindow()
         try:
             worker = maybe_start_history_repair(win)
@@ -105,7 +105,7 @@ def test_history_refresh_happens_after_worker_signals(isolated_settings, monkeyp
 
     monkeypatch.setattr("app.core.history_service.repair_existing_rows", lambda download_dir=None: 3)
 
-    with patch("app.ui.main_window.NetworkMonitor.start"):
+    with patch("app.ui.main_window.NetworkMonitor.start"), patch("app.ui.main_window.UpdateCheckWorker.start"):
         win = MainWindow()
         try:
             refreshed = []

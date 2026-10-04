@@ -33,7 +33,7 @@ class ProgressCard(QWidget):
         super().__init__(parent)
         self.setVisible(False)
         self.setStyleSheet(
-            "ProgressCard { background-color: #1A1A1A; border-radius: 8px; } "
+            "ProgressCard { background: transparent; border: none; } "
             "QLabel { font-family: 'Segoe UI'; } "
             "QProgressBar { background-color: #282828; border: none; border-radius: 4px; min-height: 8px; max-height: 8px; text-align: right; } "
             "QProgressBar::chunk { background-color: #FF0000; border-radius: 4px; }"
@@ -47,7 +47,7 @@ class ProgressCard(QWidget):
         self._collapse_timer.timeout.connect(self._on_collapse_timeout)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(8)
 
         # 1. Header with Thumbnail and Title

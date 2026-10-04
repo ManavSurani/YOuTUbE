@@ -1,9 +1,10 @@
 """Tests for Phase 5 tab look and feel: transparency, alignment, progress bar, flat rows, animated buttons."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
 import pytest
 
+from app.ui.kit.progress_card import ProgressCard
 from app.ui.theme import build_qss, DARK_TOKENS
 from app.ui.video_tab import VideoTab
 from app.ui.audio_tab import AudioTab
@@ -45,3 +46,23 @@ def test_video_tab_background_matches_theme():
 def test_audio_tab_background_matches_theme():
     color = _sample_tab_pixel(AudioTab)
     assert color == DARK_TOKENS["bg"].upper()
+
+
+def test_progress_card_aligned_with_url_input():
+    parent = QWidget()
+    parent.resize(800, 600)
+    layout = QVBoxLayout(parent)
+    tab = VideoTab(parent)
+    layout.addWidget(tab)
+    tab.progress_card.setVisible(True)
+    parent.show()
+    QApplication.processEvents()
+
+    url_x = tab.url_input.mapTo(tab, QPoint(0, 0)).x()
+    card_stage_x = tab.progress_card.stage_label.mapTo(tab, QPoint(0, 0)).x()
+    assert card_stage_x == url_x
+
+
+def test_progress_card_flat_no_background():
+    card = ProgressCard()
+    assert "#1A1A1A" not in card.styleSheet()

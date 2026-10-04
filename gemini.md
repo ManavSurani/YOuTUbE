@@ -804,3 +804,49 @@ Phase 4 (Progress Card, Queue, and Recently Downloaded — Behaviour) has been f
 
 Phase 4 is complete. Ready for your approval to proceed to Phase 5 (Look of the Tabs).
 
+---
+
+## User Query:
+proccedd with phase 5
+
+## Assistant Response:
+Phase 5 (Look and Feel of the Tabs) has been fully built, verified, and completed across all 5 chunks:
+
+- **Chunk 5.1 — Remove the grey panel (V7, A6):**
+  - Made the scroll area, its viewport, and its inner container transparent in both `VideoTab` and `AudioTab` (`background: transparent`).
+  - Window background (`#0F0F0F`) shines through cleanly with zero contrast boundary, eliminating the lighter grey container panel (`#1E1E1E` eliminated).
+  - Verified with pixel sampling tests and visual screenshots (`docs/verification/phase5_chunk1_video_tab.png` and `docs/verification/phase5_chunk1_audio_tab.png`).
+  - Committed with message `phase5.1: transparent background for video and audio tabs` (`68b33e7`).
+
+- **Chunk 5.2 — Align edges and flatten the card (V8, P3):**
+  - Removed inner container margins `(16, 12, 16, 12)` in `ProgressCard` and set outer layout margin to `(0, 4, 0, 4)`.
+  - Removed `#1A1A1A` boxed background and border from `ProgressCard`.
+  - Left edge of `ProgressCard` matches `url_input` exactly at position `x = 0`.
+  - Committed with message `phase5.2: align edges and flatten progress card` (`5f79671`).
+
+- **Chunk 5.3 — Progress bar design (P2):**
+  - Bar height set to 10 px with fully rounded ends (corner radius 5.0).
+  - Added subtle moving highlight overlay painted smoothly across the filled chunk via `highlight_pos` property and `QPropertyAnimation`.
+  - Animation strictly active only while job is running and card is visible; stops on reset, hide, and done.
+  - Committed with message `phase5.3: rounded progress bar and subtle highlight animation` (`7ba9004`).
+
+- **Chunk 5.4 — Flat Recently downloaded rows (R4):**
+  - Updated `RecentRow` to flat layout matching `HistoryRowWidget` with hover highlight (`#1A1A1A`).
+  - Replaced text buttons with `IconButton` for Play and Open folder.
+  - Retained accessible text labels and clean keyboard focus styling.
+  - Committed with message `phase5.4: flat recent rows with icon buttons` (`d02bc06`).
+
+- **Chunk 5.5 — Queue row buttons and plain buttons (Q5, K1):**
+  - Replaced plain queue row buttons with `IconButton` ("redownload" for retry, "close" danger for remove).
+  - Replaced plain `QPushButton` "Clear failed" with `AnimatedButton("Clear failed", role="ghost")`.
+  - Added automated static audit test scanning all four tab files ensuring zero unapproved `QPushButton` instances.
+  - Committed with message `phase5.5: queue row icon buttons and animated button audit` (`06d0e9d`).
+
+### Phase 5 Verification Results
+- [x] Full test suite: **215/215 passed in 14.65s** across 32 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 5` passes with zero violations.
+- [x] Protected files: `python tools/check_scope.py --final` confirms zero changes to protected engine files.
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_5.md`.
+
+Phase 5 is complete. Ready for your approval to proceed to Phase 6 (History Tab and "See all").

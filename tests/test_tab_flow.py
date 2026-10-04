@@ -104,3 +104,73 @@ def test_audio_tab_start_download_preserves_downloading_state(monkeypatch):
     assert tab._state == TabState.DOWNLOADING
     assert tab.cancel_btn.isVisibleTo(tab)
     assert not tab.download_btn.isVisibleTo(tab)
+
+
+@pytest.mark.parametrize("TabClass,combo_attr", [
+    (VideoTab, "quality_combo"),
+    (AudioTab, "format_combo"),
+])
+def test_tab_state_visibility_contract(TabClass, combo_attr):
+    tab = TabClass()
+    combo = getattr(tab, combo_attr)
+
+    # 1. IDLE
+    tab.set_state(TabState.IDLE)
+    assert not combo.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)
+    assert not tab.queue_btn.isVisibleTo(tab)
+    assert not tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.info_card.isVisibleTo(tab)
+    assert not tab.progress_card.isVisibleTo(tab)
+    if hasattr(tab, "hint_label"):
+        assert not tab.hint_label.isVisibleTo(tab)
+
+    # 2. FETCHING
+    tab.set_state(TabState.FETCHING)
+    assert not combo.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)
+    assert not tab.queue_btn.isVisibleTo(tab)
+    assert not tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.info_card.isVisibleTo(tab)
+    assert not tab.progress_card.isVisibleTo(tab)
+    assert not tab.url_input.isEnabled()
+
+    # 3. READY
+    tab.set_state(TabState.READY)
+    assert combo.isVisibleTo(tab)
+    assert tab.download_btn.isVisibleTo(tab)
+    assert not tab.queue_btn.isVisibleTo(tab)
+    assert not tab.cancel_btn.isVisibleTo(tab)
+    assert tab.info_card.isVisibleTo(tab)
+    assert not tab.progress_card.isVisibleTo(tab)
+
+    # 4. DOWNLOADING (running job, no new link fetched yet)
+    tab._current_info = None
+    tab.set_state(TabState.DOWNLOADING)
+    assert not combo.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)
+    assert tab.queue_btn.isVisibleTo(tab)
+    assert not tab.queue_btn.isEnabled()
+    assert tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.info_card.isVisibleTo(tab)
+    assert tab.progress_card.isVisibleTo(tab)
+
+    # 5. DOWNLOADING (new link fetched)
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=newlink12345",
+        title="New Video",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    tab._current_info = info
+    tab._apply_state_visibility(TabState.DOWNLOADING)
+    assert combo.isVisibleTo(tab)
+    assert tab.info_card.isVisibleTo(tab)
+    assert tab.queue_btn.isVisibleTo(tab)
+    assert tab.queue_btn.isEnabled()
+    assert tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)

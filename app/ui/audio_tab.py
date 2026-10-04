@@ -138,10 +138,11 @@ class AudioTab(QWidget):
         actions_row.addStretch(1)
         opts_layout.addLayout(actions_row)
 
-        # Bitrate note (shortened and muted)
-        self.bitrate_note = QLabel("Opus preserves native YouTube stream without re-encoding • MP3 converted at highest quality", container)
-        self.bitrate_note.setStyleSheet("font-size: 11px; color: #777777;")
-        opts_layout.addWidget(self.bitrate_note)
+        # Hint label (one short line: "Best original keeps the YouTube audio as it is.")
+        self.hint_label = QLabel("Best original keeps the YouTube audio as it is.", container)
+        self.hint_label.setStyleSheet("font-size: 11px; color: #777777;")
+        self.bitrate_note = self.hint_label
+        opts_layout.addWidget(self.hint_label)
 
         layout.addLayout(opts_layout)
 
@@ -179,51 +180,73 @@ class AudioTab(QWidget):
         manager.job_failed.connect(self._on_manager_failed)
         manager.job_cancelled.connect(self._on_manager_cancelled)
 
-    def set_state(self, state: TabState) -> None:
-        """Drive widget visibility and enablement based on TabState."""
-        self._prev_state = self._state
-        self._state = state
-
+    def _apply_state_visibility(self, state: TabState) -> None:
+        """Apply visibility and enablement according to the screen contract."""
         if state == TabState.IDLE:
             self.url_input.setEnabled(True)
             self.fetch_btn.setEnabled(True)
             self.fetch_btn.set_loading(False)
+            self.info_card.setVisible(False)
+            self.format_combo.setVisible(False)
             self.format_combo.setEnabled(False)
+            self.hint_label.setVisible(False)
+            self.download_btn.setVisible(False)
             self.download_btn.setEnabled(False)
-            self.download_btn.setVisible(True)
             self.queue_btn.setVisible(False)
+            self.queue_btn.setEnabled(False)
             self.cancel_btn.setVisible(False)
-            self._is_downloading = False
+            self.cancel_btn.setEnabled(False)
+            self.progress_card.setVisible(False)
 
         elif state == TabState.FETCHING:
             self.url_input.setEnabled(False)
+            self.fetch_btn.setEnabled(True)
             self.fetch_btn.set_loading(True)
+            self.info_card.setVisible(False)
+            self.format_combo.setVisible(False)
             self.format_combo.setEnabled(False)
+            self.hint_label.setVisible(False)
+            self.download_btn.setVisible(False)
             self.download_btn.setEnabled(False)
             self.queue_btn.setVisible(False)
+            self.queue_btn.setEnabled(False)
             self.cancel_btn.setVisible(False)
+            self.cancel_btn.setEnabled(False)
+            self.progress_card.setVisible(False)
 
         elif state == TabState.READY:
             self.url_input.setEnabled(True)
             self.fetch_btn.setEnabled(True)
             self.fetch_btn.set_loading(False)
+            self.info_card.setVisible(True)
+            self.format_combo.setVisible(True)
             self.format_combo.setEnabled(True)
-            self.download_btn.setEnabled(True)
+            self.hint_label.setVisible(True)
             self.download_btn.setVisible(True)
-            self.queue_btn.setVisible(True)
+            self.download_btn.setEnabled(True)
+            self.queue_btn.setVisible(False)
             self.queue_btn.setEnabled(True)
             self.cancel_btn.setVisible(False)
-            self._is_downloading = False
+            self.cancel_btn.setEnabled(False)
+            self.progress_card.setVisible(False)
 
         elif state == TabState.DOWNLOADING:
             self.url_input.setEnabled(True)
             self.fetch_btn.setEnabled(True)
-            self.download_btn.setVisible(False)
-            self.queue_btn.setVisible(True)
-            self.queue_btn.setEnabled(True)
+            self.fetch_btn.set_loading(False)
+            self.progress_card.setVisible(True)
             self.cancel_btn.setVisible(True)
             self.cancel_btn.setEnabled(True)
-            self._is_downloading = True
+            self.download_btn.setVisible(False)
+            self.download_btn.setEnabled(False)
+
+            has_new_link = self._current_info is not None
+            self.info_card.setVisible(has_new_link)
+            self.format_combo.setVisible(has_new_link)
+            self.format_combo.setEnabled(has_new_link)
+            self.hint_label.setVisible(has_new_link)
+            self.queue_btn.setVisible(True)
+            self.queue_btn.setEnabled(has_new_link)
 
         elif state == TabState.OFFLINE:
             self.url_input.setEnabled(False)
@@ -233,9 +256,18 @@ class AudioTab(QWidget):
             self.queue_btn.setEnabled(False)
             if self._prev_state == TabState.DOWNLOADING:
                 self.progress_card.set_stage("Waiting for internet…")
+                self.progress_card.setVisible(True)
+                self.cancel_btn.setVisible(True)
                 self.cancel_btn.setEnabled(True)
             else:
                 self.cancel_btn.setEnabled(False)
+
+    def set_state(self, state: TabState) -> None:
+        """Drive widget visibility and enablement based on TabState."""
+        self._prev_state = self._state
+        self._state = state
+        self._is_downloading = (state == TabState.DOWNLOADING)
+        self._apply_state_visibility(state)
 
     def set_online(self, online: bool) -> None:
         """Handle network status change."""
@@ -260,6 +292,8 @@ class AudioTab(QWidget):
 
         self.info_card.clear()
         self._current_info = None
+        if self._state == TabState.DOWNLOADING:
+            self._apply_state_visibility(TabState.DOWNLOADING)
 
     def _on_url_text_changed(self, text: str) -> None:
         clean = text.strip()
@@ -268,7 +302,9 @@ class AudioTab(QWidget):
         elif not clean:
             self.info_card.clear()
             self._current_info = None
-            if self._state != TabState.DOWNLOADING:
+            if self._state == TabState.DOWNLOADING:
+                self._apply_state_visibility(TabState.DOWNLOADING)
+            else:
                 self.set_state(TabState.IDLE)
 
     def fetch_url(self) -> None:
@@ -305,13 +341,19 @@ class AudioTab(QWidget):
                     break
             self._preselected_quality = None
 
-        self.set_state(TabState.READY)
+        if self._state == TabState.DOWNLOADING:
+            self._apply_state_visibility(TabState.DOWNLOADING)
+        else:
+            self.set_state(TabState.READY)
 
     def _on_info_failed(self, error_msg: str) -> None:
         self.inline_msg.show_error(error_msg)
         self.info_card.clear()
         self._current_info = None
-        self.set_state(TabState.IDLE)
+        if self._state == TabState.DOWNLOADING:
+            self._apply_state_visibility(TabState.DOWNLOADING)
+        else:
+            self.set_state(TabState.IDLE)
 
     def start_download(self) -> None:
         """Start downloading current audio or confirm duplicate."""

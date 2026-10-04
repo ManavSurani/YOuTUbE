@@ -487,5 +487,17 @@ def test_no_qmessagebox_in_history_tab():
     assert "QMessageBox" not in content
 
 
+def test_scan_no_plain_qpushbutton_in_history_tab():
+    from pathlib import Path
+    lines = Path("app/ui/history_tab.py").read_text(encoding="utf-8").splitlines()
+    violations = [
+        f"{idx}: {line.strip()}"
+        for idx, line in enumerate(lines, 1)
+        if "QPushButton(" in line
+    ]
+    assert not violations, f"Found unexpected QPushButton usages: {violations}"
+
+
+
 
 

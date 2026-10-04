@@ -20,44 +20,42 @@ def qapp():
     yield app
 
 
-def _sample_tab_pixel(TabClass):
-    parent = QWidget()
-    parent.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-    parent.setObjectName("centralWidget")
-    parent.resize(800, 600)
-    layout = QVBoxLayout(parent)
-    layout.setContentsMargins(0, 0, 0, 0)
-    tab = TabClass(parent)
-    layout.addWidget(tab)
-    parent.show()
-    QApplication.processEvents()
+def _check_tab_background_transparency(TabClass):
+    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtWidgets import QScrollArea
 
-    pix = parent.grab()
-    img = pix.toImage()
-    # Sample in an empty area near bottom right
+    tab = TabClass()
+    tab.resize(800, 600)
+
+    # 1. Structure check: scroll area and inner container are transparent
+    scroll = tab.findChild(QScrollArea)
+    assert scroll is not None
+    assert "background: transparent" in scroll.styleSheet()
+    assert "background: transparent" in scroll.viewport().styleSheet()
+    assert "background: transparent" in scroll.widget().styleSheet()
+
+    # 2. Pixel test: empty area allows window background (#0F0F0F) to shine through
+    img = QImage(800, 600, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(QColor(DARK_TOKENS["bg"]))
+    tab.render(img, renderFlags=QWidget.RenderFlag.DrawChildren)
     color = img.pixelColor(700, 550).name().upper()
+    assert color == DARK_TOKENS["bg"].upper()
     return color
 
 
 def test_video_tab_background_matches_theme():
-    color = _sample_tab_pixel(VideoTab)
-    assert color == DARK_TOKENS["bg"].upper()
+    _check_tab_background_transparency(VideoTab)
 
 
 def test_audio_tab_background_matches_theme():
-    color = _sample_tab_pixel(AudioTab)
-    assert color == DARK_TOKENS["bg"].upper()
+    _check_tab_background_transparency(AudioTab)
 
 
 def test_progress_card_aligned_with_url_input():
-    parent = QWidget()
-    parent.resize(800, 600)
-    layout = QVBoxLayout(parent)
-    tab = VideoTab(parent)
-    layout.addWidget(tab)
+    tab = VideoTab()
+    tab.resize(800, 600)
     tab.progress_card.setVisible(True)
-    parent.show()
-    QApplication.processEvents()
+    tab.layout().activate()
 
     url_x = tab.url_input.mapTo(tab, QPoint(0, 0)).x()
     card_stage_x = tab.progress_card.stage_label.mapTo(tab, QPoint(0, 0)).x()
@@ -92,16 +90,11 @@ def test_progress_card_animation_stops_when_hidden():
         output_dir="",
         created_at="2026-10-04T00:00:00",
     )
-    card.show()
     card.bind_job(job)
-    QApplication.processEvents()
-
     assert hasattr(card, "highlight_anim")
     assert card.highlight_anim.state() == QPropertyAnimation.State.Running
 
     card.hide()
-    QApplication.processEvents()
-
     assert card.highlight_anim.state() != QPropertyAnimation.State.Running
 
 

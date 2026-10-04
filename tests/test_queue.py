@@ -150,3 +150,94 @@ def test_finish_notification_on_inactive_window(monkeypatch):
         win.tray_icon.hide()
         win.close()
         _app.processEvents()
+
+
+def test_queue_widget_refresh_no_duplicate_ghost_widgets(monkeypatch):
+    from app.ui.queue_widget import QueueWidget
+    from PySide6.QtWidgets import QLabel, QPushButton
+    widget = QueueWidget()
+    mock_mgr = MagicMock()
+    mock_job = DownloadJob.create(
+        VideoInfo(url="https://www.youtube.com/watch?v=mock1234567", title="Failed Item", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+        kind="video", quality_label="1080p",
+    )
+    mock_mgr.active_job = None
+    mock_mgr.waiting_jobs = []
+    mock_mgr.failed_jobs = [(mock_job, "Some error")]
+    monkeypatch.setattr("app.ui.queue_widget.get_download_manager", lambda: mock_mgr)
+
+    # Refresh three times
+    widget.refresh()
+    widget.refresh()
+    widget.refresh()
+
+    headers = [lbl for lbl in widget.findChildren(QLabel) if "Up next" in lbl.text()]
+    clear_btns = [btn for btn in widget.findChildren(QPushButton) if btn.text() == "Clear failed"]
+
+    assert len(headers) == 1
+    assert headers[0].text() == "Up next (1)"
+    assert len(clear_btns) == 1
+
+
+def test_queue_widget_only_running_job_hidden(monkeypatch):
+    from app.ui.queue_widget import QueueWidget
+    widget = QueueWidget()
+    mock_mgr = MagicMock()
+    mock_job = DownloadJob.create(
+        VideoInfo(url="https://www.youtube.com/watch?v=mock1234567", title="Running Item", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+        kind="video", quality_label="1080p",
+    )
+    mock_mgr.active_job = mock_job
+    mock_mgr.waiting_jobs = []
+    mock_mgr.failed_jobs = []
+    monkeypatch.setattr("app.ui.queue_widget.get_download_manager", lambda: mock_mgr)
+
+    widget.refresh()
+    assert not widget.isVisible()
+
+
+def test_queue_widget_one_failed_job_shows_clear_failed(monkeypatch):
+    from app.ui.queue_widget import QueueWidget
+    from PySide6.QtWidgets import QLabel, QPushButton
+    widget = QueueWidget()
+    mock_mgr = MagicMock()
+    mock_job = DownloadJob.create(
+        VideoInfo(url="https://www.youtube.com/watch?v=mock1234567", title="Failed Item", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+        kind="video", quality_label="1080p",
+    )
+    mock_mgr.active_job = None
+    mock_mgr.waiting_jobs = []
+    mock_mgr.failed_jobs = [(mock_job, "Connection reset")]
+    monkeypatch.setattr("app.ui.queue_widget.get_download_manager", lambda: mock_mgr)
+
+    widget.refresh()
+    assert widget.isVisible()
+    headers = [lbl for lbl in widget.findChildren(QLabel) if "Up next" in lbl.text()]
+    assert len(headers) == 1
+    assert headers[0].text() == "Up next (1)"
+    clear_btns = [btn for btn in widget.findChildren(QPushButton) if btn.text() == "Clear failed"]
+    assert len(clear_btns) == 1
+
+
+def test_queue_widget_one_waiting_job_no_clear_failed(monkeypatch):
+    from app.ui.queue_widget import QueueWidget
+    from PySide6.QtWidgets import QLabel, QPushButton
+    widget = QueueWidget()
+    mock_mgr = MagicMock()
+    mock_job = DownloadJob.create(
+        VideoInfo(url="https://www.youtube.com/watch?v=mock1234567", title="Waiting Item", channel="C", duration=60, duration_str="1:00", thumbnail_url="", qualities=[], filesize_approx=0),
+        kind="video", quality_label="1080p",
+    )
+    mock_mgr.active_job = None
+    mock_mgr.waiting_jobs = [mock_job]
+    mock_mgr.failed_jobs = []
+    monkeypatch.setattr("app.ui.queue_widget.get_download_manager", lambda: mock_mgr)
+
+    widget.refresh()
+    assert widget.isVisible()
+    headers = [lbl for lbl in widget.findChildren(QLabel) if "Up next" in lbl.text()]
+    assert len(headers) == 1
+    assert headers[0].text() == "Up next (1)"
+    clear_btns = [btn for btn in widget.findChildren(QPushButton) if btn.text() == "Clear failed"]
+    assert len(clear_btns) == 0
+

@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -109,22 +110,30 @@ class QueueWidget(QWidget):
 
         self.refresh()
 
+    def _clear_layout(self, layout: Optional[QLayout]) -> None:
+        """Recursively clear layout and deleteLater all widgets."""
+        if layout is None:
+            return
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            child_layout = item.layout()
+            if child_layout is not None:
+                self._clear_layout(child_layout)
+
     def refresh(self) -> None:
         """Re-render queue items according to DownloadManager state."""
-        # Clear layout
-        while self._layout.count() > 0:
-            child = self._layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        self._clear_layout(self._layout)
 
         manager = get_download_manager()
-        active = manager.active_job
         waiting = manager.waiting_jobs
         failed = manager.failed_jobs
-        completed = manager.completed_jobs
 
-        total_pending = (1 if active else 0) + len(waiting) + len(failed)
-        if total_pending == 0 and not completed:
+        drawn_count = len(waiting) + len(failed)
+        if drawn_count == 0:
             self.setVisible(False)
             return
 
@@ -132,35 +141,23 @@ class QueueWidget(QWidget):
 
         # Header: "Up next (N)"
         header_layout = QHBoxLayout()
-        header_lbl = QLabel(f"Up next ({len(waiting)})" if waiting else "Queue", self)
+        header_lbl = QLabel(f"Up next ({drawn_count})", self)
         header_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #AAAAAA;")
         header_layout.addWidget(header_lbl, 1)
 
-        if completed:
-            clear_btn = QPushButton("Clear finished", self)
+        if failed:
+            clear_btn = QPushButton("Clear failed", self)
             clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             clear_btn.setStyleSheet(
                 "QPushButton { background: transparent; border: none; font-size: 12px; color: #888888; } "
                 "QPushButton:hover { color: #FFFFFF; text-decoration: underline; }"
             )
-            clear_btn.clicked.connect(manager.clear_finished)
+            clear_btn.clicked.connect(self._clear_failed)
             header_layout.addWidget(clear_btn)
 
         self._layout.addLayout(header_layout)
 
-        # 1. Active item
-        if active:
-            self._active_row = QueueRow(
-                job=active,
-                status_text="Downloading…",
-                status_color="#3EA6FF",
-                can_remove=False,
-                can_retry=False,
-                parent=self,
-            )
-            self._layout.addWidget(self._active_row)
-
-        # 2. Waiting items
+        # 1. Waiting items
         for job in waiting:
             row = QueueRow(
                 job=job,
@@ -172,7 +169,7 @@ class QueueWidget(QWidget):
             )
             self._layout.addWidget(row)
 
-        # 3. Failed items
+        # 2. Failed items
         for job, reason in failed:
             row = QueueRow(
                 job=job,
@@ -184,11 +181,16 @@ class QueueWidget(QWidget):
             )
             self._layout.addWidget(row)
 
+    def _clear_failed(self) -> None:
+        manager = get_download_manager()
+        if hasattr(manager, "clear_failed"):
+            manager.clear_failed()
+        elif hasattr(manager, "_failed_jobs"):
+            manager._failed_jobs.clear()
+            manager.queue_changed.emit()
+
     def _on_progress(self, job: DownloadJob, pct: float, speed: str, eta: str, done: int, total: int) -> None:
-        if hasattr(self, "_active_row") and self._active_row and self._active_row.job.job_id == job.job_id:
-            pct_int = int(pct)
-            self._active_row.status_lbl.setText(f"{pct_int}%")
+        pass
 
     def _on_stage(self, job: DownloadJob, stage_name: str) -> None:
-        if hasattr(self, "_active_row") and self._active_row and self._active_row.job.job_id == job.job_id:
-            self._active_row.status_lbl.setText(stage_name)
+        pass

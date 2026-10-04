@@ -258,7 +258,7 @@ class SettingsDialog(QDialog):
         self.credits_label = QLabel(
             "Built with open-source tools:<br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/yt-dlp/yt-dlp\">yt-dlp</a><br>"
-            "• <a style=\"color: #3EA6FF;\" href=\"https://ffmpeg.org\">ffmpeg &amp; ffprobe</a><br>"
+            "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/BtbN/FFmpeg-Builds\">ffmpeg &amp; ffprobe (GPL build)</a> — <a style=\"color: #3EA6FF;\" href=\"https://github.com/FFmpeg/FFmpeg\">source</a><br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://deno.com\">deno</a><br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/arsenetar/send2trash\">send2trash</a>",
             self,

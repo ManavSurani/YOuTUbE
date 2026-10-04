@@ -335,5 +335,56 @@ def test_audio_hint_visibility_idle_and_ready():
     assert tab.hint_label.text() == "Best original keeps the YouTube audio as it is."
 
 
+def test_see_all_clicked_switches_to_history_with_filter():
+    from app.ui.main_window import MainWindow
+
+    with patch("app.ui.main_window.NetworkMonitor.start"):
+        win = MainWindow()
+        try:
+            # Emitting see_all_clicked on audio tab
+            win.audio_tab.recent_list.see_all_clicked.emit("audio")
+            assert win.stacked_widget.currentIndex() == 2
+            assert win.header._current_tab == 2
+            assert win.history_tab.chip_audio.isChecked()
+            assert win.history_tab._current_filter == "audio"
+
+            # Emitting see_all_clicked on video tab
+            win.video_tab.recent_list.see_all_clicked.emit("video")
+            assert win.stacked_widget.currentIndex() == 2
+            assert win.header._current_tab == 2
+            assert win.history_tab.chip_video.isChecked()
+            assert win.history_tab._current_filter == "video"
+        finally:
+            if hasattr(win, "network_monitor"):
+                win.network_monitor.stop()
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+
+
+def test_tab_changed_resets_messages_on_video_and_audio():
+    from app.ui.main_window import MainWindow
+
+    with patch("app.ui.main_window.NetworkMonitor.start"):
+        win = MainWindow()
+        try:
+            win.video_tab.inline_msg.show_error("Video Error")
+            assert win.video_tab.inline_msg.isVisibleTo(win.video_tab)
+
+            win.header.select_tab(1)
+            assert not win.video_tab.inline_msg.isVisibleTo(win.video_tab)
+
+            win.audio_tab.inline_msg.show_error("Audio Error")
+            assert win.audio_tab.inline_msg.isVisibleTo(win.audio_tab)
+
+            win.header.select_tab(0)
+            assert not win.audio_tab.inline_msg.isVisibleTo(win.audio_tab)
+        finally:
+            if hasattr(win, "network_monitor"):
+                win.network_monitor.stop()
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+
+
+
 
 

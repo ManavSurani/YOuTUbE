@@ -237,10 +237,12 @@ class MainWindow(QMainWindow):
         # Initialize tab pages
         self.video_tab = VideoTab(self)
         self.video_tab.download_completed.connect(self._on_download_finished_notification)
+        self.video_tab.recent_list.see_all_clicked.connect(self._on_see_all_history)
         self.stacked_widget.addWidget(self.video_tab)
 
         self.audio_tab = AudioTab(self)
         self.audio_tab.download_completed.connect(self._on_download_finished_notification)
+        self.audio_tab.recent_list.see_all_clicked.connect(self._on_see_all_history)
         self.stacked_widget.addWidget(self.audio_tab)
 
         self.history_tab = HistoryTab(self)
@@ -273,8 +275,16 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             get_logger().debug(f"Title bar theming skipped: {exc}")
 
+    def _on_see_all_history(self, kind: str) -> None:
+        self.header.select_tab(2)
+        self.history_tab.show_filter(kind)
+
     def _on_tab_changed(self, index: int) -> None:
         self.stacked_widget.setCurrentIndex(index)
+        if hasattr(self.video_tab, "reset_messages"):
+            self.video_tab.reset_messages()
+        if hasattr(self.audio_tab, "reset_messages"):
+            self.audio_tab.reset_messages()
         # Refresh history tab if switched to history
         if index == 2 and hasattr(self.history_tab, "refresh_items"):
             self.history_tab.refresh_items()

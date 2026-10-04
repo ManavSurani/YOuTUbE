@@ -103,3 +103,37 @@ def test_progress_card_animation_stops_when_hidden():
     QApplication.processEvents()
 
     assert card.highlight_anim.state() != QPropertyAnimation.State.Running
+
+
+def test_recent_row_flat_and_uses_icon_buttons(tmp_path):
+    from app.core.history_db import HistoryItem
+    from app.ui.kit.buttons import IconButton
+    from app.ui.recent_list import RecentRow
+    from PySide6.QtWidgets import QPushButton
+
+    dummy_file = tmp_path / "song.mp3"
+    dummy_file.write_bytes(b"content")
+
+    item = HistoryItem(
+        id=1,
+        title="Test Song",
+        url="https://youtube.com/watch?v=12345678901",
+        type="audio",
+        quality="MP3",
+        file_path=str(dummy_file),
+        size_bytes=1024,
+        file_missing=0,
+    )
+
+    row = RecentRow(item)
+
+    # Flat style with hover highlight only
+    assert "RecentRow:hover" in row.styleSheet()
+
+    # Exactly two IconButtons
+    icon_btns = row.findChildren(IconButton)
+    assert len(icon_btns) == 2
+
+    # No plain QPushButtons
+    plain_btns = [b for b in row.findChildren(QPushButton) if type(b) is QPushButton]
+    assert len(plain_btns) == 0

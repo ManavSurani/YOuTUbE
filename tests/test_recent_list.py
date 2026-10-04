@@ -134,11 +134,8 @@ def test_recent_row_missing_file_no_play_btn_and_shows_file_missing(tmp_path):
 
     row = RecentRow(item)
 
-    play_btns_all = [btn for btn in row.findChildren(QPushButton) if btn.text() == "Play"]
-    assert len(play_btns_all) == 0
-
-    folder_btns = [btn for btn in row.findChildren(QPushButton) if btn.text() == "Open folder"]
-    assert len(folder_btns) == 1
+    assert not row.play_btn.isVisibleTo(row)
+    assert row.folder_btn.isVisibleTo(row)
 
     labels = [lbl.text() for lbl in row.findChildren(QLabel)]
     assert any("File missing" in text for text in labels)

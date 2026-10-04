@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from app.core.file_actions import open_file, reveal_in_folder
 from app.core.history_db import HistoryItem, list_items
+from app.ui.kit.buttons import IconButton
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.kit.toast import Toast
 
@@ -42,7 +43,15 @@ class RecentRow(QWidget):
         super().__init__(parent)
         self.item = item
         self.setFixedHeight(56)
-        self.setStyleSheet("RecentRow { background-color: #1A1A1A; border-radius: 6px; }")
+        self.setStyleSheet("""
+            RecentRow {
+                background-color: transparent;
+                border-radius: 8px;
+            }
+            RecentRow:hover {
+                background-color: #1A1A1A;
+            }
+        """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -72,25 +81,24 @@ class RecentRow(QWidget):
 
         layout.addLayout(info_layout, 1)
 
-        # Action buttons: Play and Open Folder
-        btn_style = (
-            "QPushButton { background: transparent; border: none; font-size: 12px; color: #AAAAAA; padding: 4px 6px; } "
-            "QPushButton:hover { color: #FFFFFF; text-decoration: underline; }"
-        )
+        # Action buttons: Play and Show in folder via IconButton
+        self.actions_layout = QHBoxLayout()
+        self.actions_layout.setSpacing(6)
 
-        if file_exists:
-            play_btn = QPushButton("Play", self)
-            play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            play_btn.setStyleSheet(btn_style)
-            play_btn.clicked.connect(self._play_file)
-            layout.addWidget(play_btn)
+        self.play_btn = IconButton("play", size=32, tooltip="Play", parent=self)
+        self.play_btn.setText("Play")
+        self.play_btn.clicked.connect(self._play_file)
+        self.actions_layout.addWidget(self.play_btn)
 
-        if item.file_path:
-            folder_btn = QPushButton("Open folder", self)
-            folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            folder_btn.setStyleSheet(btn_style)
-            folder_btn.clicked.connect(self._open_folder)
-            layout.addWidget(folder_btn)
+        self.folder_btn = IconButton("folder", size=32, tooltip="Show in folder", parent=self)
+        self.folder_btn.setText("Open folder")
+        self.folder_btn.clicked.connect(self._open_folder)
+        self.actions_layout.addWidget(self.folder_btn)
+
+        layout.addLayout(self.actions_layout)
+
+        self.play_btn.setVisible(file_exists)
+        self.folder_btn.setVisible(bool(item.file_path))
 
     def _show_feedback(self, message: str) -> None:
         parent = self.window() if self.window() else self

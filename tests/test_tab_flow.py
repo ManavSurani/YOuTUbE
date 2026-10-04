@@ -174,3 +174,51 @@ def test_tab_state_visibility_contract(TabClass, combo_attr):
     assert tab.queue_btn.isEnabled()
     assert tab.cancel_btn.isVisibleTo(tab)
     assert not tab.download_btn.isVisibleTo(tab)
+
+
+@pytest.mark.parametrize("TabClass,kind", [
+    (VideoTab, "video"),
+    (AudioTab, "audio"),
+])
+def test_tab_finish_clears_inputs_and_returns_to_idle(TabClass, kind, monkeypatch):
+    tab = TabClass()
+    fake_mgr = FakeManager()
+    module_name = "video_tab" if TabClass is VideoTab else "audio_tab"
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda: fake_mgr)
+    tab._wire_manager()
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Rick Astley",
+        channel="RickAstleyVEVO",
+        duration=212,
+        duration_str="3:32",
+        thumbnail_url="",
+        qualities=[("1080p", 1000000)],
+        filesize_approx=1000000,
+    )
+    tab._on_info_fetched(info)
+    job = DownloadJob.create(
+        info=info,
+        kind=kind,
+        quality_label="1080p" if kind == "video" else "best",
+        output_dir="C:/Downloads",
+    )
+    tab.set_state(TabState.DOWNLOADING)
+
+    # Simulate finish
+    tab._on_manager_finished(job, "C:/Downloads/video.mp4")
+
+    # Assert Idle state and inputs cleared
+    assert tab._state == TabState.IDLE
+    assert tab.url_input.text() == ""
+    assert tab._current_info is None
+    assert not tab.info_card.isVisibleTo(tab)
+    assert not tab.progress_card.isVisibleTo(tab)
+    assert not tab.cancel_btn.isVisibleTo(tab)
+    assert tab.url_input.isVisibleTo(tab)
+    assert tab.fetch_btn.isVisibleTo(tab)
+

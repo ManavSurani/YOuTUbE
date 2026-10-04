@@ -490,6 +490,7 @@ class VideoTab(QWidget):
         manager = get_download_manager()
         manager.cancel_active()
         self.progress_card.set_stage("Cancelled.")
+        self._clear_inputs()
         self.set_state(TabState.IDLE)
 
     def _build_job(self) -> Optional[DownloadJob]:
@@ -557,16 +558,19 @@ class VideoTab(QWidget):
             self.progress_card.show_done(out_dir=job.output_dir)
             self.recent_list.refresh()
             self.download_completed.emit(job.title)
-            # Reset tab state
+            # Reset tab state and clear inputs
+            self._clear_inputs()
             self.set_state(TabState.IDLE)
 
     def _on_manager_failed(self, job: DownloadJob, error_reason: str) -> None:
         if job.kind == "video":
             self.inline_msg.show_error(f"Download failed: {error_reason}")
             self.progress_card.reset()
+            self._clear_inputs()
             self.set_state(TabState.IDLE)
 
     def _on_manager_cancelled(self, job: DownloadJob) -> None:
         if job.kind == "video":
             self.progress_card.reset()
+            self._clear_inputs()
             self.set_state(TabState.IDLE)

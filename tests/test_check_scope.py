@@ -6,7 +6,7 @@ import sys
 
 def test_scope_checker_clean():
     res = subprocess.run(
-        [sys.executable, "tools/check_scope.py", "--phase", "1"],
+        [sys.executable, "tools/check_scope.py", "--phase", "11"],
         capture_output=True,
         text=True,
     )

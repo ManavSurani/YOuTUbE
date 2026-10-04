@@ -65,8 +65,8 @@ def reveal_in_folder(path: Union[str, Path]) -> Tuple[bool, str]:
             target = Path(path).resolve()
             if target.parent.exists():
                 return open_folder(target.parent)
-        except Exception:
-            pass
+        except Exception as fallback_exc:
+            logger.debug(f"Failed fallback open parent folder: {fallback_exc}")
         return False, f"Could not open folder in Explorer: {exc}"
 
 

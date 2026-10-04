@@ -137,3 +137,34 @@ def test_recent_row_flat_and_uses_icon_buttons(tmp_path):
     # No plain QPushButtons
     plain_btns = [b for b in row.findChildren(QPushButton) if type(b) is QPushButton]
     assert len(plain_btns) == 0
+
+
+def test_scan_no_plain_qpushbutton():
+    from pathlib import Path
+
+    files = [
+        Path("app/ui/queue_widget.py"),
+        Path("app/ui/video_tab.py"),
+        Path("app/ui/audio_tab.py"),
+        Path("app/ui/recent_list.py"),
+    ]
+    # Allowed exceptions: explicitly listed link-style buttons
+    allowed_exceptions = {
+        "app/ui/recent_list.py": ["QPushButton(link_text, self)"],
+    }
+
+    violations = []
+    for f in files:
+        lines = f.read_text(encoding="utf-8").splitlines()
+        for idx, line in enumerate(lines, 1):
+            if "QPushButton(" in line:
+                is_allowed = False
+                for allowed in allowed_exceptions.get(f.as_posix(), []):
+                    if allowed in line:
+                        is_allowed = True
+                        break
+                if not is_allowed:
+                    violations.append(f"{f.as_posix()}:{idx}: {line.strip()}")
+
+    assert not violations, f"Found unexpected QPushButton usages: {violations}"
+

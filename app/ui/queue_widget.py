@@ -11,13 +11,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from app.core.download_manager import DownloadManager, get_download_manager
 from app.core.jobs import DownloadJob
+from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.thumb_label import ThumbLabel
 
 
@@ -71,23 +71,12 @@ class QueueRow(QWidget):
         manager = get_download_manager()
 
         if can_retry:
-            retry_btn = QPushButton("Retry", self)
-            retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            retry_btn.setStyleSheet(
-                "QPushButton { background: #333333; color: #3EA6FF; border-radius: 4px; padding: 4px 8px; font-size: 11px; } "
-                "QPushButton:hover { background: #444444; }"
-            )
+            retry_btn = IconButton("redownload", size=28, tooltip="Retry", parent=self)
             retry_btn.clicked.connect(lambda: manager.retry_job(job.job_id))
             layout.addWidget(retry_btn)
 
         if can_remove:
-            remove_btn = QPushButton("✕", self)
-            remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            remove_btn.setFixedSize(24, 24)
-            remove_btn.setStyleSheet(
-                "QPushButton { background: transparent; color: #888888; border: none; font-size: 12px; } "
-                "QPushButton:hover { color: #FF4E45; }"
-            )
+            remove_btn = IconButton("close", is_danger=True, size=28, tooltip="Remove", parent=self)
             remove_btn.clicked.connect(lambda: manager.cancel_job(job.job_id))
             layout.addWidget(remove_btn)
 
@@ -146,12 +135,7 @@ class QueueWidget(QWidget):
         header_layout.addWidget(header_lbl, 1)
 
         if failed:
-            clear_btn = QPushButton("Clear failed", self)
-            clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            clear_btn.setStyleSheet(
-                "QPushButton { background: transparent; border: none; font-size: 12px; color: #888888; } "
-                "QPushButton:hover { color: #FFFFFF; text-decoration: underline; }"
-            )
+            clear_btn = AnimatedButton("Clear failed", role="ghost", parent=self)
             clear_btn.clicked.connect(self._clear_failed)
             header_layout.addWidget(clear_btn)
 

@@ -344,6 +344,18 @@ class VideoTab(QWidget):
             )
             self.set_state(target_state)
 
+    def _clear_inputs(self) -> None:
+        """Clear URL input and info card without firing textChanged state resets."""
+        blocked = self.url_input.blockSignals(True)
+        try:
+            self.url_input.clear()
+            self._last_fetched_url = ""
+        finally:
+            self.url_input.blockSignals(blocked)
+
+        self.info_card.clear()
+        self._current_info = None
+
     def _on_url_text_changed(self, text: str) -> None:
         clean = text.strip()
         if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
@@ -352,7 +364,8 @@ class VideoTab(QWidget):
             self.info_card.clear()
             self._current_info = None
             self.quality_combo.clear()
-            self.set_state(TabState.IDLE)
+            if self._state != TabState.DOWNLOADING:
+                self.set_state(TabState.IDLE)
 
     def fetch_url(self) -> None:
         """Fetch video metadata from YouTube via InfoFetchWorker."""
@@ -423,9 +436,7 @@ class VideoTab(QWidget):
         manager.enqueue(job)
 
         # Clear inputs for next paste
-        self.url_input.clear()
-        self.info_card.clear()
-        self._current_info = None
+        self._clear_inputs()
 
     def add_to_queue(self) -> None:
         """Add current video to queue without interrupting active download."""
@@ -436,10 +447,7 @@ class VideoTab(QWidget):
         manager = get_download_manager()
         manager.enqueue(job)
 
-        self.url_input.clear()
-        self.info_card.clear()
-        self._current_info = None
-        self.set_state(TabState.DOWNLOADING if manager.active_job else TabState.IDLE)
+        self._clear_inputs()
 
     def cancel_download(self) -> None:
         """Cancel active download."""

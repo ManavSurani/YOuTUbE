@@ -67,6 +67,35 @@ def apply_dark_title_bar(window_hwnd: int, is_dark: bool = True) -> None:
                 ctypes.byref(val),
                 ctypes.sizeof(val),
             )
+
+        # On Windows 11 (build >= 22000), set caption colour and text colour to match theme
+        try:
+            if hasattr(sys, "getwindowsversion") and sys.getwindowsversion().build >= 22000:
+                # 35: DWMWA_CAPTION_COLOR, 36: DWMWA_TEXT_COLOR
+                # COLORREF is 0x00BBGGRR
+                if is_dark:
+                    caption_color = 0x000F0F0F  # #0F0F0F
+                    text_color = 0x00FFFFFF     # #FFFFFF
+                else:
+                    caption_color = 0x00FFFFFF  # #FFFFFF
+                    text_color = 0x000F0F0F     # #0F0F0F
+
+                c_color = ctypes.c_uint(caption_color)
+                dwm.DwmSetWindowAttribute(
+                    wintypes.HWND(window_hwnd),
+                    ctypes.c_uint(35),
+                    ctypes.byref(c_color),
+                    ctypes.sizeof(c_color),
+                )
+                t_color = ctypes.c_uint(text_color)
+                dwm.DwmSetWindowAttribute(
+                    wintypes.HWND(window_hwnd),
+                    ctypes.c_uint(36),
+                    ctypes.byref(t_color),
+                    ctypes.sizeof(t_color),
+                )
+        except Exception as win11_exc:
+            get_logger().debug(f"Caption color attribute skipped/failed: {win11_exc}")
     except Exception as exc:
         get_logger().debug(f"apply_dark_title_bar skipped/failed: {exc}")
 

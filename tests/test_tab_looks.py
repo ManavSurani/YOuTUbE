@@ -161,3 +161,39 @@ def test_scan_no_plain_qpushbutton():
 
     assert not violations, f"Found unexpected QPushButton usages: {violations}"
 
+
+def test_apply_dark_title_bar_calls_dwm_and_win11_caption_color():
+    from unittest.mock import MagicMock, patch
+    import sys
+    from app.ui.main_window import apply_dark_title_bar
+
+    # Mock dwmapi
+    mock_dwm = MagicMock()
+    mock_dwm.DwmSetWindowAttribute.return_value = 0
+
+    # 1. On Windows 11 build (e.g. 22000), should call attr 20 (or 19) AND attr 35 (caption) & 36 (text)
+    win11_version = MagicMock(major=10, minor=0, build=22000)
+    with patch("ctypes.windll.dwmapi", mock_dwm), \
+         patch.object(sys, "getwindowsversion", return_value=win11_version):
+        apply_dark_title_bar(1234, is_dark=True)
+        attrs_called = [call.args[1].value for call in mock_dwm.DwmSetWindowAttribute.call_args_list]
+        assert 20 in attrs_called
+        assert 35 in attrs_called
+        assert 36 in attrs_called
+
+    # 2. On Windows 10 older build (e.g. 19044), should NOT call attr 35 or 36
+    mock_dwm.reset_mock()
+    win10_version = MagicMock(major=10, minor=0, build=19044)
+    with patch("ctypes.windll.dwmapi", mock_dwm), \
+         patch.object(sys, "getwindowsversion", return_value=win10_version):
+        apply_dark_title_bar(1234, is_dark=True)
+        attrs_called = [call.args[1].value for call in mock_dwm.DwmSetWindowAttribute.call_args_list]
+        assert 20 in attrs_called
+        assert 35 not in attrs_called
+        assert 36 not in attrs_called
+
+    # 3. Never raises even if DwmSetWindowAttribute raises an exception
+    mock_dwm.side_effect = RuntimeError("DWM not available")
+    apply_dark_title_bar(1234, is_dark=True)  # should not raise
+
+

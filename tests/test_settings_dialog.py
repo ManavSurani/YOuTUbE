@@ -202,3 +202,16 @@ def test_atomic_settings_write(tmp_path, monkeypatch):
     reloaded = load_settings(target_file)
     assert reloaded["key"] == "updated_value"
     assert not tmp_candidate.exists()
+
+
+def test_open_download_folder_calls_helper(isolated_settings):
+    """Clicking 'Open download folder' calls file_actions.open_folder."""
+    from unittest.mock import patch
+    from pathlib import Path
+
+    dlg = SettingsDialog()
+    saved_dir = dlg._saved_download_dir
+
+    with patch("app.ui.settings_dialog.open_folder", return_value=(True, "")) as mock_open:
+        dlg._on_open_download_folder()
+        mock_open.assert_called_once_with(Path(saved_dir))

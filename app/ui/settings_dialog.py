@@ -38,9 +38,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.app_updater import UpdateCheckWorker, UpdateInfo
+from app.core.file_actions import open_folder
 from app.core.logger import get_logger
 from app.core.paths import APP_LOG_FILE, DEFAULT_DOWNLOADS
-from app.core.proc import start_hidden
 from app.core.settings import load_settings, save_settings
 from app.ui.kit import AnimatedButton, AnimatedCheckBox, IconButton
 from app.ui.theme import build_qss
@@ -370,7 +370,9 @@ class SettingsDialog(QDialog):
     def _on_open_download_folder(self) -> None:
         target = Path(self._saved_download_dir)
         if target.is_dir():
-            start_hidden(["explorer", str(target.resolve())])
+            ok, msg = open_folder(target)
+            if not ok and msg:
+                QMessageBox.warning(self, "Open Folder Failed", msg)
         else:
             QMessageBox.warning(self, "Folder Missing", f"The download folder does not exist:\n{target}")
 

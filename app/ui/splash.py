@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QProgressBar,
-    QPushButton,
 )
+from app.ui.kit import AnimatedButton
 from app.version import APP_NAME
 from app.core.paths import BIN_DIR
 from app.core.settings import load_settings, save_settings
@@ -143,8 +143,7 @@ class SplashScreen(QWidget):
         layout.addWidget(self.progress_bar)
 
         # Retry button (visible only if first-run offline setup is blocked)
-        self.retry_btn = QPushButton("Retry", self)
-        self.retry_btn.setProperty("role", "secondary")
+        self.retry_btn = AnimatedButton("Retry", role="secondary", parent=self)
         self.retry_btn.setFixedHeight(32)
         self.retry_btn.setVisible(False)
         self.retry_btn.clicked.connect(self._on_retry)

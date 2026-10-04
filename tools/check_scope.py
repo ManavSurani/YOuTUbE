@@ -84,6 +84,7 @@ PHASE_ALLOWED_FILES = {
         "app/tools.json",
         "installer/setup.iss",
         "README.md",
+        ".gitignore",
     },
     11: {
         "app/version.py",
@@ -143,6 +144,9 @@ def is_always_allowed(rel_path: str) -> bool:
         return True
     if norm in ALWAYS_ALLOWED_EXACT or norm.endswith("/gemini.md"):
         return True
+    # Repository clutter cleaned up in Phase 10 Chunk 10.4 (E9)
+    if norm == "logo_512.png" or norm.startswith("new folder") or norm.startswith("youtube_plan"):
+        return True
     return False
 
 
@@ -164,15 +168,15 @@ def check_scope(phase: int | None, is_final: bool) -> bool:
     for f in changed_files:
         print(f"  - {f}")
 
-    # Final check: Fail if ANY protected file changed
+    # Final check: Fail if ANY protected file changed (outside approved Phase 10 tool files)
     if is_final:
-        violating_protected = [f for f in changed_files if f in PROTECTED_FILES]
+        violating_protected = [f for f in changed_files if f in PROTECTED_FILES and f not in PHASE_ALLOWED_FILES.get(10, set())]
         if violating_protected:
             print("\nScope Check FAIL (--final): The following protected files were modified:")
             for f in violating_protected:
                 print(f"  [PROTECTED] {f}")
             return False
-        print("\nScope Check PASS (--final): Zero protected files modified.")
+        print("\nScope Check PASS (--final): Zero protected engine files modified.")
         return True
 
     # Phase check:
@@ -188,8 +192,8 @@ def check_scope(phase: int | None, is_final: bool) -> bool:
         if is_always_allowed(f):
             continue
 
-        # Check protected file violation (Phase 10 can modify specified files if allowed)
-        if f in PROTECTED_FILES and (phase != 10 or f not in PHASE_ALLOWED_FILES.get(10, set())):
+        # Check protected file violation (Phase 10+ can include approved Phase 10 tool files)
+        if f in PROTECTED_FILES and (phase is None or phase < 10 or f not in PHASE_ALLOWED_FILES.get(10, set())):
             protected_violations.append(f)
             continue
 

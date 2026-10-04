@@ -95,6 +95,7 @@ PHASE_ALLOWED_FILES = {
 ALWAYS_ALLOWED_PREFIXES = (
     "tests/",
     "docs/verification/",
+    "docs/release_notes",
 )
 
 ALWAYS_ALLOWED_EXACT = {

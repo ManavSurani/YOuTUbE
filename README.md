@@ -23,7 +23,7 @@ Designed strictly around the official YouTube dark and light aesthetics: zero cl
 
 ### Windows Desktop (10 / 11 64-bit)
 - **Installer:** `Output/YOuTUbE_Setup.exe` (~36.4 MB)
-- **SHA-256 Checksum:** `7c0a8a6997df7a7fa93234336d76a4f68ddd0915e417f4ec421ae38437b863f9`
+- **SHA-256 Checksum:** `cda03a2a0201ee61b391267d25fddf3f97dd6ac15fa4e84ad08f82200ce99aeb`
 - **Installation:** Run `YOuTUbE_Setup.exe`. Installs to `%LOCALAPPDATA%\Programs\YOuTUbE` with 0 administrator elevation prompts and automatically creates Start Menu and Desktop shortcuts.
 
 ### Android (Android 8.0+)
@@ -38,7 +38,7 @@ Designed strictly around the official YouTube dark and light aesthetics: zero cl
 ### Windows Application
 ```bash
 # Clone the repository
-git clone https://github.com/Jay/YOuTUbE.git
+git clone https://github.com/ManavSurani/YOuTUbE.git
 cd YOuTUbE
 
 # Install dependencies

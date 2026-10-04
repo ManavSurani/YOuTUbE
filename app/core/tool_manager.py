@@ -1,5 +1,4 @@
-"""Tool manager for downloading, verifying, updating, and rolling back external binaries."""
-
+import hashlib
 import json
 import shutil
 import sys
@@ -12,6 +11,44 @@ from app.core.proc import run_hidden
 from app.core.logger import get_logger
 
 REQUIRED_TOOLS = ["yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe"]
+
+
+def fetch_expected_checksum(checksum_url: str, filename: str) -> Optional[str]:
+    """Fetch publisher checksum file and parse SHA-256 for target filename."""
+    try:
+        req = urllib.request.Request(checksum_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            content = resp.read().decode("utf-8", errors="replace")
+
+        target_name = Path(filename).name.lower()
+        for line in content.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                h = parts[0].strip().lower()
+                fn = Path(parts[-1].strip().lstrip("*")).name.lower()
+                if len(h) == 64 and fn == target_name:
+                    return h
+                fn_first = Path(parts[0].strip().lstrip("*")).name.lower()
+                h_last = parts[-1].strip().lower()
+                if len(h_last) == 64 and fn_first == target_name:
+                    return h_last
+            elif len(parts) == 1 and len(parts[0].strip()) == 64:
+                return parts[0].strip().lower()
+    except Exception as exc:
+        get_logger().warning(f"Could not fetch checksum from {checksum_url}: {exc}")
+    return None
+
+
+def verify_checksum(file_path: Path, expected_hash: str) -> bool:
+    """Compute file SHA-256 and compare with expected hash."""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest().lower() == expected_hash.lower()
 
 
 def get_tools_manifest() -> Dict:
@@ -91,6 +128,20 @@ def install_tool(
             temp_file.unlink(missing_ok=True)
             return False
 
+        # Chunk 10.1: Check publisher checksum if configured (U5)
+        checksum_url = entry.get("checksum_url")
+        if checksum_url:
+            download_filename = Path(url).name
+            expected_hash = fetch_expected_checksum(checksum_url, download_filename)
+            if expected_hash:
+                if not verify_checksum(temp_file, expected_hash):
+                    get_logger().error(f"Checksum mismatch for {tool_key}. Download deleted.")
+                    temp_file.unlink(missing_ok=True)
+                    return False
+                get_logger().info(f"Checksum verified for {tool_key}.")
+            else:
+                get_logger().warning(f"Checksum could not be retrieved for {tool_key}; proceeding with installation.")
+
         if file_type == "exe":
             target_path = target_dir / target_files[0]
             if temp_file.exists():
@@ -133,6 +184,18 @@ def update_ytdlp(bin_dir: Optional[Path] = None) -> bool:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=30) as resp, open(new_exe, "wb") as out:
             shutil.copyfileobj(resp, out)
+
+        # Check publisher checksum for updated yt-dlp (Chunk 10.1 / U5)
+        checksum_url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS"
+        expected_hash = fetch_expected_checksum(checksum_url, "yt-dlp.exe")
+        if expected_hash:
+            if not verify_checksum(new_exe, expected_hash):
+                new_exe.unlink(missing_ok=True)
+                get_logger().warning("Downloaded yt-dlp failed checksum verification. Rolled back.")
+                return False
+            get_logger().info("Checksum verified for updated yt-dlp.")
+        else:
+            get_logger().warning("Checksum could not be retrieved for yt-dlp update; proceeding with version verification.")
 
         # Validate downloaded binary
         code, out = run_hidden([str(new_exe), "--version"], timeout=5)

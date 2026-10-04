@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
@@ -148,3 +149,109 @@ def test_auto_repair_on_extraction_error(tmp_path: Path, monkeypatch):
     assert len(process_called) == 1, "_process_next was not called to retry"
     assert job in mgr._waiting_queue, "Job was not re-queued for retry"
     assert "job_extraction_fail" in mgr._repaired_jobs
+
+
+class FakeResponse(io.BytesIO):
+    def __init__(self, data=b"", headers=None):
+        super().__init__(data)
+        self.headers = headers or {}
+
+
+def test_install_tool_checksum_match_installs(tmp_path: Path, monkeypatch):
+    """Chunk 10.1: Matching checksum installs successfully."""
+    import hashlib
+    import urllib.request
+    from app.core.tool_manager import install_tool
+
+    data = b"valid_executable_content"
+    data_hash = hashlib.sha256(data).hexdigest()
+
+    manifest = {
+        "fake-tool": {
+            "url": "https://example.com/fake-tool.exe",
+            "type": "exe",
+            "target_files": ["fake-tool.exe"],
+            "checksum_url": "https://example.com/SHA256SUMS",
+        }
+    }
+    monkeypatch.setattr("app.core.tool_manager.get_tools_manifest", lambda: manifest)
+
+    def mock_urlopen(req, timeout=30):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "SHA256SUMS" in url:
+            return FakeResponse(f"{data_hash}  fake-tool.exe\n".encode("utf-8"))
+        return FakeResponse(data, headers={"Content-Length": str(len(data))})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+    monkeypatch.setattr("app.core.tool_manager.verify_tool", lambda tf, bd: True)
+
+    success = install_tool("fake-tool", bin_dir=tmp_path)
+    assert success is True
+    assert (tmp_path / "fake-tool.exe").exists()
+    assert (tmp_path / "fake-tool.exe").read_bytes() == data
+
+
+def test_install_tool_checksum_mismatch_deletes_and_fails(tmp_path: Path, monkeypatch):
+    """Chunk 10.1: Mismatched checksum deletes temp download and fails."""
+    import urllib.request
+    from app.core.tool_manager import install_tool
+
+    data = b"tampered_executable_content"
+    wrong_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+
+    manifest = {
+        "fake-tool": {
+            "url": "https://example.com/fake-tool.exe",
+            "type": "exe",
+            "target_files": ["fake-tool.exe"],
+            "checksum_url": "https://example.com/SHA256SUMS",
+        }
+    }
+    monkeypatch.setattr("app.core.tool_manager.get_tools_manifest", lambda: manifest)
+
+    def mock_urlopen(req, timeout=30):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "SHA256SUMS" in url:
+            return FakeResponse(f"{wrong_hash}  fake-tool.exe\n".encode("utf-8"))
+        return FakeResponse(data, headers={"Content-Length": str(len(data))})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+    monkeypatch.setattr("app.core.tool_manager.verify_tool", lambda tf, bd: True)
+
+    success = install_tool("fake-tool", bin_dir=tmp_path)
+    assert success is False
+    assert not (tmp_path / "fake-tool.exe").exists()
+    assert not (tmp_path / "fake-tool.download.tmp").exists()
+
+
+def test_install_tool_checksum_missing_installs_with_warning(tmp_path: Path, monkeypatch):
+    """Chunk 10.1: Missing/unreachable checksum file still allows install with warning."""
+    import urllib.request
+    from app.core.tool_manager import install_tool
+
+    data = b"executable_without_checksum_file"
+
+    manifest = {
+        "fake-tool": {
+            "url": "https://example.com/fake-tool.exe",
+            "type": "exe",
+            "target_files": ["fake-tool.exe"],
+            "checksum_url": "https://example.com/SHA256SUMS_404",
+        }
+    }
+    monkeypatch.setattr("app.core.tool_manager.get_tools_manifest", lambda: manifest)
+
+    def mock_urlopen(req, timeout=30):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "SHA256SUMS_404" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        return FakeResponse(data, headers={"Content-Length": str(len(data))})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+    monkeypatch.setattr("app.core.tool_manager.verify_tool", lambda tf, bd: True)
+
+    success = install_tool("fake-tool", bin_dir=tmp_path)
+    assert success is True
+    assert (tmp_path / "fake-tool.exe").exists()
+    assert (tmp_path / "fake-tool.exe").read_bytes() == data
+

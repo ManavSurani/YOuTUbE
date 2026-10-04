@@ -42,15 +42,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.file_actions import open_file, reveal_in_folder
 from app.core.history_db import HistoryItem, list_items
 import app.core.history_service as history_service
 from app.core.logger import get_logger
 from app.core.paths import DEFAULT_DOWNLOADS
-from app.core.proc import start_hidden
 from app.ui.kit.anim import is_animations_enabled
 from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.checkbox import AnimatedCheckBox
 from app.ui.kit.thumb_label import ThumbLabel
+from app.ui.kit.toast import Toast
 
 
 def format_size(size_bytes: int) -> str:
@@ -392,17 +393,20 @@ class HistoryRowWidget(QWidget):
         self.play_btn.setVisible(exists)
         self.locate_btn.setVisible(not exists)
 
+    def _show_feedback(self, message: str) -> None:
+        parent = self.window() if self.window() else self
+        toast = Toast(message, parent=parent)
+        toast.show_toast(4000)
+
     def _play_file(self) -> None:
-        p = Path(self.item.file_path)
-        if p.is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.resolve())))
+        ok, msg = open_file(self.item.file_path)
+        if not ok and msg:
+            self._show_feedback(msg)
 
     def _open_folder(self) -> None:
-        p = Path(self.item.file_path)
-        if p.is_file():
-            start_hidden(["explorer", f"/select,{p.resolve()}"])
-        elif p.parent.is_dir():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.parent.resolve())))
+        ok, msg = reveal_in_folder(self.item.file_path)
+        if not ok and msg:
+            self._show_feedback(msg)
 
     def _copy_link(self) -> None:
         QGuiApplication.clipboard().setText(self.item.url)

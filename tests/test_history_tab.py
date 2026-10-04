@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 import pytest
 
 from app.core.history_db import HistoryItem, add_item, init_db, list_items
+from unittest.mock import patch
 from app.ui.history_tab import (
     ClearAllDialog,
     HistoryDeleteDialog,
@@ -353,3 +354,35 @@ def test_lazy_loading_performance_500_rows(tmp_path):
     tab._render_next_page()
     assert tab._rendered_count == 100
     assert len(tab._rendered_rows) == 100
+
+
+def test_history_row_play_and_open_folder_use_helper(tmp_path):
+    dummy_file = tmp_path / "video.mp4"
+    dummy_file.write_bytes(b"content")
+
+    item = HistoryItem(
+        id=1,
+        title="Test Video Title",
+        url="https://youtube.com/watch?v=abc12345678",
+        type="video",
+        quality="1080p",
+        file_path=str(dummy_file),
+        size_bytes=1024,
+        file_missing=0,
+    )
+
+    row = HistoryRowWidget(item)
+
+    with patch("app.ui.history_tab.open_file", return_value=(True, "")) as mock_open:
+        row.play_btn.click()
+        mock_open.assert_called_once_with(str(dummy_file))
+
+    with patch("app.ui.history_tab.reveal_in_folder", return_value=(True, "")) as mock_reveal:
+        row.folder_btn.click()
+        mock_reveal.assert_called_once_with(str(dummy_file))
+
+    with patch("app.ui.history_tab.open_file", return_value=(False, "Failed to open")):
+        with patch.object(row, "_show_feedback") as mock_feedback:
+            row.play_btn.click()
+            mock_feedback.assert_called_once_with("Failed to open")
+

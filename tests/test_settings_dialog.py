@@ -240,3 +240,12 @@ def test_settings_dialog_fits_content_no_scroll_area(isolated_settings):
     assert dlg.rect().contains(dlg.credits_label.geometry())
 
 
+def test_settings_dialog_applies_dark_title_bar_on_show(isolated_settings):
+    from unittest.mock import patch
+    with patch("app.ui.main_window.apply_dark_title_bar") as mock_apply:
+        dlg = SettingsDialog()
+        dlg.show()
+        mock_apply.assert_called_once_with(int(dlg.winId()), is_dark=True)
+
+
+

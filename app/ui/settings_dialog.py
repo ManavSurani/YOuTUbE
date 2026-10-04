@@ -102,6 +102,16 @@ class SettingsDialog(QDialog):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.setFocus()
+        self._apply_dark_title_bar()
+
+    def _apply_dark_title_bar(self, is_dark: Optional[bool] = None) -> None:
+        if is_dark is None:
+            is_dark = (self._settings.get("theme", "dark") == "dark")
+        try:
+            from app.ui.main_window import apply_dark_title_bar
+            apply_dark_title_bar(int(self.winId()), is_dark=is_dark)
+        except Exception as exc:
+            get_logger().debug(f"Title bar update skipped: {exc}")
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -362,11 +372,12 @@ class SettingsDialog(QDialog):
             if app:
                 app.setStyleSheet(build_qss(chosen_theme))
 
-            # Apply dark title bar if parent window exists
+            # Apply dark title bar to self and parent window
+            self._apply_dark_title_bar(is_dark=(chosen_theme == "dark"))
             parent_win = self.parent()
             if parent_win and hasattr(parent_win, "winId"):
                 try:
-                    from app.ui.theme import apply_dark_title_bar
+                    from app.ui.main_window import apply_dark_title_bar
                     apply_dark_title_bar(int(parent_win.winId()), is_dark=(chosen_theme == "dark"))
                 except Exception as exc:
                     get_logger().debug(f"Title bar update skipped: {exc}")

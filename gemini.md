@@ -1081,3 +1081,43 @@ We identified and resolved two issues that caused the test suite to hang and enc
 - [x] Verification evidence recorded in `docs/verification/phase_9.md`.
 
 Phase 9 is complete. Ready for your approval to proceed to Phase 10 (Testing and Release).
+
+---
+
+## User Query:
+proceed (Phase 10: Optional Hardening — owner approved all 4 chunks)
+
+## Assistant Response:
+Phase 10 (Optional Hardening) has been fully built, verified, and completed across all 4 chunks:
+
+- **Chunk 10.1 — Verify tool downloads (U5):**
+  - Added `checksum_url` to `app/tools.json` for yt-dlp (`SHA2-256SUMS`), ffmpeg (`checksums.sha256`), and deno (`.sha256sum`).
+  - Implemented `fetch_expected_checksum` and `verify_checksum` in `app/core/tool_manager.py`.
+  - Wired into both `install_tool` and `update_ytdlp`: verified SHA-256 before extracting or moving into `bin/`.
+  - If checksum mismatches, download is deleted and reported; if checksum file is unreachable, proceeds with warning and `--version` test.
+  - Verified via 3 unit tests in `tests/test_tool_manager.py`.
+  - Committed with message `phase10.1: verify tool downloads with publisher checksum files` (`7604a60`).
+
+- **Chunk 10.2 — Installer download message (U5):**
+  - Updated `installer/setup.iss` with `ToolDownloadFailed` tracking and `CurPageChanged(wpFinished)` hook.
+  - If tool downloads fail during setup (e.g. offline installation), displays an informational dialog: `"Some components could not be downloaded. They will be set up the first time you open the app."` without crashing or aborting installation.
+  - Committed with message `phase10.2: display informational message if component download fails during setup` (`f15e7cf`).
+
+- **Chunk 10.3 — Name the ffmpeg build (note):**
+  - Updated open-source credits in `app/ui/settings_dialog.py` to identify ffmpeg as the GPL build (`ffmpeg & ffprobe (GPL build)`) and provided a link to the official source repository.
+  - Committed with message `phase10.3: credit GPL ffmpeg build and link source in Settings` (`39865de`).
+
+- **Chunk 10.4 — Repository clean-up (E9):**
+  - Cleaned up 43 legacy plan markdown files across `New folder (2)/` and `YouTube_Plan/`, plus redundant root `logo_512.png`.
+  - Added `New folder*/` to `.gitignore`.
+  - Preserved `gemini.md` (mandatory rule).
+  - Committed with message `phase10.4: remove legacy plan directories and redundant root logo` (`ca8a906`).
+
+### Phase 10 Verification Results
+- [x] Full test suite: **241/241 passed in 17.81s** across 34 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 10`: PASS.
+- [x] Protected files: `python tools/check_scope.py --final`: PASS (Zero protected engine files modified).
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_10.md`.
+
+Phase 10 is complete. Ready for final Phase 11 (Final QA and Release).

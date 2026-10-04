@@ -700,3 +700,60 @@ Phase 2 (Open File and Folder — Dead Buttons) has been fully built, verified, 
 - [x] Verification evidence recorded in `docs/verification/phase_2.md`.
 
 Phase 2 is complete. Ready for your approval to proceed to Phase 3 (Video and Audio Tab Flow).
+
+
+---
+
+## User Query:
+proccedd with phase 3
+
+## Assistant Response:
+Phase 3 (Video and Audio Tab Flow) has been fully built, verified, and completed across all chunks:
+
+- **Chunk 3.1 — Stop the state reset (V1, A2):**
+  - Added private `_clear_inputs()` in both `VideoTab` and `AudioTab` that blocks signals during URL clearing.
+  - Protected `_on_url_text_changed` from reverting state to `IDLE` when a download is actively running (`DOWNLOADING`).
+  - Unit tests added in `tests/test_tab_flow.py`.
+  - Committed with message `phase3.1: prevent state reset on url clear in video and audio tabs` (`9bacf63`).
+
+- **Chunk 3.2 — One visibility function (V2, V3, V4, A1):**
+  - Implemented `_apply_state_visibility(state)` for both `VideoTab` and `AudioTab` adhering strictly to the screen contract table in `AGENT_INSTRUCTIONS.md` section 2.
+  - Added `self.hint_label` to `AudioTab`.
+  - Preserved `DOWNLOADING` state when a second URL is fetched mid-download; shows info card/combo and enables `Add to queue` only when new info is present.
+  - Full parametrised visibility unit tests added in `tests/test_tab_flow.py`.
+  - Committed with message `phase3.2: unify state visibility in video and audio tabs` (`5ce29e3`).
+
+- **Chunk 3.3 — Return to Idle after finishing (Flow):**
+  - Wired `_clear_inputs()` and `set_state(TabState.IDLE)` on `job_finished`, `job_cancelled`, and `cancel_download` across both tabs.
+  - Ensured that on finish or cancellation, input fields and thumbnails are cleanly reset to Idle look.
+  - Unit tests added in `tests/test_tab_flow.py`.
+  - Committed with message `phase3.3: return to idle and clear inputs on download finish or cancel` (`6af24e9`).
+
+- **Chunk 3.4 — Thumbnail before enqueue, Enter key (V5, A5, V6, A7):**
+  - Called `save_thumbnail(job.video_id, job.thumbnail_bytes)` right before `manager.enqueue(job)` in both `start_download` and `add_to_queue`.
+  - Connected `url_input.returnPressed.connect(self.fetch_url)` on both tabs.
+  - Unit tests added in `tests/test_tab_flow.py`.
+  - Committed with message `phase3.4: save thumbnail before enqueue and bind returnPressed` (`bde6dae`).
+
+- **Chunk 3.5 — Messages reset (V10):**
+  - Added public `reset_messages()` method calling `self.inline_msg.clear()` on both `VideoTab` and `AudioTab`.
+  - Unit tests added in `tests/test_tab_flow.py`.
+  - Committed with message `phase3.5: add reset_messages to video and audio tabs` (`1141e41`).
+
+- **Chunk 3.6 — Audio label and hint (A3, A4):**
+  - Stored trimmed quality label up to first `" ("` (e.g. `"Best original"`, `"MP3"`).
+  - Displayed `hint_label` (`"Best original keeps the YouTube audio as it is."`) only in `READY` state.
+  - Unit tests added in `tests/test_tab_flow.py`.
+  - Committed with message `phase3.6: trim audio quality label and display hint in ready state` (`966349a`).
+
+- **Chunk 3.7 — Already-downloaded dialog (V9):**
+  - Audited codebase for any existing duplicate dialog component (none existed; skipped per instructions and kept `QMessageBox.question`).
+
+### Phase 3 Verification Results
+- [x] Full test suite: **198/198 passed in 22.84s** across 30 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 3` passes with zero violations.
+- [x] Protected files: `python tools/check_scope.py --final` confirms zero changes to protected engine files.
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_3.md`.
+
+Phase 3 is complete. Ready for your approval to proceed to Phase 4 (Progress, Queue, and Recently Downloaded).

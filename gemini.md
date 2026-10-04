@@ -956,3 +956,45 @@ Phase 7 (Settings Dialog) has been fully built, verified, and completed across a
 - [x] Verification evidence recorded in `docs/verification/phase_7.md`.
 
 Phase 7 is complete. Ready for your approval to proceed to Phase 8 (Header, Window, and Arrows).
+
+---
+
+## User Query:
+proccedd with phase 8
+
+## Assistant Response:
+Phase 8 (Header, Title Bar, Dropdown Arrow, and Kit Scan) has been fully built, verified, and completed across all 4 chunks:
+
+- **Chunk 8.1 — Settings icon (G1):**
+  - Redrew `create_gear_icon` in `app/ui/header.py` as a crisp vector outline gear path with a center hole and 6 rounded teeth using a 1.3 stroke weight matching the History row icons.
+  - Replaced the harsh spoke-wheel geometry without copying brand assets.
+  - Verified via unit test `test_gear_icon_outline_not_null_and_non_empty` and screenshot `docs/verification/phase8_chunk1_settings_icon.png`.
+  - Committed with message `phase8.1: redraw settings icon as vector outline gear` (`f444da9`).
+
+- **Chunk 8.2 — Main title bar colour (G2):**
+  - Extended `apply_dark_title_bar` in `app/ui/main_window.py` to set Windows 11 DWM title bar caption and text color attributes (`DWMWA_CAPTION_COLOR = 35`, `DWMWA_TEXT_COLOR = 36`).
+  - Matches the app background (`#0F0F0F` dark, `#FFFFFF` light) and text colors, preventing OS accent color bleeding on Windows 11 while gracefully operating on Windows 10.
+  - Verified via unit test `test_apply_dark_title_bar_calls_dwm_and_win11_caption_color`.
+  - Committed with message `phase8.2: set Windows 11 title bar caption and text colors` (`d7da077`).
+
+- **Chunk 8.3 — Dropdown arrow (X2):**
+  - Copied supplied `arrow_down_dark.png` and `arrow_down_light.png` into `assets/`.
+  - Added single approved rule `QComboBox::down-arrow { image: url(...); }` in `app/ui/theme.py:build_qss()` with forward slashes and frozen package path resolution.
+  - Zero colors modified; `::drop-down` width untouched.
+  - Verified via unit test `test_combobox_down_arrow_rule_in_both_themes` and screenshot `docs/verification/phase8_chunk3_dropdown_arrows.png`.
+  - Committed with message `phase8.3: add QComboBox down-arrow asset and stylesheet rule` (`6998caf`).
+
+- **Chunk 8.4 — Splash and kit scan (K1):**
+  - Converted plain `QPushButton` in `app/ui/splash.py` (Retry button) to `AnimatedButton("Retry", role="secondary", parent=self)`.
+  - Added architecture rule test `tests/test_ui_rules.py` verifying zero plain `QPushButton` instances outside `app/ui/kit/` (except explicit link-style exceptions) and zero `start_hidden` imports in `app/ui/`.
+  - Verified via unit tests `test_no_unapproved_plain_qpushbutton_in_ui` and `test_no_start_hidden_imported_in_ui`.
+  - Committed with message `phase8.4: convert splash button to AnimatedButton and add ui rules test` (`2365167`).
+
+### Phase 8 Verification Results
+- [x] Full test suite: **231/231 passed in 15.46s** across 33 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 8` passes with zero violations.
+- [x] Protected files: `python tools/check_scope.py --final` confirms zero changes to protected engine files.
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_8.md`.
+
+Phase 8 is complete. Ready for your approval to proceed to Phase 9 (Startup and Close).

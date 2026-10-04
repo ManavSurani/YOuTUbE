@@ -68,10 +68,19 @@ def format_size(size_bytes: int) -> str:
 
 
 def format_date_str(date_str: Optional[str]) -> str:
-    """Return short date from SQLite timestamp."""
+    """Return date and time (e.g. '2026-10-02 14:35') from timestamp. If only date exists, return date."""
     if not date_str:
         return ""
-    return date_str.split(" ")[0]
+    s = date_str.replace("T", " ").strip()
+    parts = s.split(" ")
+    if len(parts) >= 2:
+        date_part = parts[0]
+        time_part = parts[1]
+        time_tokens = time_part.split(":")
+        if len(time_tokens) >= 2:
+            return f"{date_part} {time_tokens[0]}:{time_tokens[1]}"
+        return f"{date_part} {time_part}"
+    return parts[0]
 
 
 class FileCheckWorker(QThread):

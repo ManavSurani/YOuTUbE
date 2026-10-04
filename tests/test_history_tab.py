@@ -440,3 +440,39 @@ def test_history_tab_show_filter(tmp_path):
     assert len(tab._all_items) == 2
 
 
+def test_history_row_shows_date_and_time(tmp_path):
+    dummy_file = tmp_path / "vid.mp4"
+    dummy_file.write_bytes(b"data")
+
+    item = HistoryItem(
+        id=1,
+        title="Test Title",
+        url="https://youtube.com/watch?v=123",
+        type="video",
+        quality="1080p",
+        file_path=str(dummy_file),
+        size_bytes=1024,
+        created_at="2026-10-02 14:35:20",
+        file_missing=0,
+    )
+    row = HistoryRowWidget(item)
+    assert "2026-10-02 14:35" in row.meta_label.text()
+
+    # If only date exists, show the date
+    item_date_only = HistoryItem(
+        id=2,
+        title="Date Only",
+        url="https://youtube.com/watch?v=456",
+        type="video",
+        quality="1080p",
+        file_path=str(dummy_file),
+        size_bytes=1024,
+        created_at="2026-10-02",
+        file_missing=0,
+    )
+    row_date_only = HistoryRowWidget(item_date_only)
+    assert "2026-10-02" in row_date_only.meta_label.text()
+    assert "2026-10-02 " not in row_date_only.meta_label.text()
+
+
+

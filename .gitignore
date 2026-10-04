@@ -14,7 +14,7 @@ build/*.spec
 Output/
 
 # Screenshot dev artifacts
-New folder/
+New folder*/
 screenshot_*.png
 
 # Android build

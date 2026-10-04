@@ -1,13 +1,52 @@
 import sys
-from PySide6.QtCore import Qt
+from typing import Optional
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import QApplication
-from app.version import APP_NAME
-from app.core.settings import load_settings
+from app.version import APP_NAME, APP_VERSION
+from app.core.settings import load_settings, save_settings
 from app.ui.theme import build_qss
 from app.ui.splash import SplashScreen
 from app.ui.main_window import MainWindow
-from app.core.paths import purge_stale_tmp
+from app.core.paths import purge_stale_tmp, DEFAULT_DOWNLOADS
 from app.core.single_instance import SingleInstance
+
+
+class HistoryRepairWorker(QThread):
+    repaired = Signal(int)
+
+    def __init__(self, download_dir: str, parent=None) -> None:
+        super().__init__(parent)
+        self.download_dir = download_dir
+
+    def run(self) -> None:
+        from app.core.history_service import repair_existing_rows
+        from app.core.logger import get_logger
+        count = repair_existing_rows(download_dir=self.download_dir)
+        get_logger().info(f"History repair completed: {count} rows repaired.")
+        self.repaired.emit(count)
+
+
+def maybe_start_history_repair(win: MainWindow, settings: Optional[dict] = None) -> Optional[HistoryRepairWorker]:
+    if settings is None:
+        settings = load_settings()
+    last_repair_ver = settings.get("history_repair_version", "")
+    if last_repair_ver == APP_VERSION:
+        return None
+
+    download_dir = settings.get("download_dir", str(DEFAULT_DOWNLOADS))
+    worker = HistoryRepairWorker(download_dir=download_dir, parent=win)
+
+    def on_repaired(count: int) -> None:
+        if count > 0:
+            win.history_tab.refresh_items()
+        curr_settings = load_settings()
+        curr_settings["history_repair_version"] = APP_VERSION
+        save_settings(curr_settings)
+
+    worker.repaired.connect(on_repaired)
+    win._history_repair_worker = worker
+    worker.start()
+    return worker
 
 
 def main() -> int:
@@ -47,11 +86,10 @@ def main() -> int:
     single_instance.start_server(on_secondary_instance_message)
 
     def on_startup_completed():
-        from app.core.history_service import repair_existing_rows
-        repair_existing_rows()
         win = MainWindow()
         main_window_holder.append(win)
         win.show()
+        maybe_start_history_repair(win, settings=settings)
 
     splash = SplashScreen()
     splash_holder.append(splash)

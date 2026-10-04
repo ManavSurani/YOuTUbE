@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -90,7 +89,6 @@ class SettingsDialog(QDialog):
         self.setWindowTitle(f"{APP_NAME} — Settings")
         self.setModal(True)
         self.setMinimumWidth(500)
-        self.resize(520, 600)
 
         self._settings = load_settings()
         self._saved_download_dir = self._settings.get("download_dir", str(DEFAULT_DOWNLOADS))
@@ -106,25 +104,14 @@ class SettingsDialog(QDialog):
         self.setFocus()
 
     def _setup_ui(self) -> None:
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
-
-        # Scroll area to prevent control clipping at 125% and 150% scaling
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-
-        content = QWidget()
-        layout = QVBoxLayout(content)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 24)
         layout.setSpacing(16)
 
         # -------------------------------------------------------------
         # Section 1: Download Folder
         # -------------------------------------------------------------
-        folder_header = QLabel("Download folder", content)
+        folder_header = QLabel("Download folder", self)
         folder_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
         layout.addWidget(folder_header)
 
@@ -132,7 +119,7 @@ class SettingsDialog(QDialog):
         folder_row.setSpacing(8)
 
         # Read-only path box (no focus, no cursor)
-        self.folder_input = QLineEdit(content)
+        self.folder_input = QLineEdit(self)
         self.folder_input.setReadOnly(True)
         self.folder_input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.folder_input.setCursor(Qt.CursorShape.ArrowCursor)
@@ -150,14 +137,14 @@ class SettingsDialog(QDialog):
         """)
         folder_row.addWidget(self.folder_input, 1)
 
-        self.browse_btn = AnimatedButton("Browse…", role="secondary", parent=content)
+        self.browse_btn = AnimatedButton("Browse…", role="secondary", parent=self)
         self.browse_btn.setFixedWidth(85)
         self.browse_btn.setFixedHeight(36)
         self.browse_btn.clicked.connect(self._on_browse)
         folder_row.addWidget(self.browse_btn)
 
         # Save button appears only when folder changes
-        self.save_folder_btn = AnimatedButton("Save", role="primary", parent=content)
+        self.save_folder_btn = AnimatedButton("Save", role="primary", parent=self)
         self.save_folder_btn.setFixedWidth(75)
         self.save_folder_btn.setFixedHeight(36)
         self.save_folder_btn.setVisible(False)
@@ -170,13 +157,13 @@ class SettingsDialog(QDialog):
         helper_row = QHBoxLayout()
         helper_row.setContentsMargins(2, 0, 2, 0)
 
-        self.free_space_label = QLabel(content)
+        self.free_space_label = QLabel(self)
         self.free_space_label.setStyleSheet("font-size: 11px; color: #888888;")
         helper_row.addWidget(self.free_space_label)
 
         helper_row.addStretch(1)
 
-        self.open_folder_link = QPushButton("Open download folder", content)
+        self.open_folder_link = QPushButton("Open download folder", self)
         self.open_folder_link.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_folder_link.setStyleSheet("""
             QPushButton {
@@ -195,85 +182,85 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(helper_row)
 
-        layout.addWidget(self._create_divider(content))
+        layout.addWidget(self._create_divider(self))
 
         # -------------------------------------------------------------
         # Section 2: Appearance (instant switch and persist)
         # -------------------------------------------------------------
-        theme_header = QLabel("Appearance", content)
+        theme_header = QLabel("Appearance", self)
         theme_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
         layout.addWidget(theme_header)
 
-        self.theme_combo = QComboBox(content)
+        self.theme_combo = QComboBox(self)
         self.theme_combo.setFixedHeight(36)
         self.theme_combo.addItem("Dark", "dark")
         self.theme_combo.addItem("Light", "light")
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         layout.addWidget(self.theme_combo)
 
-        layout.addWidget(self._create_divider(content))
+        layout.addWidget(self._create_divider(self))
 
         # -------------------------------------------------------------
         # Section 3: Updates
         # -------------------------------------------------------------
-        update_header = QLabel("Updates", content)
+        update_header = QLabel("Updates", self)
         update_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
         layout.addWidget(update_header)
 
-        self.auto_update_check = AnimatedCheckBox("Check for updates automatically", parent=content)
+        self.auto_update_check = AnimatedCheckBox("Check for updates automatically", parent=self)
         self.auto_update_check.toggled.connect(self._on_auto_update_toggled)
         layout.addWidget(self.auto_update_check)
 
         update_action_row = QHBoxLayout()
         update_action_row.setSpacing(10)
 
-        self.check_now_btn = AnimatedButton("Check now", role="secondary", parent=content)
+        self.check_now_btn = AnimatedButton("Check now", role="secondary", parent=self)
         self.check_now_btn.setFixedHeight(36)
         self.check_now_btn.setFixedWidth(100)
         self.check_now_btn.clicked.connect(self._on_check_updates_now)
         update_action_row.addWidget(self.check_now_btn)
 
-        self.install_update_btn = AnimatedButton("Install update", role="primary", parent=content)
+        self.install_update_btn = AnimatedButton("Install update", role="primary", parent=self)
         self.install_update_btn.setFixedHeight(36)
         self.install_update_btn.setVisible(False)
         self.install_update_btn.clicked.connect(self._on_install_update)
         update_action_row.addWidget(self.install_update_btn)
 
-        self.update_status_label = QLabel(content)
+        self.update_status_label = QLabel(self)
         self.update_status_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
         update_action_row.addWidget(self.update_status_label, 1)
 
         layout.addLayout(update_action_row)
 
-        layout.addWidget(self._create_divider(content))
+        layout.addWidget(self._create_divider(self))
 
         # -------------------------------------------------------------
         # Section 4: About & Support
         # -------------------------------------------------------------
-        about_header = QLabel(f"About {APP_NAME}", content)
+        about_header = QLabel(f"About {APP_NAME}", self)
         about_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
         layout.addWidget(about_header)
 
-        version_label = QLabel(f"Version {APP_VERSION}", content)
+        version_label = QLabel(f"Version {APP_VERSION}", self)
         version_label.setStyleSheet("font-size: 12px; color: #888888;")
         layout.addWidget(version_label)
 
-        credits_label = QLabel(
+        self.credits_label = QLabel(
             "Built with open-source tools:<br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/yt-dlp/yt-dlp\">yt-dlp</a><br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://ffmpeg.org\">ffmpeg &amp; ffprobe</a><br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://deno.com\">deno</a><br>"
             "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/arsenetar/send2trash\">send2trash</a>",
-            content,
+            self,
         )
-        credits_label.setOpenExternalLinks(True)
-        credits_label.setStyleSheet("font-size: 11px; color: #888888; line-height: 1.4;")
-        layout.addWidget(credits_label)
+        self.credits_label.setOpenExternalLinks(True)
+        self.credits_label.setStyleSheet("font-size: 11px; color: #888888; line-height: 1.4;")
+        layout.addWidget(self.credits_label)
 
         about_actions_row = QHBoxLayout()
         about_actions_row.setSpacing(10)
 
-        self.export_log_btn = AnimatedButton("Export log", role="secondary", parent=content)
+        self.export_log_btn = AnimatedButton("Export log", role="secondary", parent=self)
         self.export_log_btn.setFixedHeight(34)
         self.export_log_btn.setToolTip("Export application log file for diagnostics")
         self.export_log_btn.clicked.connect(self._on_export_log)
@@ -282,10 +269,12 @@ class SettingsDialog(QDialog):
         about_actions_row.addStretch(1)
         layout.addLayout(about_actions_row)
 
-        layout.addStretch(1)
-
-        scroll.setWidget(content)
-        root_layout.addWidget(scroll, 1)
+        self.adjustSize()
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen:
+            max_h = screen.availableGeometry().height() - 40
+            if self.height() > max_h:
+                self.resize(self.width(), max_h)
 
     def _create_divider(self, parent: QWidget) -> QFrame:
         divider = QFrame(parent)

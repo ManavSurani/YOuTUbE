@@ -225,3 +225,18 @@ def test_settings_dialog_no_custom_header_and_initial_focus(isolated_settings):
     focused = dlg.focusWidget()
     assert not isinstance(focused, QAbstractButton)
 
+
+def test_settings_dialog_fits_content_no_scroll_area(isolated_settings):
+    from PySide6.QtWidgets import QScrollArea
+    dlg = SettingsDialog()
+    dlg.show()
+    # No scroll area at default size
+    scrolls = dlg.findChildren(QScrollArea)
+    assert len(scrolls) == 0
+    # Height is at least the layout's size hint height
+    assert dlg.height() >= dlg.layout().sizeHint().height()
+    # Export log and credits are fully within the dialog rect (not cut off)
+    assert dlg.rect().contains(dlg.export_log_btn.geometry())
+    assert dlg.rect().contains(dlg.credits_label.geometry())
+
+

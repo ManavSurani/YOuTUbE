@@ -1,0 +1,24 @@
+"""Unit tests for the scope checker tool."""
+
+import subprocess
+import sys
+
+
+def test_scope_checker_clean():
+    res = subprocess.run(
+        [sys.executable, "tools/check_scope.py", "--phase", "1"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0
+    assert "Scope Check PASS" in res.stdout
+
+
+def test_scope_checker_final():
+    res = subprocess.run(
+        [sys.executable, "tools/check_scope.py", "--final"],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0
+    assert "Scope Check PASS (--final)" in res.stdout

@@ -42,7 +42,7 @@ from app.core.file_actions import open_folder
 from app.core.logger import get_logger
 from app.core.paths import APP_LOG_FILE, DEFAULT_DOWNLOADS
 from app.core.settings import load_settings, save_settings
-from app.ui.kit import AnimatedButton, AnimatedCheckBox, IconButton
+from app.ui.kit import AnimatedButton, AnimatedCheckBox
 from app.ui.theme import build_qss
 from app.version import APP_NAME, APP_VERSION
 
@@ -97,33 +97,20 @@ class SettingsDialog(QDialog):
         self._update_worker: Optional[UpdateCheckWorker] = None
         self._latest_update_info: Optional[UpdateInfo] = None
 
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._setup_ui()
         self._load_values()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.setFocus()
 
     def _setup_ui(self) -> None:
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # 1. Header bar with title and close icon
-        header_bar = QWidget(self)
-        header_bar.setFixedHeight(50)
-        header_bar.setStyleSheet("background-color: #181818; border-bottom: 1px solid #282828;")
-        header_layout = QHBoxLayout(header_bar)
-        header_layout.setContentsMargins(20, 0, 16, 0)
-
-        title_label = QLabel("Settings", header_bar)
-        title_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF;")
-        header_layout.addWidget(title_label)
-        header_layout.addStretch(1)
-
-        self.close_btn = IconButton("close", size=28, tooltip="Close", parent=header_bar)
-        self.close_btn.clicked.connect(self.accept)
-        header_layout.addWidget(self.close_btn)
-
-        root_layout.addWidget(header_bar)
-
-        # 2. Scroll area to prevent control clipping at 125% and 150% scaling
+        # Scroll area to prevent control clipping at 125% and 150% scaling
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)

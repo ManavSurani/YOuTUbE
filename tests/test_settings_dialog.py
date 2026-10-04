@@ -48,8 +48,8 @@ def test_settings_dialog_read_only_path_and_no_bottom_buttons(isolated_settings)
     assert not hasattr(dlg, "save_btn")
     assert not hasattr(dlg, "cancel_btn")
 
-    # Header close button exists
-    assert dlg.close_btn is not None
+    # Custom header close button removed (native title bar close used)
+    assert not hasattr(dlg, "close_btn")
     assert not dlg.save_folder_btn.isVisible()
 
 
@@ -215,3 +215,13 @@ def test_open_download_folder_calls_helper(isolated_settings):
     with patch("app.ui.settings_dialog.open_folder", return_value=(True, "")) as mock_open:
         dlg._on_open_download_folder()
         mock_open.assert_called_once_with(Path(saved_dir))
+
+
+def test_settings_dialog_no_custom_header_and_initial_focus(isolated_settings):
+    from PySide6.QtWidgets import QAbstractButton
+    dlg = SettingsDialog()
+    assert not hasattr(dlg, "close_btn")
+    dlg.show()
+    focused = dlg.focusWidget()
+    assert not isinstance(focused, QAbstractButton)
+

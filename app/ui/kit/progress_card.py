@@ -42,6 +42,10 @@ class ProgressCard(QWidget):
         self._active_job: Optional[DownloadJob] = None
         self._max_percent = 0.0
 
+        self._collapse_timer = QTimer(self)
+        self._collapse_timer.setSingleShot(True)
+        self._collapse_timer.timeout.connect(self._on_collapse_timeout)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(8)
@@ -86,6 +90,7 @@ class ProgressCard(QWidget):
 
     def bind_job(self, job: DownloadJob) -> None:
         """Bind active job metadata to card."""
+        self._collapse_timer.stop()
         self._active_job = job
         self._max_percent = 0.0
         self.title_lbl.setText(job.title)
@@ -135,11 +140,20 @@ class ProgressCard(QWidget):
         self.percent_label.setText("100%")
         self.stage_label.setText(f"Done. Saved to {folder_name}.")
         self.stats_label.setText("")
+        self.setVisible(True)
+        self._collapse_timer.start(1200)
 
     def reset(self) -> None:
+        self._collapse_timer.stop()
         self._active_job = None
         self._max_percent = 0.0
         self.setVisible(False)
+
+    def _on_collapse_timeout(self) -> None:
+        try:
+            self.reset()
+        except RuntimeError:
+            pass
 
     @staticmethod
     def _fmt_bytes(b: int) -> str:

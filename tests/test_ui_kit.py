@@ -117,3 +117,44 @@ def test_progress_card_updates():
     assert card.progress_bar.value() == 55
     assert card.percent_label.text() == "55%"
     assert "10 MB/s" in card.stats_label.text()
+
+
+def test_progress_card_collapses_after_done():
+    card = ProgressCard()
+    card.show_done(out_dir="C:/Downloads")
+    assert card.progress_bar.value() == 100
+    assert card.isVisible()
+
+    assert hasattr(card, "_collapse_timer")
+    assert card._collapse_timer.isActive()
+
+    card._collapse_timer.timeout.emit()
+    assert not card.isVisible()
+    assert card._active_job is None
+
+
+def test_progress_card_bind_new_job_cancels_collapse_timer():
+    card = ProgressCard()
+    card.show_done(out_dir="C:/Downloads")
+    assert hasattr(card, "_collapse_timer")
+    assert card._collapse_timer.isActive()
+
+    from app.core.info_fetcher import VideoInfo
+    from app.core.jobs import DownloadJob
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="New Song",
+        channel="Channel",
+        duration=120,
+        duration_str="2:00",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    job = DownloadJob.create(info=info, kind="video", quality_label="1080p", output_dir="C:/Downloads")
+    card.bind_job(job)
+
+    assert not card._collapse_timer.isActive()
+    assert card.isVisible()
+    assert card.title_lbl.text() == "New Song"
+

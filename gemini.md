@@ -998,3 +998,86 @@ Phase 8 (Header, Title Bar, Dropdown Arrow, and Kit Scan) has been fully built, 
 - [x] Verification evidence recorded in `docs/verification/phase_8.md`.
 
 Phase 8 is complete. Ready for your approval to proceed to Phase 9 (Startup and Close).
+
+---
+
+## User Query:
+proccedd with phase 9
+
+## Assistant Response:
+Phase 9 (Startup and Close) has been fully built, verified, and completed across all 3 chunks:
+
+- **Chunk 9.1 — Startup history repair off the UI thread (U3):**
+  - Created `HistoryRepairWorker(QThread)` in `app/main.py` to offload history database repair from the main UI thread to a background thread.
+  - Passes configured download folder (`download_dir`) from `settings.json` (falling back to `DEFAULT_DOWNLOADS`).
+  - Guarded with `history_repair_version` in `settings.json` so repair runs strictly once per application version, avoiding redundant rescanning on subsequent launches.
+  - Connected `worker.repaired` signal to update settings and trigger UI refresh (`win.history_tab.refresh_items()`) safely on the UI thread, and logs the repaired count.
+  - Verified via 3 unit tests in `tests/test_startup_repair.py`.
+  - Committed with message `phase9.1: run startup history repair in background worker once per version` (`4de6f18`).
+
+- **Chunk 9.2 — Window close while downloading (E10):**
+  - Overrode `closeEvent` in `MainWindow` (`app/ui/main_window.py`).
+  - Checks if a download is active (`manager.active_job`). If active and `confirm_exit_on_download` is enabled, prompts the user once with a calm message box: `"A download is running. Quit and cancel it?"` with `"Keep downloading"` as the focused default action.
+  - If user selects Quit: calls `manager.cancel_active()` and waits up to 2 seconds for worker termination before cleanly closing.
+  - If user selects Keep downloading: ignores close event and preserves active download.
+  - Verified via 3 unit tests in `tests/test_close_event.py`.
+  - Committed with message `phase9.2: prompt to cancel active download on window close` (`29b5fa1`).
+
+- **Chunk 9.3 — Secondary instance link insertion (E12):**
+  - Updated `handle_secondary_instance_message()` in `app/main.py`.
+  - Validates secondary instance arguments using `is_youtube_url()` before setting the URL in `win.video_tab.url_input`.
+  - Arbitrary messages or plain activations bring the window to the foreground without overwriting or clearing existing input.
+  - Valid YouTube links immediately populate the video tab input and bring the window to the foreground.
+  - Verified via unit test `test_secondary_instance_message_ignores_junk_and_accepts_valid_url` in `tests/test_single_instance.py`.
+  - Committed with message `phase9.3: validate secondary instance message url with is_youtube_url` (`d1c099e`).
+
+---
+
+## User Query:
+python -m pytest
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Vs\YOuTUbE
+plugins: anyio-4.11.0, Faker-40.39.0
+collected 238 items
+
+tests\test_app_updater.py ............                                   [  5%]
+tests\test_check_scope.py ..                                             [  5%]
+tests\test_close_event.py ...                                            [  7%]
+tests\test_download_manager.py ...                                       [  8%]
+tests\test_downloader.py ..........................................      [ 26%]
+tests\test_errors.py ..........                                          [ 30%]
+tests\test_file_actions.py .......                                       [ 33%]
+tests\test_history_db.py ......                                          [ 35%]
+tests\test_history_service.py .....                                      [ 37%]
+tests\test_history_tab.py ................                               [ 44%]
+tests\test_info_fetcher.py ......                                        [ 47%]
+tests\test_jobs.py ..                                                    [ 47%]
+tests\test_network_monitor.py ......                                     [ 50%]
+tests\test_phase2_integrity.py ..                                        [ 51%]
+tests\test_phase8_stress_edge_cases.py ....                              [ 52%]
+tests\test_proc.py ...                                                   [ 54%]
+tests\test_queue.py ...  now is stuck now after what
+
+## Assistant Response:
+We identified and resolved two issues that caused the test suite to hang and encounter an access violation:
+
+1. **Why `test_queue.py` was stuck:**
+   - In Chunk 9.2, `MainWindow.closeEvent()` checks `manager.active_job` and displays a modal confirmation dialog if a download is active.
+   - In `tests/test_queue.py`, the cancellation test `test_queue_cancel_stops_and_waits` left an active job in `get_download_manager()`.
+   - When the next test (`test_finish_notification_on_inactive_window`) instantiated and closed `MainWindow()`, `closeEvent()` prompted the confirmation dialog and blocked headless pytest waiting for GUI interaction.
+   - **Fix:** Added active job cleanup (`manager.cancel_active()`, `manager._waiting_queue.clear()`, `manager._active_job = None`) at the end of `test_queue_cancel_stops_and_waits` and start of `test_finish_notification_on_inactive_window`.
+
+2. **Why `test_startup_repair.py` encountered an access violation / abort:**
+   - When `MainWindow()` was instantiated in unit tests, `UpdateCheckWorker` spawned background network threads making socket requests during test execution and teardown. We patched `UpdateCheckWorker.start` in `tests/test_startup_repair.py` to prevent background network threads.
+   - In `tests/test_single_instance.py`, `test_single_instance_detection` connected a `QLocalSocket` to `QLocalServer` and called `deleteLater`, but did not pump the event loop before returning. When subsequent tests pumped the event loop via `QApplication.processEvents()`, Qt attempted to dispatch events for deleted C++ socket handles whose Python wrappers had been garbage-collected, causing an access violation.
+   - **Fix:** Added event loop draining (`for _ in range(5): app.processEvents()`) during cleanup in `test_single_instance_detection`.
+
+### Phase 9 Verification Results
+- [x] Full test suite: **238/238 passed in 15.52s** across 34 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 9`: PASS.
+- [x] Protected files: `python tools/check_scope.py --final`: PASS (Zero protected files modified).
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_9.md`.
+
+Phase 9 is complete. Ready for your approval to proceed to Phase 10 (Testing and Release).

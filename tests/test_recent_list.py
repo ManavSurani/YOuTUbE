@@ -56,3 +56,63 @@ def test_recent_row_play_and_open_folder_call_helper(tmp_path):
         with patch.object(row, "_show_feedback") as mock_feedback:
             play_btn.click()
             mock_feedback.assert_called_once_with("Cannot play file")
+
+
+def test_recent_list_refresh_no_duplicate_see_all(monkeypatch):
+    mock_items = [
+        HistoryItem(
+            id=i,
+            title=f"Video {i}",
+            url=f"https://youtube.com/watch?v=vid{i}123456",
+            type="video",
+            quality="1080p",
+            file_path="/path/to/vid",
+            size_bytes=1024,
+            file_missing=0,
+        )
+        for i in range(1, 4)
+    ]
+    monkeypatch.setattr("app.ui.recent_list.list_items", lambda type_filter: mock_items)
+
+    recent_vid = RecentList(kind="video")
+    recent_vid.refresh()
+    recent_vid.refresh()
+    recent_vid.refresh()
+
+    see_all_btns = [btn for btn in recent_vid.findChildren(QPushButton) if "See all" in btn.text()]
+    assert len(see_all_btns) == 1
+    assert see_all_btns[0].text() == "See all video history →"
+
+
+def test_recent_list_audio_label_and_signal(monkeypatch):
+    mock_items = [
+        HistoryItem(
+            id=i,
+            title=f"Audio {i}",
+            url=f"https://youtube.com/watch?v=aud{i}123456",
+            type="audio",
+            quality="MP3",
+            file_path="/path/to/aud",
+            size_bytes=1024,
+            file_missing=0,
+        )
+        for i in range(1, 8)
+    ]
+    monkeypatch.setattr("app.ui.recent_list.list_items", lambda type_filter: mock_items)
+
+    recent_aud = RecentList(kind="audio")
+    recent_aud.refresh()
+
+    see_all_btns = [btn for btn in recent_aud.findChildren(QPushButton) if "See all" in btn.text()]
+    assert len(see_all_btns) == 1
+    assert see_all_btns[0].text() == "See all audio history →"
+
+    # At most 5 rows
+    assert len(recent_aud.findChildren(RecentRow)) == 5
+
+    # Signal carries "audio"
+    received = []
+    recent_aud.see_all_clicked.connect(lambda k: received.append(k))
+    see_all_btns[0].click()
+    assert received == ["audio"]
+

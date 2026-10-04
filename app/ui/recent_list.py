@@ -11,6 +11,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -110,7 +111,7 @@ class RecentRow(QWidget):
 class RecentList(QWidget):
     """Container showing up to 5 recently downloaded files for the given type."""
 
-    see_all_clicked = Signal()
+    see_all_clicked = Signal(str)
 
     def __init__(self, kind: str = "video", parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -123,13 +124,23 @@ class RecentList(QWidget):
 
         self.refresh()
 
+    def _clear_layout(self, layout: Optional[QLayout]) -> None:
+        """Recursively clear layout and deleteLater all widgets."""
+        if layout is None:
+            return
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            child_layout = item.layout()
+            if child_layout is not None:
+                self._clear_layout(child_layout)
+
     def refresh(self) -> None:
         """Reload last 5 items of matching type from history database."""
-        # Clear existing rows
-        while self._layout.count() > 0:
-            child = self._layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+        self._clear_layout(self._layout)
 
         items = list_items(type_filter=self.kind)[:5]
         if not items:
@@ -146,18 +157,19 @@ class RecentList(QWidget):
             row = RecentRow(item, self)
             self._layout.addWidget(row)
 
-        # "See all in History" link
+        # "See all" link labelled by tab
         footer_layout = QHBoxLayout()
         footer_layout.setContentsMargins(0, 4, 0, 0)
         footer_layout.addStretch(1)
 
-        see_all_btn = QPushButton("See all in History →", self)
+        link_text = f"See all {self.kind} history →"
+        see_all_btn = QPushButton(link_text, self)
         see_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         see_all_btn.setStyleSheet(
             "QPushButton { background: transparent; border: none; font-size: 12px; color: #3EA6FF; } "
             "QPushButton:hover { text-decoration: underline; color: #65B8FF; }"
         )
-        see_all_btn.clicked.connect(self.see_all_clicked.emit)
+        see_all_btn.clicked.connect(lambda: self.see_all_clicked.emit(self.kind))
         footer_layout.addWidget(see_all_btn)
 
         self._layout.addLayout(footer_layout)

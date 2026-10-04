@@ -158,3 +158,29 @@ def test_progress_card_bind_new_job_cancels_collapse_timer():
     assert card.isVisible()
     assert card.title_lbl.text() == "New Song"
 
+
+def test_gear_icon_outline_not_null_and_non_empty():
+    from app.ui.header import create_gear_icon
+    for sz in (16, 32):
+        icon = create_gear_icon(size=sz)
+        assert not icon.isNull()
+        pix = icon.pixmap(sz, sz)
+        assert not pix.isNull()
+        img = pix.toImage()
+        assert not img.isNull()
+        # Pixmap is not empty
+        has_colored_pixels = any(
+            img.pixelColor(x, y).alpha() > 0
+            for y in range(sz)
+            for x in range(sz)
+        )
+        assert has_colored_pixels
+
+    # Verify outline style: at size 32, annular region between hole (r~5) and teeth (r~10) is hollow
+    icon32 = create_gear_icon(size=32)
+    img32 = icon32.pixmap(32, 32).toImage()
+    # At (16 + 7, 16) = (23, 16), in the old spoke implementation this was right on a spoke line.
+    # In an outline gear with separate center hole and cog perimeter, the annular ring is hollow.
+    assert img32.pixelColor(23, 16).alpha() == 0
+
+

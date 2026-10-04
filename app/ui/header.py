@@ -46,7 +46,9 @@ def get_asset_path(filename: str) -> Path:
 
 
 def create_gear_icon(size: int = 16, color: str = "#FFFFFF") -> QIcon:
-    """Render a crisp vector gear icon using QPainter."""
+    """Render a crisp vector outline gear icon using QPainter."""
+    import math
+
     pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
 
@@ -55,25 +57,46 @@ def create_gear_icon(size: int = 16, color: str = "#FFFFFF") -> QIcon:
 
     cx, cy = size / 2.0, size / 2.0
     r_outer = size * 0.42
-    r_inner = size * 0.22
+    r_root = size * 0.30
+    r_hole = size * 0.15
 
-    pen = QPen(QColor(color), 1.6)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    # Same stroke weight as History icons (1.3)
+    pen = QPen(QColor(color), 1.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
 
-    # Center hole
-    painter.drawEllipse(QPointF(cx, cy), r_inner, r_inner)
+    # 1. Center hole
+    painter.drawEllipse(QPointF(cx, cy), r_hole, r_hole)
 
-    # 6 teeth
-    import math
-    for i in range(6):
-        angle = i * (2 * math.pi / 6)
-        x1 = cx + math.cos(angle) * (r_inner + 1)
-        y1 = cy + math.sin(angle) * (r_inner + 1)
-        x2 = cx + math.cos(angle) * r_outer
-        y2 = cy + math.sin(angle) * r_outer
-        painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+    # 2. Outer cogwheel contour (6 teeth)
+    path = QPainterPath()
+    num_teeth = 6
+    tooth_angle = 2.0 * math.pi / num_teeth
+    half_tip = tooth_angle * 0.18
+    half_root = tooth_angle * 0.18
+
+    for i in range(num_teeth):
+        mid = i * tooth_angle
+        t1 = mid - half_tip
+        t2 = mid + half_tip
+        r1 = mid + tooth_angle / 2.0 - half_root
+        r2 = mid + tooth_angle / 2.0 + half_root
+
+        pt_t1 = QPointF(cx + r_outer * math.cos(t1), cy + r_outer * math.sin(t1))
+        pt_t2 = QPointF(cx + r_outer * math.cos(t2), cy + r_outer * math.sin(t2))
+        pt_r1 = QPointF(cx + r_root * math.cos(r1), cy + r_root * math.sin(r1))
+        pt_r2 = QPointF(cx + r_root * math.cos(r2), cy + r_root * math.sin(r2))
+
+        if i == 0:
+            path.moveTo(pt_t1)
+        else:
+            path.lineTo(pt_t1)
+        path.lineTo(pt_t2)
+        path.lineTo(pt_r1)
+        path.lineTo(pt_r2)
+
+    path.closeSubpath()
+    painter.drawPath(path)
 
     painter.end()
     return QIcon(pix)

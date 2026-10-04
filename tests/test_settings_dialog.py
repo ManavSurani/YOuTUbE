@@ -248,4 +248,18 @@ def test_settings_dialog_applies_dark_title_bar_on_show(isolated_settings):
         mock_apply.assert_called_once_with(int(dlg.winId()), is_dark=True)
 
 
+def test_settings_dialog_buttons_are_animated(isolated_settings):
+    from app.ui.kit import AnimatedButton
+    from PySide6.QtWidgets import QPushButton
+    dlg = SettingsDialog()
+    assert isinstance(dlg.browse_btn, AnimatedButton)
+    assert isinstance(dlg.check_now_btn, AnimatedButton)
+    assert isinstance(dlg.export_log_btn, AnimatedButton)
+    assert isinstance(dlg.save_folder_btn, AnimatedButton)
+    # Blue link should not be AnimatedButton (preserve text link styling)
+    assert not isinstance(dlg.open_folder_link, AnimatedButton)
+    assert isinstance(dlg.open_folder_link, QPushButton)
+
+
+
 

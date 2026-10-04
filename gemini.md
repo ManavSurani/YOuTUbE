@@ -1163,3 +1163,18 @@ All 11 phases of the YOuTUbE Fix Plan are complete:
 - Phase 9: Packaging & Single Instance
 - Phase 10: Optional Hardening & Tool Checksums
 - Phase 11: Final QA & v1.0.2 Release
+
+---
+
+## User Query:
+what about exe we have to launch it again
+
+## Assistant Response:
+- **Build Status:** Both the executable and the installer are already fully built and verified for version 1.0.2:
+  - **Standalone executable:** `dist\YOuTUbE\YOuTUbE.exe` (built with `--noconsole`, zero terminal flashes)
+  - **Windows installer:** `Output\YOuTUbE_Setup.exe` (SHA-256: `cda03a2a0201ee61b391267d25fddf3f97dd6ac15fa4e84ad08f82200ce99aeb`)
+- **Do you need to rebuild?** No, you do not need to recompile or rebuild unless new code changes are introduced.
+- **How to launch:**
+  - You can double-click `dist\YOuTUbE\YOuTUbE.exe` to run the app directly.
+  - Or double-click `Output\YOuTUbE_Setup.exe` to run the Windows installer (creates Desktop and Start Menu shortcuts).
+  - Alternatively, if you want me to launch `dist\YOuTUbE\YOuTUbE.exe` on your desktop right now, just let me know!

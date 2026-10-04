@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -269,19 +268,76 @@ class ClearAllDialog(QDialog):
         btn_row.setSpacing(8)
         btn_row.addStretch(1)
 
-        btn_cancel = AnimatedButton("Cancel", role="ghost", parent=self)
-        btn_cancel.clicked.connect(self.reject)
-        btn_row.addWidget(btn_cancel)
+        self.btn_cancel = AnimatedButton("Cancel", role="ghost", parent=self)
+        self.btn_cancel.clicked.connect(self.reject)
+        self.btn_cancel.setDefault(True)
+        btn_row.addWidget(self.btn_cancel)
 
-        btn_clear = AnimatedButton("Clear history", role="primary", parent=self)
-        btn_clear.clicked.connect(self._on_clear)
-        btn_row.addWidget(btn_clear)
+        self.btn_clear = AnimatedButton("Clear history", role="primary", parent=self)
+        self.btn_clear.clicked.connect(self._on_clear)
+        btn_row.addWidget(self.btn_clear)
 
         layout.addLayout(btn_row)
+        self.btn_cancel.setFocus()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.btn_cancel.setFocus()
 
     def _on_clear(self) -> None:
         self.delete_files = self.chk_files.isChecked()
         self.accept()
+
+
+class HistoryWarningDialog(QDialog):
+    """Custom notification dialog matching the flat dark design system."""
+
+    def __init__(self, title: str, message: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.title_text = title
+        self.message = message
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setFixedWidth(420)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1F1F1F;
+                border: 1px solid #333333;
+                border-radius: 12px;
+            }
+        """)
+        self._setup_ui(title, message)
+
+    def _setup_ui(self, title: str, message: str) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        title_label = QLabel(title, self)
+        title_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF;")
+        layout.addWidget(title_label)
+
+        msg_label = QLabel(message, self)
+        msg_label.setWordWrap(True)
+        msg_label.setStyleSheet("font-size: 13px; color: #CCCCCC; line-height: 1.4;")
+        layout.addWidget(msg_label)
+
+        layout.addSpacing(8)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+
+        self.btn_ok = AnimatedButton("OK", role="primary", parent=self)
+        self.btn_ok.clicked.connect(self.accept)
+        self.btn_ok.setDefault(True)
+        btn_row.addWidget(self.btn_ok)
+
+        layout.addLayout(btn_row)
+        self.btn_ok.setFocus()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.btn_ok.setFocus()
 
 
 class HistoryRowWidget(QWidget):
@@ -440,7 +496,7 @@ class HistoryRowWidget(QWidget):
 
         ok, err_msg = history_service.relink(self.item.id, chosen_path)
         if not ok:
-            QMessageBox.warning(self, "Relink Failed", err_msg)
+            HistoryWarningDialog("Relink failed", err_msg, parent=self).exec()
             return
 
         self.item.file_path = chosen_path
@@ -464,11 +520,11 @@ class HistoryRowWidget(QWidget):
         ok, err_msg = history_service.delete(self.item.id, delete_file=delete_file)
 
         if not ok:
-            QMessageBox.warning(
-                self,
+            HistoryWarningDialog(
                 "Cannot delete file",
                 f"The file could not be deleted:\n\n{err_msg}\n\nThe item was kept in history.",
-            )
+                parent=self,
+            ).exec()
             return
 
         self.animate_delete(on_finished=self.deleted.emit)
@@ -734,10 +790,10 @@ class HistoryTab(QWidget):
             err_preview = "\n".join(errors[:3])
             if len(errors) > 3:
                 err_preview += f"\n...and {len(errors) - 3} more."
-            QMessageBox.warning(
-                self,
+            HistoryWarningDialog(
                 "Files locked",
                 f"Some files could not be deleted because they are open in another program:\n\n{err_preview}",
-            )
+                parent=self,
+            ).exec()
 
         self.reload_history()

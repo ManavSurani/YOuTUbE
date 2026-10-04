@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog
 import pytest
 
 from app.core.history_db import HistoryItem, add_item, init_db, list_items
@@ -196,9 +196,8 @@ def test_history_delete_locked_file_keeps_row(tmp_path, monkeypatch):
 
     warnings_shown = []
     monkeypatch.setattr(
-        QMessageBox,
-        "warning",
-        lambda parent, title, text: warnings_shown.append((title, text)),
+        "app.ui.history_tab.HistoryWarningDialog.exec",
+        lambda self: warnings_shown.append((self.title_text, self.message)),
     )
 
     deleted_emitted = []
@@ -473,6 +472,20 @@ def test_history_row_shows_date_and_time(tmp_path):
     row_date_only = HistoryRowWidget(item_date_only)
     assert "2026-10-02" in row_date_only.meta_label.text()
     assert "2026-10-02 " not in row_date_only.meta_label.text()
+
+
+def test_clear_all_dialog_initial_focus_and_checkbox():
+    dialog = ClearAllDialog()
+    assert not dialog.chk_files.isChecked()
+    assert hasattr(dialog, "btn_cancel")
+    assert dialog.btn_cancel.isDefault()
+
+
+def test_no_qmessagebox_in_history_tab():
+    from pathlib import Path
+    content = Path("app/ui/history_tab.py").read_text(encoding="utf-8")
+    assert "QMessageBox" not in content
+
 
 
 

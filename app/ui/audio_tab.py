@@ -283,6 +283,10 @@ class AudioTab(QWidget):
             )
             self.set_state(target_state)
 
+    def reset_messages(self) -> None:
+        """Clear any inline error or info message."""
+        self.inline_msg.clear()
+
     def _clear_inputs(self) -> None:
         """Clear URL input and info card without firing textChanged state resets."""
         blocked = self.url_input.blockSignals(True)

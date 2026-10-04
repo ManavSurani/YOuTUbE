@@ -285,3 +285,14 @@ def test_return_pressed_triggers_fetch(TabClass, monkeypatch):
     assert fetch_called is True
 
 
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_reset_messages_clears_inline_message(TabClass):
+    tab = TabClass()
+    tab.inline_msg.show_error("Test Error")
+    assert tab.inline_msg.isVisibleTo(tab)
+
+    tab.reset_messages()
+    assert not tab.inline_msg.isVisibleTo(tab)
+
+
+

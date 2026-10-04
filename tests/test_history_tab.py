@@ -386,3 +386,57 @@ def test_history_row_play_and_open_folder_use_helper(tmp_path):
             row.play_btn.click()
             mock_feedback.assert_called_once_with("Failed to open")
 
+
+def test_history_tab_show_filter(tmp_path):
+    dummy_vid = tmp_path / "vid.mp4"
+    dummy_vid.write_bytes(b"vid")
+    dummy_aud = tmp_path / "aud.mp3"
+    dummy_aud.write_bytes(b"aud")
+
+    add_item(HistoryItem(
+        id=None,
+        title="Video Item",
+        url="https://youtube.com/watch?v=vid1",
+        type="video",
+        quality="1080p",
+        file_path=str(dummy_vid),
+        size_bytes=1000,
+        file_missing=0,
+    ))
+    add_item(HistoryItem(
+        id=None,
+        title="Audio Item",
+        url="https://youtube.com/watch?v=aud1",
+        type="audio",
+        quality="MP3",
+        file_path=str(dummy_aud),
+        size_bytes=500,
+        file_missing=0,
+    ))
+
+    tab = HistoryTab()
+
+    # Filter audio
+    tab.show_filter("audio")
+    assert tab.chip_audio.isChecked()
+    assert not tab.chip_video.isChecked()
+    assert not tab.chip_all.isChecked()
+    assert len(tab._all_items) == 1
+    assert tab._all_items[0].type == "audio"
+
+    # Filter video
+    tab.show_filter("video")
+    assert tab.chip_video.isChecked()
+    assert not tab.chip_audio.isChecked()
+    assert not tab.chip_all.isChecked()
+    assert len(tab._all_items) == 1
+    assert tab._all_items[0].type == "video"
+
+    # Filter None (All)
+    tab.show_filter(None)
+    assert tab.chip_all.isChecked()
+    assert not tab.chip_video.isChecked()
+    assert not tab.chip_audio.isChecked()
+    assert len(tab._all_items) == 2
+
+

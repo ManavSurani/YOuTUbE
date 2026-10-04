@@ -608,6 +608,19 @@ class HistoryTab(QWidget):
         """Public alias for refreshing items on tab switch."""
         self.reload_history()
 
+    def show_filter(self, kind: Optional[str] = None) -> None:
+        """Select matching filter chip and reload list."""
+        normalized = kind.lower() if isinstance(kind, str) else None
+        if normalized == "video":
+            self.chip_video.setChecked(True)
+            self._set_filter("video")
+        elif normalized == "audio":
+            self.chip_audio.setChecked(True)
+            self._set_filter("audio")
+        else:
+            self.chip_all.setChecked(True)
+            self._set_filter(None)
+
     def _set_filter(self, filter_type: Optional[str]) -> None:
         self._current_filter = filter_type
         self.reload_history()

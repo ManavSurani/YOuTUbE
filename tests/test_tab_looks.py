@@ -197,3 +197,19 @@ def test_apply_dark_title_bar_calls_dwm_and_win11_caption_color():
     apply_dark_title_bar(1234, is_dark=True)  # should not raise
 
 
+def test_combobox_down_arrow_rule_in_both_themes():
+    import re
+    from pathlib import Path
+    from app.ui.theme import build_qss
+
+    for theme in ("dark", "light"):
+        qss = build_qss(theme)
+        assert "QComboBox::down-arrow" in qss
+        # Match image: url(<path>);
+        match = re.search(r"QComboBox::down-arrow\s*\{[^}]*image:\s*url\(([^)]+)\);", qss)
+        assert match is not None, f"QComboBox::down-arrow rule missing or malformed for theme {theme}"
+        arrow_path = match.group(1).strip("'\"")
+        assert Path(arrow_path).exists(), f"Arrow image path does not exist: {arrow_path}"
+
+
+

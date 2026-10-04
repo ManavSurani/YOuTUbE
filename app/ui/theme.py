@@ -1,5 +1,5 @@
-"""Theme and stylesheet builder for dark and light modes."""
-
+from pathlib import Path
+import sys
 from typing import Dict
 
 DARK_TOKENS: Dict[str, str] = {
@@ -35,6 +35,15 @@ LIGHT_TOKENS: Dict[str, str] = {
 }
 
 
+def _get_arrow_path(theme_name: str) -> str:
+    filename = "arrow_down_dark.png" if theme_name.lower() == "dark" else "arrow_down_light.png"
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        base = Path(sys._MEIPASS) / "assets"
+    else:
+        base = Path(__file__).resolve().parents[2] / "assets"
+    return (base / filename).resolve().as_posix()
+
+
 def build_qss(theme_name: str = "dark") -> str:
     """Build Qt stylesheet strictly from theme tokens.
     
@@ -42,6 +51,7 @@ def build_qss(theme_name: str = "dark") -> str:
     """
     c = DARK_TOKENS if theme_name.lower() == "dark" else LIGHT_TOKENS
     button_accent_text = c["text"] if theme_name.lower() == "dark" else c["bg"]
+    arrow_path = _get_arrow_path(theme_name)
 
     return f"""
 * {{
@@ -111,6 +121,10 @@ QComboBox:focus {{
 QComboBox::drop-down {{
     border: none;
     width: 24px;
+}}
+
+QComboBox::down-arrow {{
+    image: url({arrow_path});
 }}
 
 QComboBox QAbstractItemView {{

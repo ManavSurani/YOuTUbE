@@ -35,10 +35,12 @@ Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName}"; Flags: nowait
 [Code]
 var
   DownloadPage: TDownloadWizardPage;
+  ToolDownloadFailed: Boolean;
 
 procedure InitializeWizard;
 begin
   DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
+  ToolDownloadFailed := False;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -53,14 +55,24 @@ begin
     try
       try
         DownloadPage.Download;
+        ToolDownloadFailed := False;
       except
-        // If download fails (e.g. offline), continue without failing the install
+        // If download fails (e.g. offline), track failure and continue without failing the install
+        ToolDownloadFailed := True;
       end;
     finally
       DownloadPage.Hide;
     end;
   end;
   Result := True;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and ToolDownloadFailed then
+  begin
+    SuppressibleMsgBox('Some components could not be downloaded. They will be set up the first time you open the app.', mbInformation, MB_OK, IDOK);
+  end;
 end;
 
 procedure SearchAndCopy(const SearchDir, TargetFileName, DestDir: String);

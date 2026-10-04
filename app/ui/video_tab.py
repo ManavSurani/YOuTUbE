@@ -183,8 +183,12 @@ class VideoTab(QWidget):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        if scroll.viewport():
+            scroll.viewport().setStyleSheet("background: transparent;")
 
-        container = QWidget(scroll)
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 8, 0, 16)
         layout.setSpacing(12)

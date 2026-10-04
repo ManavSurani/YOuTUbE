@@ -36,6 +36,7 @@ from app.core.app_updater import (
     launch_silent_installer,
     should_check_update,
 )
+from app.core.download_manager import get_download_manager
 from app.core.logger import get_logger
 from app.core.network_monitor import NetworkMonitor
 from app.core.settings import load_settings, save_settings
@@ -395,6 +396,26 @@ class MainWindow(QMainWindow):
             self.video_tab.fetch_url()
 
     def closeEvent(self, event) -> None:
+        manager = get_download_manager()
+        if manager.active_job:
+            settings = load_settings()
+            if settings.get("confirm_exit_on_download", True):
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle(APP_NAME)
+                msg_box.setText("A download is running. Quit and cancel it?")
+                quit_btn = msg_box.addButton("Quit", QMessageBox.ButtonRole.AcceptRole)
+                keep_btn = msg_box.addButton("Keep downloading", QMessageBox.ButtonRole.RejectRole)
+                msg_box.setDefaultButton(keep_btn)
+                msg_box.exec()
+                if msg_box.clickedButton() != quit_btn:
+                    event.ignore()
+                    return
+
+            worker = manager._worker
+            manager.cancel_active()
+            if worker and hasattr(worker, "wait"):
+                worker.wait(2000)
+
         if hasattr(self, "tray_icon") and self.tray_icon:
             self.tray_icon.hide()
         if hasattr(self, "network_monitor"):

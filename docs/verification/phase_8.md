@@ -1,107 +1,72 @@
-# Phase 8 Verification: QA and Release
+# Phase 8 Verification: Header, Title Bar, Dropdown Arrow, and Kit Scan
 
-**Date:** 2026-10-02  
-**Status:** PASSED  
-**Scope:** Phase 8 — Comprehensive regression test suite, real-world test matrix (10 scenarios), stress & edge case hardening (crash recovery, disk space pre-flight, folder redirection, single instance IPC), multi-resolution visual review, and v1.0.1 release preparation.
-
----
-
-## 1. Automated Test Results
-
-- Command: `python -m pytest tests/`
-- Results: **170 passed in 13.27s** across 24 test modules with 0 failures, 0 errors.
-
-### Complete Test Modules Breakdown
-| Test Module | Tests | Status | Scope |
-|---|---|---|---|
-| `test_real_world_matrix.py` | 10 | **PASSED** | 10 real-world scenarios (Unicode, long titles, 4K, errors) |
-| `test_phase8_stress_edge_cases.py` | 4 | **PASSED** | Crash recovery, disk space, folder change mid-queue, rename |
-| `test_single_instance.py` | 1 | **PASSED** | IPC detection, socket messaging, single-instance focus |
-| `test_app_updater.py` | 12 | **PASSED** | Manifest parsing, SHA-256 verification, silent updates, data survival |
-| `test_download_manager.py` | 3 | **PASSED** | Single-active download queue, pause/resume, error handling |
-| `test_downloader.py` | 42 | **PASSED** | Command builders, deno runtime flag, progress parser, path resolution |
-| `test_errors.py` | 10 | **PASSED** | Plain-language error mapping (age gate, private, disk full) |
-| `test_history_db.py` | 6 | **PASSED** | SQLite migrations, indexing, search, duplicate detection |
-| `test_history_service.py` | 5 | **PASSED** | Relinking, safe delete via Recycle Bin, thumbnail cleanup |
-| `test_history_tab.py` | 10 | **PASSED** | Filter chips, search, custom delete dialog, row actions |
-| `test_info_fetcher.py` | 6 | **PASSED** | Hidden yt-dlp metadata extraction, quality sorting |
-| `test_jobs.py` | 2 | **PASSED** | Immutable DownloadJob snapshot validation |
-| `test_network_monitor.py` | 6 | **PASSED** | Live connectivity checks, debouncing, one-time popup |
-| `test_phase2_integrity.py` | 2 | **PASSED** | Rule R1 contract check & bare except scanner |
-| `test_proc.py` | 3 | **PASSED** | Hidden process launcher, PATH prepend, tree termination |
-| `test_queue.py` | 4 | **PASSED** | Sequential FIFO queue, pause/resume, cancel |
-| `test_settings.py` | 4 | **PASSED** | Atomic settings persistence, fallback defaults |
-| `test_settings_dialog.py` | 8 | **PASSED** | Folder validation, instant theme switch, credits |
-| `test_shortcut.py` | 6 | **PASSED** | win32com creation, Known Folder API, 4-state lifecycle |
-| `test_tab_state_machine.py` | 4 | **PASSED** | VideoTab and AudioTab state transitions |
-| `test_thumbnails.py` | 3 | **PASSED** | Thumbnail cache and reference counting |
-| `test_tool_manager.py` | 7 | **PASSED** | Missing tools, verify, rollback, auto-repair retry |
-| `test_ui_kit.py` | 7 | **PASSED** | Custom animated buttons, chips, cards, inline banners |
-| `test_url_tools.py` | 5 | **PASSED** | URL validation, normalization, query stripping |
-| **Total** | **170** | **ALL PASSED** | |
+## Summary
+- **Date:** 2026-10-04
+- **Branch:** `fix/ui-pass`
+- **Baseline Commit:** `51a9d986e139bd7ec4ebc3775c9d50584bdf154d`
+- **Tests Run:** 231 passed in 15.46s (100% passing across 33 test modules)
+- **Rows Addressed:** G1, G2, X2, K1 (header and splash)
 
 ---
 
-## 2. Chunk 8.1: Real-World Test List Matrix
+## Rows Fixed
 
-| Scenario | Input / Test Case | Expected Behavior | Result | Evidence |
+| Issue ID | Status | Description | File Changed | Tests Added / Passing |
 |---|---|---|---|---|
-| **1. ASCII Title** | Standard alphanumeric title | Clean filename, safe `.path` file output | **PASS** | `test_scenario_1_ascii_title` |
-| **2. Illegal Chars** | Title with `\| : / \ * ? " < >` | `--windows-filenames` sanitizes symbols; path resolves cleanly | **PASS** | `test_scenario_2_illegal_windows_characters` |
-| **3. Emoji Title** | `🎵 Great Music 🔥 Beats` | UTF-8 encoded path file avoids ANSI mojibake | **PASS** | `test_scenario_3_emoji_title` |
-| **4. Multilingual** | `日本語タイトル - हिन्दी - بالعربية` | Full non-English unicode character preservation | **PASS** | `test_scenario_4_non_english_multilingual` |
-| **5. Long Title** | Title exceeding 150 characters | `--trim-filenames 150` prevents MAX_PATH crashes | **PASS** | `test_scenario_5_very_long_title` |
-| **6. 4K Dual Stream** | Video with resolution $\ge$ 2160p | Dual stream selection (`bv*+ba`), MKV merge | **PASS** | `test_scenario_6_4k_video_dual_stream` |
-| **7. 720p Resolution** | Specific quality selector (720p) | Restricts video format to height $\le$ 720 | **PASS** | `test_scenario_7_720p_video` |
-| **8. Age Restricted** | Video requiring age gate sign-in | Friendly explanation ("This video is age restricted and can't be downloaded without sign-in.") | **PASS** | `test_scenario_8_age_restricted_error` |
-| **9. Private Video** | Members-only / private video | Friendly explanation ("This video is private or members-only.") | **PASS** | `test_scenario_9_private_video_error` |
-| **10. Tracking URL** | Link with `&list=...&t=120s` | Normalized to clean watch link, single video downloaded | **PASS** | `test_scenario_10_clean_url_strips_playlist_and_timestamp` |
+| G1 | Fixed | Redrew `create_gear_icon` in `app/ui/header.py` as a delicate vector outline gear contour matching the exact 1.3 stroke weight of History icons, replacing the harsh chunky spoke design. | `app/ui/header.py` | `test_gear_icon_outline_not_null_and_non_empty` |
+| G2 | Fixed | In `apply_dark_title_bar` in `app/ui/main_window.py`, added Windows 11 DWM caption and text color attributes (`DWMWA_CAPTION_COLOR=35`, `DWMWA_TEXT_COLOR=36`) ensuring the title bar matches `#0F0F0F` / `#FFFFFF` instead of showing OS accent colors. | `app/ui/main_window.py` | `test_apply_dark_title_bar_calls_dwm_and_win11_caption_color` |
+| X2 | Fixed | Bundled supplied `arrow_down_dark.png` and `arrow_down_light.png` into `assets/` and added a clean `QComboBox::down-arrow` rule in `app/ui/theme.py:build_qss()` with forward slashes and frozen path support. Zero colors changed, `::drop-down` width untouched. | `assets/`, `app/ui/theme.py` | `test_combobox_down_arrow_rule_in_both_themes` |
+| K1 | Fixed | Converted plain `QPushButton` in `app/ui/splash.py` (Retry button) to `AnimatedButton`. Added architecture rule test `tests/test_ui_rules.py` verifying zero plain `QPushButton` instances outside `app/ui/kit/` (except explicit link-style exceptions) and zero `start_hidden` imports in `app/ui/`. | `app/ui/splash.py`, `tests/test_ui_rules.py` | `test_no_unapproved_plain_qpushbutton_in_ui`, `test_no_start_hidden_imported_in_ui` |
 
 ---
 
-## 3. Chunk 8.2: Stress and Edge Cases
+## Chunks Executed
 
-1. **Queue Crash Recovery & Data Integrity:**
-   - Enqueued 10 items, cancelled the 3rd, completed items 1, 2, and 4, simulated abrupt application exit during the 5th item.
-   - On restart: `queue.json` successfully restored remaining items without corruption; `history.db` verified to have exactly 3 completed rows and 0 broken/half-written rows (`test_stress_queue_recovery_and_history_cleanliness`).
-2. **Disk Full Pre-Flight Check:**
-   - Implemented pre-flight check in `VideoTab` and `AudioTab`: if destination drive has $< 50\text{ MB}$ free, download is prevented and inline warning `"Not enough disk space in download folder."` is displayed (`test_edge_case_disk_full_rejection`).
-3. **Change Download Folder Mid-Queue:**
-   - Verified that currently downloading job finishes in its snapshot folder, while subsequent jobs in the queue use the newly updated directory from settings (`test_edge_case_change_download_folder_mid_queue`).
-4. **Rename/Move Downloads Folder:**
-   - When Downloads folder is moved or renamed, SQLite history records survive intact and flag `file_missing=1`. Relinking file updates path and clears missing flag cleanly (`test_edge_case_rename_downloads_folder_history_survives`).
-5. **Single-Instance Application Guard:**
-   - Implemented `SingleInstance` via `QLocalServer`/`QLocalSocket` IPC. When a second instance launches, it transmits activation message to primary instance, un-minimizes and brings the window to front, and terminates secondary instance with exit code 0 (`test_single_instance_detection`).
+1. **Chunk 8.1: Settings icon (G1)**
+   - Replaced spoke-wheel geometry with a continuous 6-tooth vector outline gear path and inner hub circle with 1.3 stroke width matching history action icons.
+   - Tested icon non-nullness and hollow outline annular region at 16px and 32px.
+   - Screenshot captured: `docs/verification/phase8_chunk1_settings_icon.png`.
+   - Commit: `f444da9` (`phase8.1: redraw settings icon as vector outline gear`).
 
----
+2. **Chunk 8.2: Main title bar colour (G2)**
+   - Extended `apply_dark_title_bar` in `app/ui/main_window.py` to set Windows 11 DWM attributes 35 (caption color) and 36 (text color) matching theme tokens.
+   - Wrapped in try/except with logger fallback; checks `sys.getwindowsversion().build >= 22000`.
+   - Tested with Windows API mocking on Windows 11 and Windows 10 builds; verified it never raises.
+   - Commit: `d7da077` (`phase8.2: set Windows 11 title bar caption and text colors`).
 
-## 4. Chunk 8.3: Visual and UX Review
+3. **Chunk 8.3: Dropdown arrow (X2)**
+   - Copied `arrow_down_dark.png` and `arrow_down_light.png` into `assets/`.
+   - Added single approved rule `QComboBox::down-arrow { image: url(...); }` in `app/ui/theme.py`.
+   - Tested for both themes ensuring stylesheet references existing files with forward slashes.
+   - Screenshot captured: `docs/verification/phase8_chunk3_dropdown_arrows.png`.
+   - Commit: `6998caf` (`phase8.3: add QComboBox down-arrow asset and stylesheet rule`).
 
-- **Screenshots Captured:**
-  - `docs/screenshots/screenshot_phase8_760px.png`: Clean 760px compact layout with zero text clipping.
-  - `docs/screenshots/screenshot_phase8_1280px.png`: Centered 1100px content card with balanced responsive margins.
-  - `docs/screenshots/screenshot_phase8_audio_tab.png`: Audio tab showing quality dropdown, metadata options, and recent list.
-  - `docs/screenshots/screenshot_phase8_history_tab.png`: History tab with filter chips, search input, thumbnail badges, and icon buttons.
-- **Design System Compliance:**
-  - Background surface `#0F0F0F` / `#212121`, border `#2E2E2E`.
-  - Red `#FF0000` reserved strictly for Download button, active tab underline, and app logo.
-  - Zero terminal flashes, zero console popups.
+4. **Chunk 8.4: Splash and kit scan (K1)**
+   - Converted `retry_btn` in `app/ui/splash.py` to `AnimatedButton("Retry", role="secondary", parent=self)`.
+   - Created `tests/test_ui_rules.py` enforcing UI architecture constraints across all `app/ui/*.py` files.
+   - Commit: `2365167` (`phase8.4: convert splash button to AnimatedButton and add ui rules test`).
 
 ---
 
-## 5. Chunk 8.4: Release Preparation (v1.0.1)
+## Verification Gate: Phase 8 Checklist
 
-- Bumped application version to `1.0.1`:
-  - `app/version.py`: `APP_VERSION = "1.0.1"`
-  - `version.json`: `"latest_version": "1.0.1"`, `"version": "1.0.1"`
-  - `installer/setup.iss`: `#define MyAppVersion "1.0.1"`
-- Updated release notes detailing all v2 engine and UI improvements.
+### Automated Checks
+- [x] All new tests pass (`test_gear_icon_outline_not_null_and_non_empty`, `test_apply_dark_title_bar_calls_dwm_and_win11_caption_color`, `test_combobox_down_arrow_rule_in_both_themes`, `test_no_unapproved_plain_qpushbutton_in_ui`, `test_no_start_hidden_imported_in_ui`).
+- [x] Full test suite: **231/231 passed in 15.46s** across 33 test modules.
+
+### Manual Checks
+- [x] Settings button shows the simple outline gear.
+- [x] Windows 11 title bar matches the application background (`#0F0F0F` dark, `#FFFFFF` light).
+- [x] Every dropdown (Video, Audio, Settings theme) shows a down arrow in dark and light themes.
+- [x] Splash Retry button uses `AnimatedButton` and reacts to hover and press.
+
+### Scope and No-Terminal Checks
+- [x] `python tools/check_scope.py --phase 8`: PASS.
+- [x] `python tools/check_scope.py --final`: PASS (Zero protected files modified).
+- [x] `git grep -n "print(" app/`: 0 hits.
+- [x] Zero terminal windows or console popups.
 
 ---
 
-## 6. Mandatory Rules Sign-Off
-- [x] **App Name Exact Casing:** `YOuTUbE` maintained everywhere.
-- [x] **Zero Terminal Flashes:** `proc.py` is the only module importing `subprocess`. All processes launched with `CREATE_NO_WINDOW` and `SW_HIDE`.
-- [x] **Zero Console Output:** 0 `print()` statements in `app/`.
-- [x] **Zero Bare Excepts:** All exceptions logged with `logger.debug` or `logger.warning`.
-- [x] **Automated Regression Suite:** 170 passed with 0 failures.
+## Sign-off
+Phase 8 complete. Awaiting user approval to proceed to Phase 9 (Startup and Close).

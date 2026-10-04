@@ -46,3 +46,33 @@ def test_single_instance_detection():
     if instance._server:
         instance._server.close()
     QLocalServer.removeServer(SERVER_NAME)
+
+
+def test_secondary_instance_message_ignores_junk_and_accepts_valid_url():
+    """Chunk 9.3 (E12): valid YouTube link fills link box; 'hello' does not."""
+    from unittest.mock import MagicMock
+    from PySide6.QtCore import Qt
+    from app.main import handle_secondary_instance_message
+
+    mock_win = MagicMock()
+    mock_win.windowState.return_value = Qt.WindowState.WindowNoState
+
+    # 1. Send "hello" -> window activated, but setText NOT called with "hello"
+    handle_secondary_instance_message("hello", [mock_win], [])
+    mock_win.show.assert_called()
+    mock_win.video_tab.url_input.setText.assert_not_called()
+
+    # 2. Send "ACTIVATE hello" -> setText NOT called
+    handle_secondary_instance_message("ACTIVATE hello", [mock_win], [])
+    mock_win.video_tab.url_input.setText.assert_not_called()
+
+    # 3. Send valid YouTube link -> setText called with the link
+    valid_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    handle_secondary_instance_message(valid_url, [mock_win], [])
+    mock_win.video_tab.url_input.setText.assert_called_once_with(valid_url)
+
+    # 4. Send "ACTIVATE https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    mock_win.video_tab.url_input.setText.reset_mock()
+    handle_secondary_instance_message(f"ACTIVATE {valid_url}", [mock_win], [])
+    mock_win.video_tab.url_input.setText.assert_called_once_with(valid_url)
+

@@ -49,6 +49,25 @@ def maybe_start_history_repair(win: MainWindow, settings: Optional[dict] = None)
     return worker
 
 
+def handle_secondary_instance_message(msg: str, main_window_holder: list, splash_holder: list) -> None:
+    """Handle message from secondary instance: bring window forward and insert valid YouTube links."""
+    from app.core.url_tools import is_youtube_url
+    if main_window_holder:
+        win = main_window_holder[0]
+        win.setWindowState((win.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
+        win.show()
+        win.raise_()
+        win.activateWindow()
+        clean_msg = msg.strip()
+        if clean_msg.startswith("ACTIVATE "):
+            clean_msg = clean_msg[len("ACTIVATE "):].strip()
+        if clean_msg and clean_msg != "ACTIVATE" and is_youtube_url(clean_msg):
+            win.video_tab.url_input.setText(clean_msg)
+    elif splash_holder and splash_holder[0].isVisible():
+        splash_holder[0].raise_()
+        splash_holder[0].activateWindow()
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
@@ -71,17 +90,7 @@ def main() -> int:
     splash_holder = []
 
     def on_secondary_instance_message(msg: str):
-        if main_window_holder:
-            win = main_window_holder[0]
-            win.setWindowState((win.windowState() & ~Qt.WindowState.WindowMinimized) | Qt.WindowState.WindowActive)
-            win.show()
-            win.raise_()
-            win.activateWindow()
-            if msg and msg != "ACTIVATE" and "youtu" in msg.lower():
-                win.video_tab.url_input.setText(msg.strip())
-        elif splash_holder and splash_holder[0].isVisible():
-            splash_holder[0].raise_()
-            splash_holder[0].activateWindow()
+        handle_secondary_instance_message(msg, main_window_holder, splash_holder)
 
     single_instance.start_server(on_secondary_instance_message)
 

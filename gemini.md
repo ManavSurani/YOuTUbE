@@ -597,3 +597,59 @@ Yes, both binaries in the `Output/` directory have been compiled, signed, and up
    - **Timestamp:** 02-10-2026 12:10:25
    - **SHA-256:** `7C0A8A6997DF7A7FA93234336D76A4F68DDD0915E417F4EC421AE38437B863F9`
    - **Features Included:** Version 1.0.1, single-instance IPC application guard (`QLocalServer`/`QLocalSocket`), disk space pre-flight validation (< 50MB check), queue crash recovery, Windows Known Folder Desktop shortcut resolution, atomic settings persistence, and hidden background process execution (Rule R1).
+
+
+---
+
+## User Query:
+"C:\Users\Jay\Downloads\files (5)" You are the build agent for YOuTUbE (Windows app, Python + PySide6).
+You have the plan folder YOuTUbE_Fix_Plan and the project repository.
+PART A: ANALYSE FIRST (read-only, change nothing)
+...
+PART B: BUILD (only after I reply "approved")
+RULES THAT ALWAYS APPLY
+
+## Assistant Response:
+Conducted complete Part A analysis across the 56 issues in the fix plan issue register against commit `51a9d986e139bd7ec4ebc3775c9d50584bdf154d`. Verified real code lines, identified all confirmed/changed rows, formulated questions with recommended options, summarized product contracts and hard rules, and awaited approval before Phase 1.
+
+---
+
+## User Query:
+proccedd with phase 1
+
+## Assistant Response:
+Phase 1 (Guard Rails and Release Blockers) has been fully built, verified, and completed across all 4 chunks:
+
+- **Chunk 1.1 — Branch and baseline:**
+  - Created git branch `fix/ui-pass` from baseline commit `51a9d986e139bd7ec4ebc3775c9d50584bdf154d`.
+  - Computed and recorded git object hashes for all 15 protected files in `docs/verification/baseline.md`.
+  - Generated all 26 baseline screenshots at 100% and 125% DPI scaling under `docs/verification/baseline/` (Video idle/ready/downloading/done, Audio idle/ready/downloading/done, History rows/empty, Settings, Clear history dialog, Delete dialog).
+  - Committed with message `phase1.1: create branch and baseline`.
+
+- **Chunk 1.2 — Scope checker:**
+  - Implemented `tools/check_scope.py` using standard library only.
+  - Supports `--phase N` enforcing cumulative allowed file boundaries and `--final` enforcing protected file immutability against baseline.
+  - Verified tamper test: deliberate modification of `app/core/downloader.py` fails with code 1, clean tree passes with code 0.
+  - Added unit tests in `tests/test_check_scope.py`.
+  - Committed with message `phase1.2: scope checker`.
+
+- **Chunk 1.3 — Update URL (U1):**
+  - Wrote failing unit test in `tests/test_version_urls.py`.
+  - Updated `UPDATE_MANIFEST_URL` in `app/version.py` from `Jay` to `ManavSurani` (`https://raw.githubusercontent.com/ManavSurani/YOuTUbE/main/version.json`).
+  - Verified unit test passes and verified online manifest responds with HTTP 200 and valid release JSON.
+  - Committed with message `phase1.3: fix update manifest url`.
+
+- **Chunk 1.4 — pywin32 dependency (U2):**
+  - Added `pywin32` to `requirements.txt`.
+  - Added unit test in `tests/test_requirements.py` confirming `pywin32`, `PySide6`, and `send2trash` dependencies are present and importable.
+  - Verified desktop shortcut creation tests in `tests/test_shortcut.py` pass cleanly.
+  - Committed with message `phase1.4: add pywin32 dependency`.
+
+### Phase 1 Verification Results
+- [x] Full test suite: **174/174 passed in 17.95s** (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 1` passes with zero violations.
+- [x] Protected files: 0 differences in protected files versus baseline commit.
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows.
+- [x] Verification evidence recorded in `docs/verification/phase_1.md`.
+
+Phase 1 is complete. Ready for your approval to proceed to Phase 2 (Open File and Folder Helper).

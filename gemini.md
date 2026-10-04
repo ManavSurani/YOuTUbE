@@ -850,3 +850,50 @@ Phase 5 (Look and Feel of the Tabs) has been fully built, verified, and complete
 - [x] Verification evidence recorded in `docs/verification/phase_5.md`.
 
 Phase 5 is complete. Ready for your approval to proceed to Phase 6 (History Tab and "See all").
+---
+
+## User Query:
+proccedd with phase 6
+
+## Assistant Response:
+Phase 6 (History Tab and "See all" Wiring) has been fully built, verified, and completed across all 5 chunks:
+
+- **Chunk 6.1 — Filter from outside (H2):**
+  - Added public method `show_filter(kind: Optional[str] = None)` to `HistoryTab` in `app/ui/history_tab.py`.
+  - Automatically selects the matching chip (`chip_video`, `chip_audio`, or `chip_all`), delegates to `_set_filter()`, and reloads the history list.
+  - Verified via unit test `test_history_tab_show_filter` and screenshot `docs/verification/phase6_chunk1_history_filter.png`.
+  - Committed with message `phase6.1: public show_filter method for history_tab` (`aa0eaf9`).
+
+- **Chunk 6.2 — Wire "See all" and message reset (G3, G4, V10):**
+  - Connected `video_tab.recent_list.see_all_clicked` and `audio_tab.recent_list.see_all_clicked` in `MainWindow` to `_on_see_all_history(kind)`.
+  - Handler smoothly activates the History tab (index 2) via `self.header.select_tab(2)`, moving the red underline, and calls `self.history_tab.show_filter(kind)`.
+  - Updated `_on_tab_changed` in `MainWindow` to call `reset_messages()` on both `video_tab` and `audio_tab`, preventing error and info messages from lingering across tabs.
+  - Verified via unit tests `test_see_all_clicked_switches_to_history_with_filter`, `test_tab_changed_resets_messages_on_video_and_audio`, and screenshot `docs/verification/phase6_chunk2_see_all.png`.
+  - Committed with message `phase6.2: wire see_all to history tab and reset messages on tab change` (`2526c11`).
+
+- **Chunk 6.3 — Date and time (H3):**
+  - Updated `format_date_str()` in `app/ui/history_tab.py` to format timestamps as `YYYY-MM-DD HH:MM` (e.g. `2026-10-02 14:35`) instead of stripping time, while preserving date-only strings when no time component exists.
+  - Verified via unit test `test_history_row_shows_date_and_time` and screenshot `docs/verification/phase6_chunk3_history_datetime.png`.
+  - Committed with message `phase6.3: format history rows with date and time` (`b38932b`).
+
+- **Chunk 6.4 — Dialog focus and native dialogs (H4, H5):**
+  - In `ClearAllDialog`, set `self.btn_cancel.setDefault(True)` and set initial focus on `btn_cancel`, while keeping the checkbox "Also delete the files from my computer" unchecked by default.
+  - Replaced all remaining native `QMessageBox.warning` calls with custom `HistoryWarningDialog(QDialog)` adhering strictly to the flat dark design system (`#1F1F1F` surface, `#333333` border, Segoe UI typography).
+  - Completely purged `QMessageBox` from imports.
+  - Resolved modal dialog hang during automated test suite execution by updating the test harness mock.
+  - Verified via unit tests `test_clear_all_dialog_initial_focus_and_checkbox`, `test_no_qmessagebox_in_history_tab`, and screenshot `docs/verification/phase6_chunk4_clear_dialog.png`.
+  - Committed with message `phase6.4: clear dialog cancel focus and custom history warning dialog` (`0f950ec`).
+
+- **Chunk 6.5 — Plain buttons (K1):**
+  - Audited button usages in `app/ui/history_tab.py` confirming all action buttons use `AnimatedButton`, `IconButton`, or `FilterChip`.
+  - Added automated static audit test `test_scan_no_plain_qpushbutton_in_history_tab`.
+  - Committed with message `phase6.5: scan and audit zero plain qpushbutton in history_tab` (`878a807`).
+
+### Phase 6 Verification Results
+- [x] Full test suite: **222/222 passed in 14.82s** across 32 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 6` passes (`main_window.py` touches only connect lines and `_on_tab_changed`).
+- [x] Protected files: `python tools/check_scope.py --final` confirms zero changes to protected engine files.
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_6.md`.
+
+Phase 6 is complete. Ready for your approval to proceed to Phase 7 (Settings Dialog).

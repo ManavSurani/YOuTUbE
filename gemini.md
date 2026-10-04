@@ -653,3 +653,50 @@ Phase 1 (Guard Rails and Release Blockers) has been fully built, verified, and c
 - [x] Verification evidence recorded in `docs/verification/phase_1.md`.
 
 Phase 1 is complete. Ready for your approval to proceed to Phase 2 (Open File and Folder Helper).
+
+
+---
+
+## User Query:
+proccedd with phase 2
+
+## Assistant Response:
+Phase 2 (Open File and Folder — Dead Buttons) has been fully built, verified, and completed across all 4 chunks:
+
+- **Chunk 2.1 — The helper (`app/core/file_actions.py`):**
+  - Implemented `open_file(path)`, `reveal_in_folder(path)`, and `open_folder(path)` returning `(ok: bool, message: str)`.
+  - Uses `os.startfile` and Windows Shell API `ShellExecuteW(None, "open", "explorer.exe", param, None, 1)` with `SW_SHOWNORMAL` so Explorer opens in a visible window without console flashes.
+  - Correctly builds `/select,"<path>"` quoting for paths containing spaces and Unicode characters (`｜ ： ⧸ é 日本語 😀`).
+  - Fallback order: opens file -> else reveals in folder -> else opens parent folder -> else returns `"File not found. You can use Locate file."`.
+  - Zero imports of `start_hidden`. Added tests in `tests/test_file_actions.py`.
+  - Committed with message `phase2.1: create file_actions helper`.
+
+- **Chunk 2.2 — History tab wiring (H1):**
+  - Replaced `_play_file` and `_open_folder` in `HistoryRowWidget` with calls to `open_file` and `reveal_in_folder`.
+  - Displays friendly `Toast` notifications on failure.
+  - Completely purged `start_hidden(["explorer", ...])` from `app/ui/history_tab.py`.
+  - Tested in `tests/test_history_tab.py`.
+  - Committed with message `phase2.2: wire file_actions into history_tab`.
+
+- **Chunk 2.3 — Recently downloaded wiring (R5):**
+  - Replaced `_play_file` and `_open_folder` in `RecentRow` with calls to `open_file` and `reveal_in_folder`.
+  - Displays friendly `Toast` notifications on failure.
+  - Completely purged `start_hidden(["explorer", ...])` from `app/ui/recent_list.py`.
+  - Added tests in `tests/test_recent_list.py`.
+  - Committed with message `phase2.3: wire file_actions into recent_list`.
+
+- **Chunk 2.4 — Settings "Open download folder" wiring (S4):**
+  - Replaced `_on_open_download_folder` in `SettingsDialog` with `open_folder`.
+  - Preserved "Folder Missing" warning for non-existent folders.
+  - Completely purged `start_hidden(["explorer", ...])` from `app/ui/settings_dialog.py`.
+  - Added tests in `tests/test_settings_dialog.py`.
+  - Committed with message `phase2.4: wire open_folder into settings_dialog`.
+
+### Phase 2 Verification Results
+- [x] Full test suite: **184/184 passed in 19.53s** (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 2` passes with zero violations.
+- [x] Protected files: `python tools/check_scope.py --final` confirms zero changes to protected engine files.
+- [x] No hidden explorer: `git grep -n "explorer" app/` returns hits ONLY in `app/core/file_actions.py:53`.
+- [x] Verification evidence recorded in `docs/verification/phase_2.md`.
+
+Phase 2 is complete. Ready for your approval to proceed to Phase 3 (Video and Audio Tab Flow).

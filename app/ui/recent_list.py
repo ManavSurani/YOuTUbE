@@ -16,9 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.file_actions import open_file, reveal_in_folder
 from app.core.history_db import HistoryItem, list_items
-from app.core.proc import start_hidden
 from app.ui.kit.thumb_label import ThumbLabel
+from app.ui.kit.toast import Toast
 
 
 def _fmt_size(size_bytes: int) -> str:
@@ -90,17 +91,20 @@ class RecentRow(QWidget):
             folder_btn.clicked.connect(self._open_folder)
             layout.addWidget(folder_btn)
 
+    def _show_feedback(self, message: str) -> None:
+        parent = self.window() if self.window() else self
+        toast = Toast(message, parent=parent)
+        toast.show_toast(4000)
+
     def _play_file(self) -> None:
-        p = Path(self.item.file_path)
-        if p.is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.resolve())))
+        ok, msg = open_file(self.item.file_path)
+        if not ok and msg:
+            self._show_feedback(msg)
 
     def _open_folder(self) -> None:
-        p = Path(self.item.file_path)
-        if p.exists():
-            start_hidden(["explorer", f"/select,{p.resolve()}"])
-        elif p.parent.exists():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.parent.resolve())))
+        ok, msg = reveal_in_folder(self.item.file_path)
+        if not ok and msg:
+            self._show_feedback(msg)
 
 
 class RecentList(QWidget):

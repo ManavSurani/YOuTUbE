@@ -428,7 +428,8 @@ class AudioTab(QWidget):
             get_logger().debug(f"Could not check disk usage: {exc}")
 
         fmt_key = self.format_combo.currentData() or "best"
-        quality_label = self.format_combo.currentText() or "Best original"
+        raw_label = self.format_combo.currentText() or "Best original"
+        quality_label = raw_label.split(" (")[0].strip()
 
         if not self._current_info:
             self._current_info = VideoInfo(

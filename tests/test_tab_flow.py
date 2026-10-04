@@ -295,4 +295,45 @@ def test_reset_messages_clears_inline_message(TabClass):
     assert not tab.inline_msg.isVisibleTo(tab)
 
 
+def test_audio_job_quality_label_short():
+    tab = AudioTab()
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Audio",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[],
+        filesize_approx=1000,
+    )
+    tab._current_info = info
+
+    # Default option: "Best original (Opus/M4A)"
+    job = tab._build_job()
+    assert job is not None
+    assert job.quality_label == "Best original"
+
+    # Second option: "MP3 (320 kbps)"
+    tab.format_combo.setCurrentIndex(1)
+    job = tab._build_job()
+    assert job is not None
+    assert job.quality_label == "MP3"
+
+
+def test_audio_hint_visibility_idle_and_ready():
+    tab = AudioTab()
+    tab.set_state(TabState.IDLE)
+    assert not tab.hint_label.isVisibleTo(tab)
+
+    tab.set_state(TabState.READY)
+    assert tab.hint_label.isVisibleTo(tab)
+    assert tab.hint_label.text() == "Best original keeps the YouTube audio as it is."
+
+
+
 

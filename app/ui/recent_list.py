@@ -63,12 +63,11 @@ class RecentRow(QWidget):
         info_layout.addWidget(title_lbl)
 
         file_exists = Path(item.file_path).is_file() if item.file_path else False
-        parts = [item.quality, _fmt_size(item.size_bytes)]
-        if not file_exists:
-            parts.append("File missing")
+        size_str = _fmt_size(item.size_bytes) if file_exists else "File missing"
+        parts = [p for p in (item.quality, size_str) if p]
 
         meta_lbl = QLabel(" • ".join(parts), self)
-        meta_lbl.setStyleSheet(f"font-size: 11px; color: {'#FF4E45' if not file_exists else '#AAAAAA'};")
+        meta_lbl.setStyleSheet("font-size: 11px; color: #AAAAAA;")
         info_layout.addWidget(meta_lbl)
 
         layout.addLayout(info_layout, 1)
@@ -86,6 +85,7 @@ class RecentRow(QWidget):
             play_btn.clicked.connect(self._play_file)
             layout.addWidget(play_btn)
 
+        if item.file_path:
             folder_btn = QPushButton("Open folder", self)
             folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             folder_btn.setStyleSheet(btn_style)

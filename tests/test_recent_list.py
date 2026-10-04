@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from unittest.mock import patch
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 import pytest
 
 from app.core.history_db import HistoryItem
@@ -115,4 +115,37 @@ def test_recent_list_audio_label_and_signal(monkeypatch):
     recent_aud.see_all_clicked.connect(lambda k: received.append(k))
     see_all_btns[0].click()
     assert received == ["audio"]
+
+
+def test_recent_row_missing_file_no_play_btn_and_shows_file_missing(tmp_path):
+    missing_path = tmp_path / "deleted_video.mp4"
+    assert not missing_path.exists()
+
+    item = HistoryItem(
+        id=99,
+        title="Missing Video",
+        url="https://youtube.com/watch?v=missing12345",
+        type="video",
+        quality="1080p",
+        file_path=str(missing_path),
+        size_bytes=0,
+        file_missing=1,
+    )
+
+    row = RecentRow(item)
+
+    play_btns_all = [btn for btn in row.findChildren(QPushButton) if btn.text() == "Play"]
+    assert len(play_btns_all) == 0
+
+    folder_btns = [btn for btn in row.findChildren(QPushButton) if btn.text() == "Open folder"]
+    assert len(folder_btns) == 1
+
+    labels = [lbl.text() for lbl in row.findChildren(QLabel)]
+    assert any("File missing" in text for text in labels)
+    assert not any("0 B" in text for text in labels)
+
+    meta_labels = [lbl for lbl in row.findChildren(QLabel) if "File missing" in lbl.text()]
+    assert len(meta_labels) == 1
+    assert "#FF4E45" not in meta_labels[0].styleSheet()
+    assert "#AAAAAA" in meta_labels[0].styleSheet()
 

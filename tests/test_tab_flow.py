@@ -222,3 +222,66 @@ def test_tab_finish_clears_inputs_and_returns_to_idle(TabClass, kind, monkeypatc
     assert tab.url_input.isVisibleTo(tab)
     assert tab.fetch_btn.isVisibleTo(tab)
 
+
+@pytest.mark.parametrize("TabClass,module_name", [
+    (VideoTab, "video_tab"),
+    (AudioTab, "audio_tab"),
+])
+def test_thumbnail_saved_before_enqueue(TabClass, module_name, monkeypatch):
+    tab = TabClass()
+    fake_mgr = FakeManager()
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda: fake_mgr)
+    tab._wire_manager()
+
+    call_order = []
+
+    def mock_save_thumb(vid, data):
+        call_order.append(("save_thumbnail", vid, data))
+        return "thumb_path"
+
+    def mock_enqueue(job):
+        call_order.append(("enqueue", job))
+
+    monkeypatch.setattr(f"app.ui.{module_name}.save_thumbnail", mock_save_thumb)
+    fake_mgr.enqueue = mock_enqueue
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Video",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    tab._on_info_fetched(info)
+    tab.info_card.thumb_bytes = b"fake_thumb_bytes"
+
+    tab.start_download()
+
+    assert len(call_order) == 2
+    assert call_order[0][0] == "save_thumbnail"
+    assert call_order[0][1] == "dQw4w9WgXcQ"
+    assert call_order[0][2] == b"fake_thumb_bytes"
+    assert call_order[1][0] == "enqueue"
+
+
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_return_pressed_triggers_fetch(TabClass, monkeypatch):
+    tab = TabClass()
+    fetch_called = False
+
+    def mock_fetch():
+        nonlocal fetch_called
+        fetch_called = True
+
+    tab.fetch_url = mock_fetch
+    tab.url_input.returnPressed.emit()
+    assert fetch_called is True
+
+

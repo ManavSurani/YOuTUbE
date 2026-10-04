@@ -32,6 +32,7 @@ from app.core.jobs import DownloadJob
 from app.core.logger import get_logger
 from app.core.paths import DEFAULT_DOWNLOADS
 from app.core.settings import load_settings
+from app.core.thumbnails import save_thumbnail
 from app.core.url_tools import clean_url, extract_video_id, is_youtube_url
 from app.ui.kit import (
     AnimatedButton,
@@ -196,6 +197,7 @@ class VideoTab(QWidget):
         self.url_input.setPlaceholderText("Paste a YouTube link")
         self.url_input.setFixedHeight(36)
         self.url_input.textChanged.connect(self._on_url_text_changed)
+        self.url_input.returnPressed.connect(self.fetch_url)
         input_row.addWidget(self.url_input, 1)
 
         self.fetch_btn = AnimatedButton("Fetch", role="secondary", parent=container)
@@ -468,6 +470,9 @@ class VideoTab(QWidget):
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
+        if job.thumbnail_bytes:
+            save_thumbnail(job.video_id, job.thumbnail_bytes)
+
         manager = get_download_manager()
         manager.enqueue(job)
 
@@ -479,6 +484,9 @@ class VideoTab(QWidget):
         job = self._build_job()
         if not job:
             return
+
+        if job.thumbnail_bytes:
+            save_thumbnail(job.video_id, job.thumbnail_bytes)
 
         manager = get_download_manager()
         manager.enqueue(job)

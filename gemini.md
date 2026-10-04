@@ -757,3 +757,50 @@ Phase 3 (Video and Audio Tab Flow) has been fully built, verified, and completed
 - [x] Verification evidence recorded in `docs/verification/phase_3.md`.
 
 Phase 3 is complete. Ready for your approval to proceed to Phase 4 (Progress, Queue, and Recently Downloaded).
+
+---
+
+## User Query:
+proccedd with phase 4
+
+## Assistant Response:
+Phase 4 (Progress Card, Queue, and Recently Downloaded — Behaviour) has been fully built, verified, and completed across all 4 chunks:
+
+- **Chunk 4.1 — Progress card collapses after done (P1):**
+  - Added private `_collapse_timer` (1200ms) to `ProgressCard` in `app/ui/kit/progress_card.py`.
+  - Automatically resets and collapses the progress card ~1.2s after `show_done()` completes.
+  - The collapse timer is safely cancelled whenever `bind_job()` binds a new download or `reset()` is called, preventing it from hiding newer jobs.
+  - Unit tests added in `tests/test_ui_kit.py` (`test_progress_card_auto_collapses_after_done`, `test_progress_card_new_job_cancels_collapse_timer`).
+  - Committed with message `phase4.1: auto-collapse progress card after completion` (`98e4ef7`).
+
+- **Chunk 4.2 — Queue widget (Q1, Q2, Q3, Q4):**
+  - Implemented recursive `_clear_layout(layout)` in `QueueWidget` in `app/ui/queue_widget.py`, thoroughly eliminating orphaned nested widgets that caused duplicated text and buttons on subsequent refreshes.
+  - Renders only waiting and failed jobs; excludes the currently active running job (which is displayed in the ProgressCard).
+  - The queue widget automatically hides itself when there are no waiting or failed jobs to draw.
+  - Header text dynamically displays `"Up next (N)"` matching the exact number of waiting and failed items.
+  - Action button renamed to `"Clear failed"`, visible only when failed jobs exist.
+  - Unit tests added in `tests/test_queue.py` (`test_queue_widget_clear_layout_no_ghost_widgets`, `test_queue_widget_renders_only_waiting_and_failed_not_running`, `test_queue_widget_hidden_when_empty`, `test_queue_widget_header_count_and_clear_failed_visibility`).
+  - Committed with message `phase4.2: recursive layout clearing and clean queue rendering` (`f618df3`).
+
+- **Chunk 4.3 — Recently downloaded (R1, R2, R3):**
+  - Implemented recursive `_clear_layout(layout)` in `RecentList` in `app/ui/recent_list.py`, ensuring previous rows and footer links are properly cleaned up without ghosting.
+  - Replaced duplicate footer links with a single tab-specific link: `"See all video history →"` or `"See all audio history →"` based on `self.kind`.
+  - Updated signal `see_all_clicked = Signal(str)` emitting `self.kind` for wiring in Phase 6.
+  - Unit tests added in `tests/test_recent_list.py` (`test_recent_list_refresh_no_duplicate_see_all`, `test_recent_list_audio_label_and_signal`).
+  - Committed with message `phase4.3: recursive clearing and type-specific see-all link in recent_list` (`329ad4e`).
+
+- **Chunk 4.4 — Missing files in recent list (R6):**
+  - In `RecentRow`: when a file is missing on disk (`not file_exists`), displays the details line as `"File missing"` in muted text (`#AAAAAA`, not `#FF4E45`), replacing the `0 B` size text.
+  - Hides the `Play` button when the file is missing, while retaining the `Open folder` button so users can still reveal the destination directory.
+  - Unit tests added in `tests/test_recent_list.py` (`test_recent_row_missing_file_no_play_btn_and_shows_file_missing`).
+  - Committed with message `phase4.4: handle missing files in recent_list` (`f9b4248`).
+
+### Phase 4 Verification Results
+- [x] Full test suite: **207/207 passed in 15.16s** across 31 test modules (`pytest`).
+- [x] Scope check: `python tools/check_scope.py --phase 4` passes with zero violations.
+- [x] Protected files: `python tools/check_scope.py --final` confirms zero changes to protected engine files.
+- [x] No-terminal check: 0 `print()` calls in `app/`, 0 console windows, 0 `start_hidden` calls outside protected engine files.
+- [x] Verification evidence recorded in `docs/verification/phase_4.md`.
+
+Phase 4 is complete. Ready for your approval to proceed to Phase 5 (Look of the Tabs).
+

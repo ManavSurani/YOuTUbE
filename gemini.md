@@ -1178,3 +1178,48 @@ what about exe we have to launch it again
   - You can double-click `dist\YOuTUbE\YOuTUbE.exe` to run the app directly.
   - Or double-click `Output\YOuTUbE_Setup.exe` to run the Windows installer (creates Desktop and Start Menu shortcuts).
   - Alternatively, if you want me to launch `dist\YOuTUbE\YOuTUbE.exe` on your desktop right now, just let me know!
+
+---
+
+## User Query:
+C:\Users\Jay\Downloads\YOuTUbE_Two_Fix_Plan.md first understand this plan in detail without adding right now only understand this plan and why is happening okey
+
+## Assistant Response:
+I have thoroughly analyzed `C:\Users\Jay\Downloads\YOuTUbE_Two_Fix_Plan.md` and inspected the local source code in `app/ui/video_tab.py`, `app/ui/audio_tab.py`, `app/ui/recent_list.py`, and `app/ui/history_tab.py`. Zero code files were edited.
+
+### Summary of the Plan & Why These Two Issues Are Happening
+
+1. **Problem 1: "Add to queue cannot be clicked while a download is running (and pasting a link hides Cancel)"**
+   - **Why it happens:**
+     1. When a download starts, `_clear_inputs()` sets `self._current_info = None`. In `DOWNLOADING` state, `queue_btn.setEnabled(self._current_info is not None)` evaluates to `False`, greying out the button completely so the user cannot click it.
+     2. If the user pastes a URL while downloading, `fetch_url()` unconditionally forces `self.set_state(TabState.FETCHING)`. This hides `cancel_btn` and `progress_card`.
+     3. When metadata finishes fetching, `_on_info_fetched()` sets `self.set_state(TabState.READY)`, which replaces `Cancel` with `Download` even while the download is actively running!
+     4. If the user clears the link box, `_on_url_text_changed()` calls `self.set_state(TabState.IDLE)`, which also hides `Cancel` and `progress_card`.
+   - **Solution in Plan:** Make the downloading look sticky. While `get_download_manager().active_job` is active, `Cancel` remains visible and `Download` remains hidden. `Add to queue` remains visible and enabled. If clicked with an empty or un-fetched link, it shows a 4-second hint: `"Paste a YouTube link first, then press Add to queue."` without crashing or breaking the running job.
+
+2. **Problem 2: "After Clear history, Recently downloaded still shows old items until app restart"**
+   - **Why it happens:**
+     1. `RecentList.refresh()` is only called on tab initialization and when a job finishes in that specific tab.
+     2. In `history_tab.py`, `_on_clear_all()` and `_on_row_deleted()` only reload the History tab's own list and emit no signals to other tabs.
+     3. When `RecentList` has 0 items, it calls `self.setVisible(False)`. A hidden widget in Qt never receives a `QShowEvent`, so it cannot refresh itself on its own show event.
+   - **Solution in Plan:** `RecentList` installs an event filter on its visible parent widget. When the parent widget receives `QEvent.Type.Show` (i.e. whenever the user switches back to the Video or Audio tab), `RecentList.refresh()` automatically re-queries the database. If history was cleared, `RecentList` cleanly hides itself.
+
+### PART 1: Local Code Findings Confirmation
+
+| Finding ID | Plan Statement | Local Code File & Line | Status | Notes |
+|---|---|---|---|---|
+| **A-1** | Link box empty, Add to queue greyed out | `video_tab.py:344`, `audio_tab.py:255` | **CONFIRMED** | `queue_btn.setEnabled(self._current_info is not None)` disables button when link input is cleared. |
+| **A-2** | Pasting link during download breaks buttons (hides Cancel, shows Download) | `video_tab.py:299-328, 419, 448-452`<br>`audio_tab.py:207-238, 329, 355-358` | **CONFIRMED** | `fetch_url()` sets `FETCHING` and `_on_info_fetched()` sets `READY`, stripping Cancel and progress card. |
+| **A-3** | Clearing link box sets IDLE and hides Cancel during download | `video_tab.py:408`, `audio_tab.py:318` | **CONFIRMED** | Non-DOWNLOADING state triggers `set_state(TabState.IDLE)` on empty text. |
+| **B-1** | `RecentList.refresh()` only called on creation & tab job finish | `video_tab.py:514`, `audio_tab.py:411` | **CONFIRMED** | No callers trigger refresh on history deletion or clearing. |
+| **B-2** | `_on_clear_all` reloads only HistoryTab list; no signals sent | `history_tab.py:782-800` | **CONFIRMED** | HistoryTab reloads internally without notifying other tabs. |
+| **B-3** | `refresh()` removes only plain widgets, leaving nested layout duplicate links | `recent_list.py:135-151` | **CHANGED / ALREADY IMPLEMENTED** | Local build already implements recursive `_clear_layout()` and has passing test coverage `test_recent_list_refresh_no_duplicate_see_all`. |
+| **B-4** | Empty `RecentList` hides itself, preventing child `QShowEvent` | `recent_list.py:154-156` | **CONFIRMED** | Parent event filter approach in Chunk B.2 is necessary and correct. |
+
+### Questions & Recommended Answers
+- **Question 1:** Should we use the private helper `_job_running()` in `video_tab.py` and `audio_tab.py` to keep the downloading look sticky without touching `TabState` enum or engine files?
+  - *Recommended Answer:* Yes. This cleanly solves A-1, A-2, and A-3 while keeping the state machine intact.
+- **Question 2:** For Phase B, should we install the event filter on `RecentList`'s parent widget as planned?
+  - *Recommended Answer:* Yes. This solves B-1 without modifying protected files (`history_tab.py` or `main_window.py`).
+
+No code has been modified. Awaiting user approval to proceed with Phase A.

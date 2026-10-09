@@ -136,10 +136,9 @@ class QueueWidget(QWidget):
         self._layout.setContentsMargins(0, 8, 0, 8)
         self._layout.setSpacing(6)
 
-        manager = get_download_manager(self.kind)
-        manager.queue_changed.connect(self.refresh)
-        manager.progress.connect(self._on_progress)
-        manager.stage.connect(self._on_stage)
+        self.manager = get_download_manager(self.kind)
+        # Connect strictly ONCE here. Do NOT connect inside refresh() or to progress.
+        self.manager.queue_changed.connect(self.refresh)
 
         self.refresh()
 
@@ -161,11 +160,29 @@ class QueueWidget(QWidget):
         """Re-render queue items according to DownloadManager state."""
         self._clear_layout(self._layout)
 
-        manager = get_download_manager(self.kind)
-        waiting = manager.waiting_jobs
-        failed = manager.failed_jobs
+        waiting_lane = []
+        for job in self.manager.waiting_jobs:
+            if job.kind != self.kind:
+                get_logger().warning(
+                    f"Skipping wrong-kind waiting job {job.job_id} ({job.kind}) in {self.kind} queue"
+                )
+                continue
+            waiting_lane.append(job)
 
-        drawn_count = len(waiting) + len(failed)
+        failed_lane = []
+        for item in self.manager.failed_jobs:
+            if isinstance(item, tuple):
+                job, reason = item
+            else:
+                job, reason = item, ""
+            if job.kind != self.kind:
+                get_logger().warning(
+                    f"Skipping wrong-kind failed job {job.job_id} ({job.kind}) in {self.kind} queue"
+                )
+                continue
+            failed_lane.append((job, reason))
+
+        drawn_count = len(waiting_lane) + len(failed_lane)
         if drawn_count == 0:
             self.setVisible(False)
             return
@@ -178,7 +195,7 @@ class QueueWidget(QWidget):
         header_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #AAAAAA;")
         header_layout.addWidget(header_lbl, 1)
 
-        if failed:
+        if failed_lane:
             clear_btn = AnimatedButton("Clear failed", role="ghost", parent=self)
             clear_btn.clicked.connect(self._clear_failed)
             header_layout.addWidget(clear_btn)
@@ -186,7 +203,7 @@ class QueueWidget(QWidget):
         self._layout.addLayout(header_layout)
 
         # 1. Waiting items
-        for job in waiting:
+        for job in waiting_lane:
             row = QueueRow(
                 job=job,
                 can_remove=True,
@@ -196,7 +213,7 @@ class QueueWidget(QWidget):
             self._layout.addWidget(row)
 
         # 2. Failed items
-        for job, reason in failed:
+        for job, reason in failed_lane:
             row = QueueRow(
                 job=job,
                 can_remove=True,
@@ -207,15 +224,8 @@ class QueueWidget(QWidget):
             self._layout.addWidget(row)
 
     def _clear_failed(self) -> None:
-        manager = get_download_manager(self.kind)
-        if hasattr(manager, "clear_failed"):
-            manager.clear_failed()
-        elif hasattr(manager, "_failed_jobs"):
-            manager._failed_jobs.clear()
-            manager.queue_changed.emit()
-
-    def _on_progress(self, job: DownloadJob, pct: float, speed: str, eta: str, done: int, total: int) -> None:
-        pass
-
-    def _on_stage(self, job: DownloadJob, stage_name: str) -> None:
-        pass
+        if hasattr(self.manager, "clear_failed"):
+            self.manager.clear_failed()
+        elif hasattr(self.manager, "_failed_jobs"):
+            self.manager._failed_jobs.clear()
+            self.manager.queue_changed.emit()

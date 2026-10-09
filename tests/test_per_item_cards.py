@@ -132,3 +132,83 @@ def test_queue_row_retry_action(qapp, monkeypatch):
     assert row.retry_btn is not None
     row.retry_btn.click()
     assert retried_ids == ["job_ret_1"]
+
+
+def test_queue_widget_single_signal_connection(qapp):
+    qw = QueueWidget(kind="video")
+    refresh_count = 0
+    original_refresh = qw.refresh
+
+    # Wrap to count subsequent calls
+    def counting_refresh():
+        nonlocal refresh_count
+        refresh_count += 1
+        original_refresh()
+
+    # Reconnect queue_changed to counting_refresh for this test
+    qw.manager.queue_changed.disconnect(qw.refresh)
+    qw.refresh = counting_refresh
+    qw.manager.queue_changed.connect(qw.refresh)
+
+    # Call refresh() 5 times consecutively
+    for _ in range(5):
+        qw.refresh()
+    assert refresh_count == 5
+
+    # Reset counter
+    refresh_count = 0
+    # Emit 1 queue_changed signal -> assert refresh() is invoked exactly once
+    qw.manager.queue_changed.emit()
+    assert refresh_count == 1
+
+    # Emit 50 progress signals -> assert 0 queue redraws occur
+    job = make_test_job(job_id="dummy_running", kind="video")
+    for _ in range(50):
+        qw.manager.progress.emit(job, 50.0, "1 MB/s", "00:10", 500, 1000)
+    assert refresh_count == 1
+
+
+def test_strict_tab_isolation_video(qapp):
+    video_manager = get_download_manager("video")
+    audio_manager = get_download_manager("audio")
+    video_manager._waiting_queue.clear()
+    video_manager._failed_jobs.clear()
+    audio_manager._waiting_queue.clear()
+    audio_manager._failed_jobs.clear()
+
+    video_qw = QueueWidget(kind="video")
+    audio_job = make_test_job(job_id="audio_job_iso", kind="audio")
+    audio_manager._waiting_queue.append(audio_job)
+    audio_manager.queue_changed.emit()
+
+    assert not video_qw.isVisible()
+    video_qw.refresh()
+    assert not video_qw.isVisible()
+
+
+def test_strict_tab_isolation_audio(qapp):
+    video_manager = get_download_manager("video")
+    audio_manager = get_download_manager("audio")
+    video_manager._waiting_queue.clear()
+    video_manager._failed_jobs.clear()
+    audio_manager._waiting_queue.clear()
+    audio_manager._failed_jobs.clear()
+
+    audio_qw = QueueWidget(kind="audio")
+    video_job = make_test_job(job_id="video_job_iso", kind="video")
+    video_manager._waiting_queue.append(video_job)
+    video_manager.queue_changed.emit()
+
+    assert not audio_qw.isVisible()
+    audio_qw.refresh()
+    assert not audio_qw.isVisible()
+
+
+def test_queue_widget_ignores_wrong_kind_without_exception(qapp):
+    qw = QueueWidget(kind="video")
+    wrong_job = make_test_job(job_id="wrong_kind_job", kind="audio")
+    qw.manager._waiting_queue = [wrong_job]
+    qw.manager._failed_jobs = {}
+
+    qw.refresh()
+    assert not qw.isVisible()

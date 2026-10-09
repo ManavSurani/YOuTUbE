@@ -1223,3 +1223,56 @@ I have thoroughly analyzed `C:\Users\Jay\Downloads\YOuTUbE_Two_Fix_Plan.md` and 
   - *Recommended Answer:* Yes. This solves B-1 without modifying protected files (`history_tab.py` or `main_window.py`).
 
 No code has been modified. Awaiting user approval to proceed with Phase A.
+
+---
+
+## User Query:
+can you understand this and check this with our project why is this not working properly and mack a plan for this only mack a plan right now do not add anything right now
+
+## Assistant Response:
+I have thoroughly analyzed the two problems against the codebase, identified the exact lines causing both failures, and created a strict, chunk-by-chunk execution plan following all project rules. No code edits have been made.
+
+### Why Problem 1 Is Happening (Add to queue disabled & Cancel lost during downloads)
+1. **Finding A-1 (`video_tab.py:344`, `audio_tab.py:255`):** In `DOWNLOADING` state, `self.queue_btn.setEnabled(has_new_link)` where `has_new_link = self._current_info is not None`. Because starting a download clears the URL input and sets `self._current_info = None`, `has_new_link` is `False`. As a result, `Add to queue` is greyed out and unclickable.
+2. **Finding A-2 (`video_tab.py:419, 448-452`, `audio_tab.py:329, 355-358`):** Pasting a URL while downloading triggers `fetch_url()`, which unconditionally sets `self.set_state(TabState.FETCHING)`. In `FETCHING`, `Cancel` and `ProgressCard` are hidden. When metadata arrives, `_on_info_fetched()` sets `self.set_state(TabState.READY)`, which shows `Download` and hides `Cancel`. The active download continues in the background, but the UI has lost Cancel and Progress.
+3. **Finding A-3 (`video_tab.py:408`, `audio_tab.py:318`):** Clearing the link box when in `FETCHING` or `READY` during a running download calls `self.set_state(TabState.IDLE)`, which hides Cancel and progress card.
+
+### Why Problem 2 Is Happening (Recently downloaded stale after History Clear/Delete)
+1. **Finding B-1 (`video_tab.py:514`, `audio_tab.py:411`):** `RecentList.refresh()` is only called on initial load and when a download completes on that tab. There are no callers anywhere else in the application.
+2. **Finding B-2 (`history_tab.py:782-800`):** `HistoryTab._on_clear_all()` and row deletions update only the SQLite database and HistoryTab's internal list widget; they do not notify other tabs.
+3. **Finding B-4 (`recent_list.py:154-156`):** When empty, `RecentList` sets `self.setVisible(False)`. In Qt, hidden child widgets do not receive `QShowEvent` when parent pages are shown. An event filter on the parent container is required so switching tabs triggers `refresh()`.
+
+### Detailed Step-by-Step Fix Plan
+
+#### Phase A: Add to queue works while downloading
+- **Chunk A.1 (Failing tests for Video tab):**
+  - Create test cases in `tests/test_tab_state_machine.py` with mock active job in `DownloadManager`.
+  - Assert `queue_btn` is enabled with empty link box (reproduces A-1).
+  - Assert pasting URL keeps `cancel_btn` visible and `download_btn` hidden (reproduces A-2).
+  - Assert finished fetch keeps `cancel_btn` visible and `download_btn` hidden (reproduces A-2).
+  - Assert clearing link box keeps `cancel_btn` visible (reproduces A-3).
+- **Chunk A.2 (Sticky downloading look in `video_tab.py`):**
+  - Add private helper `_job_running()` checking `get_download_manager().active_job is not None`.
+  - In `_apply_state_visibility` and text/fetch callbacks, retain `DOWNLOADING` look while `_job_running()` is True (Cancel visible, Download hidden, Queue visible).
+  - In `add_to_queue()`, if URL is empty or un-fetched, show 4-second hint: `"Paste a YouTube link first, then press Add to queue."` via `self.inline_msg` without enqueuing.
+  - When download completes, restore normal state. Verify all tests pass. Commit `fixA.2: keep sticky downloading look in video_tab`.
+- **Chunk A.3 (Mirror sticky downloading look in `audio_tab.py`):**
+  - Apply exact same helper and logic to `app/ui/audio_tab.py`.
+  - Add matching tests for Audio tab. Verify all tests pass. Commit `fixA.3: keep sticky downloading look in audio_tab`.
+
+#### Phase B: Clear history updates Video and Audio pages
+- **Chunk B.1 (Confirm layout clearing without duplicate See All):**
+  - Add unit test asserting calling `refresh()` 5 times produces exactly 1 header and 1 "See all" button.
+  - Verify existing `_clear_layout()` implementation. Commit `fixB.1: verify clean layout clearing in recent_list`.
+- **Chunk B.2 (Auto-refresh on tab switch via parent event filter):**
+  - In `RecentList.__init__`, install `eventFilter` on `parent()` for `QEvent.Type.Show`.
+  - On `Show`, call `self.refresh()`. If parent deleted, remove cleanly.
+  - Add tests: 2 items -> clear db -> parent show -> hidden; 1 item -> parent show -> 1 row. Commit `fixB.2: refresh recent list on parent show event`.
+- **Chunk B.3 (End-to-end integration test):**
+  - Create `tests/test_recent_sync.py` testing History `clear_all()` and single row deletion across Video and Audio tabs without app restart. Commit `fixB.3: add end-to-end history recent sync tests`.
+
+#### Verification Gate & Scope Proof
+- Run `python tools/check_scope.py --final` (zero protected files modified).
+- Run `python -m pytest` (100% passing across all 241+ tests).
+- Run `git grep -n "print(" app/` (zero hits).
+- Present final verification evidence and request confirmation.

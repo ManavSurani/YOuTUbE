@@ -6,6 +6,7 @@ Maintains queue state, retries, and coordinates with HistoryService.
 
 import json
 from pathlib import Path
+import threading
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QObject, Signal
@@ -321,10 +322,59 @@ class DownloadManager(QObject):
 
 
 _managers: Dict[str, DownloadManager] = {}
+_migration_lock = threading.Lock()
+
+
+def migrate_legacy_queue_if_needed(app_data_dir: Optional[Path] = None) -> None:
+    """Migrate legacy queue.json to queue_video.json and queue_audio.json safely under threading.Lock."""
+    with _migration_lock:
+        target_dir = app_data_dir if app_data_dir is not None else APP_DATA
+        legacy_file = target_dir / "queue.json"
+        if not legacy_file.exists():
+            return
+
+        try:
+            raw_text = legacy_file.read_text(encoding="utf-8").strip()
+            if not raw_text:
+                legacy_file.rename(target_dir / "queue.json.corrupt")
+                get_logger().warning("Corrupt or empty queue.json detected; renamed to queue.json.corrupt")
+                return
+
+            items = json.loads(raw_text)
+            if not isinstance(items, list):
+                legacy_file.rename(target_dir / "queue.json.corrupt")
+                get_logger().warning("Corrupt or empty queue.json detected; renamed to queue.json.corrupt")
+                return
+
+            video_items = []
+            audio_items = []
+            for item in items:
+                if isinstance(item, dict) and item.get("kind") == "audio":
+                    audio_items.append(item)
+                else:
+                    video_items.append(item)
+
+            video_file = target_dir / "queue_video.json"
+            audio_file = target_dir / "queue_audio.json"
+
+            if not video_file.exists():
+                video_file.write_text(json.dumps(video_items, indent=2), encoding="utf-8")
+            if not audio_file.exists():
+                audio_file.write_text(json.dumps(audio_items, indent=2), encoding="utf-8")
+
+            legacy_file.rename(target_dir / "queue.json.bak")
+            get_logger().info("Migrated legacy queue.json into queue_video.json and queue_audio.json (backed up as queue.json.bak)")
+        except Exception as exc:
+            try:
+                legacy_file.rename(target_dir / "queue.json.corrupt")
+            except Exception:
+                pass
+            get_logger().warning(f"Corrupt or empty queue.json detected; renamed to queue.json.corrupt: {exc}")
 
 
 def get_download_manager(kind: str) -> DownloadManager:
     """Return the shared singleton DownloadManager instance for the specified lane ('video' or 'audio')."""
+    migrate_legacy_queue_if_needed()
     k = kind.lower()
     if k not in _managers:
         _managers[k] = DownloadManager(kind=k)

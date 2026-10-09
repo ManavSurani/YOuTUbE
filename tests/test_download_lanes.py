@@ -65,3 +65,75 @@ def test_enqueue_guard_rejects_mismatched_kind(tmp_path, caplog):
     assert manager.active_job is None
     # Must log a warning about kind mismatch
     assert any("kind mismatch" in record.message for record in caplog.records)
+
+
+def test_corrupt_or_empty_queue_migrated_to_corrupt(tmp_path, caplog, monkeypatch):
+    """Corrupt or empty queue.json is renamed to queue.json.corrupt, logged, and app starts without crash."""
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    corrupt_file = tmp_path / "queue.json"
+    corrupt_file.write_text("{malformed json", encoding="utf-8")
+
+    from app.core.logger import get_logger
+    logger = get_logger()
+    logger.propagate = True
+    try:
+        with caplog.at_level("WARNING", logger="youtube_app"):
+            dm_mod.migrate_legacy_queue_if_needed(tmp_path)
+    finally:
+        logger.propagate = False
+
+    assert not corrupt_file.exists()
+    assert (tmp_path / "queue.json.corrupt").exists()
+    assert any("Corrupt or empty queue.json detected" in r.message for r in caplog.records)
+
+
+def test_legacy_queue_missing_or_unknown_kind_defaults_to_video(tmp_path, monkeypatch):
+    """Legacy items with missing or unknown 'kind' default to 'video'."""
+    import json
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    legacy_file = tmp_path / "queue.json"
+    items = [
+        {"job_id": "1", "title": "No kind", "url": "https://youtube.com/watch?v=1"},
+        {"job_id": "2", "title": "Unknown kind", "url": "https://youtube.com/watch?v=2", "kind": "unknown"},
+        {"job_id": "3", "title": "Audio", "url": "https://youtube.com/watch?v=3", "kind": "audio"},
+    ]
+    legacy_file.write_text(json.dumps(items), encoding="utf-8")
+
+    dm_mod.migrate_legacy_queue_if_needed(tmp_path)
+
+    assert not legacy_file.exists()
+    assert (tmp_path / "queue.json.bak").exists()
+    v_items = json.loads((tmp_path / "queue_video.json").read_text(encoding="utf-8"))
+    a_items = json.loads((tmp_path / "queue_audio.json").read_text(encoding="utf-8"))
+
+    assert len(v_items) == 2
+    assert v_items[0]["job_id"] == "1"
+    assert v_items[1]["job_id"] == "2"
+    assert len(a_items) == 1
+    assert a_items[0]["job_id"] == "3"
+
+
+def test_legacy_queue_migration_idempotent(tmp_path, monkeypatch):
+    """Running migration twice never overwrites existing lane files."""
+    import json
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    legacy_file = tmp_path / "queue.json"
+    items = [{"job_id": "1", "title": "Video 1", "kind": "video"}]
+    legacy_file.write_text(json.dumps(items), encoding="utf-8")
+
+    dm_mod.migrate_legacy_queue_if_needed(tmp_path)
+
+    v_content_before = (tmp_path / "queue_video.json").read_text(encoding="utf-8")
+
+    # Run again - should be idempotent and not alter queue_video.json
+    dm_mod.migrate_legacy_queue_if_needed(tmp_path)
+    assert (tmp_path / "queue_video.json").read_text(encoding="utf-8") == v_content_before
+
+    # Even if a new queue.json is created, existing queue_video.json must not be overwritten
+    new_legacy = tmp_path / "queue.json"
+    new_legacy.write_text(json.dumps([{"job_id": "999", "kind": "video"}]), encoding="utf-8")
+    dm_mod.migrate_legacy_queue_if_needed(tmp_path)
+    assert (tmp_path / "queue_video.json").read_text(encoding="utf-8") == v_content_before

@@ -68,7 +68,7 @@ class QueueRow(QWidget):
         layout.addWidget(self.status_lbl)
 
         # Action button (Remove or Retry)
-        manager = get_download_manager()
+        manager = get_download_manager(job.kind)
 
         if can_retry:
             retry_btn = IconButton("redownload", size=28, tooltip="Retry", parent=self)
@@ -82,17 +82,18 @@ class QueueRow(QWidget):
 
 
 class QueueWidget(QWidget):
-    """Container displaying the shared download queue."""
+    """Container displaying the download queue for a specific lane."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, kind: str = "video", parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.kind = kind.lower()
         self.setVisible(False)
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 8, 0, 8)
         self._layout.setSpacing(6)
 
-        manager = get_download_manager()
+        manager = get_download_manager(self.kind)
         manager.queue_changed.connect(self.refresh)
         manager.progress.connect(self._on_progress)
         manager.stage.connect(self._on_stage)
@@ -117,7 +118,7 @@ class QueueWidget(QWidget):
         """Re-render queue items according to DownloadManager state."""
         self._clear_layout(self._layout)
 
-        manager = get_download_manager()
+        manager = get_download_manager(self.kind)
         waiting = manager.waiting_jobs
         failed = manager.failed_jobs
 
@@ -166,7 +167,7 @@ class QueueWidget(QWidget):
             self._layout.addWidget(row)
 
     def _clear_failed(self) -> None:
-        manager = get_download_manager()
+        manager = get_download_manager(self.kind)
         if hasattr(manager, "clear_failed"):
             manager.clear_failed()
         elif hasattr(manager, "_failed_jobs"):

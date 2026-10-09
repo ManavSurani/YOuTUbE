@@ -193,8 +193,11 @@ def test_launch_silent_installer(tmp_path, monkeypatch):
     assert "/RESTARTAPPLICATIONS" in called_cmd
 
 
-def test_main_window_banner_available():
+def test_main_window_banner_available(monkeypatch):
     from app.ui.main_window import MainWindow
+
+    monkeypatch.setattr("app.ui.main_window.UpdateCheckWorker.start", lambda self: None)
+    monkeypatch.setattr("app.ui.main_window.NetworkMonitor.start", lambda self: None)
 
     win = MainWindow()
     win.show()
@@ -216,13 +219,14 @@ def test_main_window_banner_available():
         win.update_banner.later_btn.click()
         assert not win.update_banner.isVisible()
     finally:
-        win.network_monitor.stop()
-        win.network_monitor.wait(500)
         win.close()
 
 
-def test_main_window_banner_required_locking():
+def test_main_window_banner_required_locking(monkeypatch):
     from app.ui.main_window import MainWindow
+
+    monkeypatch.setattr("app.ui.main_window.UpdateCheckWorker.start", lambda self: None)
+    monkeypatch.setattr("app.ui.main_window.NetworkMonitor.start", lambda self: None)
 
     win = MainWindow()
     win.show()
@@ -248,8 +252,6 @@ def test_main_window_banner_required_locking():
         # History tab stays fully usable
         assert win.history_tab.isEnabled()
     finally:
-        win.network_monitor.stop()
-        win.network_monitor.wait(500)
         win.close()
 
 
@@ -275,7 +277,7 @@ def test_user_data_survives_app_update(tmp_path: Path, monkeypatch):
     app_data_fake.mkdir(parents=True)
     db_fake = app_data_fake / "history.db"
     settings_fake = app_data_fake / "settings.json"
-    queue_fake = app_data_fake / "queue.json"
+    queue_fake = app_data_fake / "queue_video.json"
 
     monkeypatch.setattr(paths_mod, "APP_DATA", app_data_fake)
 

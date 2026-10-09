@@ -29,10 +29,10 @@ def sample_jobs():
 
 
 def test_download_manager_single_active_job(tmp_path: Path, sample_jobs, monkeypatch):
-    manager = DownloadManager()
+    manager = DownloadManager(kind="video")
     manager._waiting_queue.clear()
     manager._active_job = None
-    manager._queue_file = tmp_path / "queue.json"
+    manager._queue_file = tmp_path / "queue_video.json"
 
     started_jobs = []
     manager.job_started.connect(lambda j: started_jobs.append(j))
@@ -72,7 +72,7 @@ def test_download_manager_single_active_job(tmp_path: Path, sample_jobs, monkeyp
 
 def test_download_manager_persistence(tmp_path: Path, sample_jobs):
     q_file = tmp_path / "test_queue.json"
-    manager1 = DownloadManager()
+    manager1 = DownloadManager(kind="video")
     manager1._waiting_queue.clear()
     manager1._active_job = None
     manager1._queue_file = q_file
@@ -82,7 +82,7 @@ def test_download_manager_persistence(tmp_path: Path, sample_jobs):
     assert q_file.is_file()
 
     # Re-instantiate manager and load queue
-    manager2 = DownloadManager()
+    manager2 = DownloadManager(kind="video")
     manager2._waiting_queue.clear()
     manager2._queue_file = q_file
     manager2._load_persisted_queue()
@@ -93,11 +93,11 @@ def test_download_manager_persistence(tmp_path: Path, sample_jobs):
 
 
 def test_download_manager_cancel_and_retry(tmp_path: Path, sample_jobs, monkeypatch):
-    manager = DownloadManager()
+    manager = DownloadManager(kind="video")
     manager._waiting_queue.clear()
     manager._active_job = None
     manager._failed_jobs.clear()
-    manager._queue_file = tmp_path / "queue.json"
+    manager._queue_file = tmp_path / "queue_video.json"
 
     mock_worker = MagicMock()
     monkeypatch.setattr("app.core.download_manager.DownloadWorker", lambda **kwargs: mock_worker)

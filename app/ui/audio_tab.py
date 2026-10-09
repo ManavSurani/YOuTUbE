@@ -162,8 +162,8 @@ class AudioTab(QWidget):
         self.percent_label = self.progress_card.percent_label
         self.stats_label = self.progress_card.stats_label
 
-        # 6. Queue Widget (Shared across Video and Audio)
-        self.queue_widget = QueueWidget(container)
+        # 6. Queue Widget (Dedicated to Audio)
+        self.queue_widget = QueueWidget(kind="audio", parent=container)
         layout.addWidget(self.queue_widget)
 
         # 7. Recently Downloaded List (Audio)
@@ -178,7 +178,7 @@ class AudioTab(QWidget):
         main_layout.addWidget(scroll)
 
     def _wire_manager(self) -> None:
-        manager = get_download_manager()
+        manager = get_download_manager("audio")
         manager.job_started.connect(self._on_manager_job_started)
         manager.progress.connect(self._on_manager_progress)
         manager.stage.connect(self._on_manager_stage)
@@ -187,7 +187,7 @@ class AudioTab(QWidget):
         manager.job_cancelled.connect(self._on_manager_cancelled)
 
     def _job_running(self) -> bool:
-        job = get_download_manager().active_job
+        job = get_download_manager("audio").active_job
         return job is not None and getattr(job, "kind", "") == "audio"
 
     def _apply_state_visibility(self, state: TabState) -> None:
@@ -422,7 +422,7 @@ class AudioTab(QWidget):
         if job.thumbnail_bytes:
             save_thumbnail(job.video_id, job.thumbnail_bytes)
 
-        manager = get_download_manager()
+        manager = get_download_manager("audio")
         manager.enqueue(job)
 
         self._clear_inputs()
@@ -440,14 +440,14 @@ class AudioTab(QWidget):
         if job.thumbnail_bytes:
             save_thumbnail(job.video_id, job.thumbnail_bytes)
 
-        manager = get_download_manager()
+        manager = get_download_manager("audio")
         manager.enqueue(job)
 
         self._clear_inputs()
 
     def cancel_download(self) -> None:
         """Cancel active download."""
-        manager = get_download_manager()
+        manager = get_download_manager("audio")
         manager.cancel_active()
         self.progress_card.set_stage("Cancelled.")
         if self._current_info is not None:

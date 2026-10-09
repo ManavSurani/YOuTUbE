@@ -107,7 +107,7 @@ def test_auto_repair_on_extraction_error(tmp_path: Path, monkeypatch):
     import app.core.download_manager as dm_mod
 
     # Setup isolated download manager
-    mgr = DownloadManager()
+    mgr = DownloadManager(kind="video")
     mgr._waiting_queue.clear()
     mgr._repaired_jobs.clear()
     mgr._is_offline = False

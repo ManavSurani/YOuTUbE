@@ -120,7 +120,7 @@ def test_video_tab_queue_btn_enablement_by_state(
 ):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
 
     if state_case == "running_empty":
         job = MagicMock(kind="video", job_id="j1")
@@ -176,7 +176,7 @@ def test_video_tab_queue_btn_enablement_by_state(
 def test_video_tab_queue_btn_enabled_when_downloading_empty_box(monkeypatch):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
     job = MagicMock(kind="video", job_id="j1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -191,7 +191,7 @@ def test_video_tab_queue_btn_enabled_when_downloading_empty_box(monkeypatch):
 def test_video_tab_pasting_link_during_download_keeps_cancel(monkeypatch):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
     job = MagicMock(kind="video", job_id="j1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -206,7 +206,7 @@ def test_video_tab_pasting_link_during_download_keeps_cancel(monkeypatch):
 def test_video_tab_info_fetched_during_download_keeps_cancel(monkeypatch):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
     job = MagicMock(kind="video", job_id="j1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -233,7 +233,7 @@ def test_video_tab_info_fetched_during_download_keeps_cancel(monkeypatch):
 def test_video_tab_clearing_link_during_download_keeps_cancel(monkeypatch):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
     job = MagicMock(kind="video", job_id="j1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -248,7 +248,7 @@ def test_video_tab_clearing_link_during_download_keeps_cancel(monkeypatch):
 def test_video_tab_job_running_kind_isolation(monkeypatch):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
     job = MagicMock(kind="audio", job_id="a1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -275,7 +275,7 @@ def test_video_tab_job_running_kind_isolation(monkeypatch):
 def test_video_tab_cancel_download_restores_correct_state(monkeypatch):
     tab = VideoTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("video")
     job = MagicMock(kind="video", job_id="j1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -315,7 +315,7 @@ def test_audio_tab_queue_btn_enablement_by_state(
 ):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
 
     if state_case == "running_empty":
         job = MagicMock(kind="audio", job_id="a1")
@@ -371,7 +371,7 @@ def test_audio_tab_queue_btn_enablement_by_state(
 def test_audio_tab_queue_btn_enabled_when_downloading_empty_box(monkeypatch):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
     job = MagicMock(kind="audio", job_id="a1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -386,7 +386,7 @@ def test_audio_tab_queue_btn_enabled_when_downloading_empty_box(monkeypatch):
 def test_audio_tab_pasting_link_during_download_keeps_cancel(monkeypatch):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
     job = MagicMock(kind="audio", job_id="a1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -401,7 +401,7 @@ def test_audio_tab_pasting_link_during_download_keeps_cancel(monkeypatch):
 def test_audio_tab_info_fetched_during_download_keeps_cancel(monkeypatch):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
     job = MagicMock(kind="audio", job_id="a1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -428,7 +428,7 @@ def test_audio_tab_info_fetched_during_download_keeps_cancel(monkeypatch):
 def test_audio_tab_clearing_link_during_download_keeps_cancel(monkeypatch):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
     job = MagicMock(kind="audio", job_id="a1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -443,7 +443,7 @@ def test_audio_tab_clearing_link_during_download_keeps_cancel(monkeypatch):
 def test_audio_tab_job_running_kind_isolation(monkeypatch):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
     job = MagicMock(kind="video", job_id="v1")
     monkeypatch.setattr(mgr, "_active_job", job)
 
@@ -470,7 +470,7 @@ def test_audio_tab_job_running_kind_isolation(monkeypatch):
 def test_audio_tab_cancel_download_restores_correct_state(monkeypatch):
     tab = AudioTab()
     tab.show()
-    mgr = get_download_manager()
+    mgr = get_download_manager("audio")
     job = MagicMock(kind="audio", job_id="a1")
     monkeypatch.setattr(mgr, "_active_job", job)
 

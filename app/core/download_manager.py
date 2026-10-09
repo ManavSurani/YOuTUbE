@@ -31,8 +31,9 @@ class DownloadManager(QObject):
     job_cancelled = Signal(object)  # DownloadJob
     queue_changed = Signal()
 
-    def __init__(self, parent: Optional[QObject] = None) -> None:
+    def __init__(self, kind: str, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
+        self.kind = kind.lower()
         self._waiting_queue: List[DownloadJob] = []
         self._active_job: Optional[DownloadJob] = None
         self._worker: Optional[DownloadWorker] = None
@@ -40,7 +41,7 @@ class DownloadManager(QObject):
         self._completed_jobs: List[Tuple[DownloadJob, str]] = []
         self._repaired_jobs: set = set()
         self._is_offline = False
-        self._queue_file = APP_DATA / "queue.json"
+        self._queue_file = APP_DATA / f"queue_{self.kind}.json"
 
         self._load_persisted_queue()
 
@@ -62,6 +63,10 @@ class DownloadManager(QObject):
 
     def enqueue(self, job: DownloadJob) -> None:
         """Add job to the queue and begin processing if idle."""
+        if job.kind != self.kind:
+            get_logger().warning(f"Rejected job {job.job_id}: kind mismatch ({job.kind} != {self.kind})")
+            return
+
         # Double-check duplicate in queue
         if self._active_job and self._active_job.job_id == job.job_id:
             return
@@ -282,13 +287,17 @@ class DownloadManager(QObject):
             get_logger().debug(f"Failed to persist queue: {exc}")
 
     def _load_persisted_queue(self) -> None:
-        """Restore waiting jobs from queue.json."""
+        """Restore waiting jobs from queue_<kind>.json."""
         if not self._queue_file.is_file():
             return
         try:
             raw = self._queue_file.read_text(encoding="utf-8")
             data = json.loads(raw)
             for item in data:
+                item_kind = item.get("kind", "video")
+                if item_kind != self.kind:
+                    get_logger().debug(f"Skipping item {item.get('job_id')} with kind {item_kind} in {self.kind} lane")
+                    continue
                 job = DownloadJob(
                     job_id=item["job_id"],
                     url=item["url"],
@@ -298,7 +307,7 @@ class DownloadManager(QObject):
                     duration_seconds=int(item.get("duration_seconds", 0)),
                     thumbnail_url=item.get("thumbnail_url", ""),
                     thumbnail_bytes=None,
-                    kind=item.get("kind", "video"),
+                    kind=item_kind,
                     quality_label=item.get("quality_label", "Best"),
                     height=item.get("height"),
                     audio_format=item.get("audio_format"),
@@ -306,17 +315,17 @@ class DownloadManager(QObject):
                     created_at=item.get("created_at", ""),
                 )
                 self._waiting_queue.append(job)
-            get_logger().info(f"Restored {len(self._waiting_queue)} queued downloads from queue.json.")
+            get_logger().info(f"Restored {len(self._waiting_queue)} queued downloads from queue_{self.kind}.json.")
         except Exception as exc:
             get_logger().debug(f"Failed to load persisted queue: {exc}")
 
 
-_manager_instance: Optional[DownloadManager] = None
+_managers: Dict[str, DownloadManager] = {}
 
 
-def get_download_manager() -> DownloadManager:
-    """Return the shared singleton DownloadManager instance."""
-    global _manager_instance
-    if _manager_instance is None:
-        _manager_instance = DownloadManager()
-    return _manager_instance
+def get_download_manager(kind: str) -> DownloadManager:
+    """Return the shared singleton DownloadManager instance for the specified lane ('video' or 'audio')."""
+    k = kind.lower()
+    if k not in _managers:
+        _managers[k] = DownloadManager(kind=k)
+    return _managers[k]

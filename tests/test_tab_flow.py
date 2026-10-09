@@ -48,7 +48,7 @@ def test_video_tab_start_download_preserves_downloading_state(monkeypatch):
     """Chunk 3.1: start_download should not be reset to IDLE by clearing the url input."""
     tab = VideoTab()
     fake_mgr = FakeManager()
-    monkeypatch.setattr("app.ui.video_tab.get_download_manager", lambda: fake_mgr)
+    monkeypatch.setattr("app.ui.video_tab.get_download_manager", lambda kind="video": fake_mgr)
     tab._wire_manager()
 
     # Setup ready state with a valid info without triggering live fetch
@@ -80,7 +80,7 @@ def test_audio_tab_start_download_preserves_downloading_state(monkeypatch):
     """Chunk 3.1: AudioTab start_download should not be reset to IDLE by clearing url input."""
     tab = AudioTab()
     fake_mgr = FakeManager()
-    monkeypatch.setattr("app.ui.audio_tab.get_download_manager", lambda: fake_mgr)
+    monkeypatch.setattr("app.ui.audio_tab.get_download_manager", lambda kind="audio": fake_mgr)
     tab._wire_manager()
 
     tab.url_input.blockSignals(True)
@@ -184,7 +184,7 @@ def test_tab_finish_clears_inputs_and_returns_to_idle(TabClass, kind, monkeypatc
     tab = TabClass()
     fake_mgr = FakeManager()
     module_name = "video_tab" if TabClass is VideoTab else "audio_tab"
-    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda: fake_mgr)
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda kind=None: fake_mgr)
     tab._wire_manager()
 
     tab.url_input.blockSignals(True)
@@ -230,7 +230,7 @@ def test_tab_finish_clears_inputs_and_returns_to_idle(TabClass, kind, monkeypatc
 def test_thumbnail_saved_before_enqueue(TabClass, module_name, monkeypatch):
     tab = TabClass()
     fake_mgr = FakeManager()
-    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda: fake_mgr)
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda kind=None: fake_mgr)
     tab._wire_manager()
 
     call_order = []
@@ -390,7 +390,7 @@ def test_tab_changed_resets_messages_on_video_and_audio():
 def _setup_tab_for_thumb_test(TabClass, module_name, monkeypatch, thumb_bytes):
     tab = TabClass()
     fake_mgr = FakeManager()
-    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda: fake_mgr)
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda kind=None: fake_mgr)
     tab._wire_manager()
 
     call_order = []

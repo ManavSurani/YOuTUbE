@@ -37,13 +37,13 @@ def test_stress_queue_recovery_and_history_cleanliness(tmp_path: Path, monkeypat
 
     app_data = tmp_path / "AppData"
     app_data.mkdir()
-    queue_file = app_data / "queue.json"
+    queue_file = app_data / "queue_video.json"
     db_file = app_data / "history.db"
 
     monkeypatch.setattr(paths_mod, "APP_DATA", app_data)
 
     # 1. Initialize DownloadManager with empty queue
-    mgr = DownloadManager()
+    mgr = DownloadManager(kind="video")
     mgr._queue_file = queue_file
     mgr._waiting_queue.clear()
     mgr._is_offline = False
@@ -101,7 +101,7 @@ def test_stress_queue_recovery_and_history_cleanliness(tmp_path: Path, monkeypat
 
     # Simulate abrupt app termination during job_5 (no completed save for job_5)
     # Restart app: create a fresh DownloadManager reading queue.json
-    restarted_mgr = DownloadManager()
+    restarted_mgr = DownloadManager(kind="video")
     restarted_mgr._queue_file = queue_file
     restarted_mgr._load_persisted_queue()
 
@@ -150,7 +150,7 @@ def test_edge_case_change_download_folder_mid_queue(tmp_path: Path, monkeypatch)
     settings_dict = {"download_dir": str(old_dir)}
     monkeypatch.setattr(settings_mod, "load_settings", lambda: dict(settings_dict))
 
-    mgr = DownloadManager()
+    mgr = DownloadManager(kind="video")
     mgr._waiting_queue.clear()
     mgr._is_offline = False
 

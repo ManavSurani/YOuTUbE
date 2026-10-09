@@ -21,6 +21,7 @@ def test_close_without_running_job_closes_without_question():
     mock_mgr.active_job = None
 
     with patch("app.ui.main_window.NetworkMonitor.start"), \
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
          patch("app.ui.main_window.get_download_manager", return_value=mock_mgr), \
          patch.object(QMessageBox, "exec") as mock_exec:
         win = MainWindow()
@@ -33,11 +34,17 @@ def test_close_without_running_job_closes_without_question():
 
 
 def test_close_with_running_job_keep_downloading_ignores_event():
-    mock_mgr = MagicMock()
-    mock_mgr.active_job = MagicMock(title="Running Video")
+    v_mgr = MagicMock()
+    v_mgr.active_job = MagicMock(title="Running Video")
+    a_mgr = MagicMock()
+    a_mgr.active_job = None
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
 
     with patch("app.ui.main_window.NetworkMonitor.start"), \
-         patch("app.ui.main_window.get_download_manager", return_value=mock_mgr):
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm):
         win = MainWindow()
 
         def fake_exec(*args, **kwargs):
@@ -54,17 +61,24 @@ def test_close_with_running_job_keep_downloading_ignores_event():
             win.closeEvent(event)
 
             assert not event.isAccepted()
-            mock_mgr.cancel_active.assert_not_called()
+            v_mgr.cancel_active.assert_not_called()
 
 
 def test_close_with_running_job_quit_cancels_active():
-    mock_mgr = MagicMock()
-    mock_mgr.active_job = MagicMock(title="Running Video")
+    v_mgr = MagicMock()
+    v_mgr.active_job = MagicMock(title="Running Video")
     fake_worker = MagicMock()
-    mock_mgr._worker = fake_worker
+    v_mgr._worker = fake_worker
+
+    a_mgr = MagicMock()
+    a_mgr.active_job = None
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
 
     with patch("app.ui.main_window.NetworkMonitor.start"), \
-         patch("app.ui.main_window.get_download_manager", return_value=mock_mgr):
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm):
         win = MainWindow()
 
         def fake_exec(*args, **kwargs):
@@ -81,6 +95,5 @@ def test_close_with_running_job_quit_cancels_active():
             win.closeEvent(event)
 
             assert event.isAccepted()
-            mock_mgr.cancel_active.assert_called_once()
+            v_mgr.cancel_active.assert_called_once()
             fake_worker.wait.assert_called_once_with(2000)
-

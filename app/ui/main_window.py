@@ -396,8 +396,9 @@ class MainWindow(QMainWindow):
             self.video_tab.fetch_url()
 
     def closeEvent(self, event) -> None:
-        manager = get_download_manager()
-        if manager.active_job:
+        v_mgr = get_download_manager("video")
+        a_mgr = get_download_manager("audio")
+        if v_mgr.active_job or a_mgr.active_job:
             settings = load_settings()
             if settings.get("confirm_exit_on_download", True):
                 msg_box = QMessageBox(self)
@@ -411,10 +412,12 @@ class MainWindow(QMainWindow):
                     event.ignore()
                     return
 
-            worker = manager._worker
-            manager.cancel_active()
-            if worker and hasattr(worker, "wait"):
-                worker.wait(2000)
+            for mgr in (v_mgr, a_mgr):
+                if mgr.active_job:
+                    worker = mgr._worker
+                    mgr.cancel_active()
+                    if worker and hasattr(worker, "wait"):
+                        worker.wait(2000)
 
         if hasattr(self, "tray_icon") and self.tray_icon:
             self.tray_icon.hide()

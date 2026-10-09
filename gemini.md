@@ -1766,6 +1766,49 @@ Phase B (`plan/04_PHASE_B_RECENT_LIST.md`) has been fully implemented, verified,
 - **Chunk B.3 — End-to-End History Sync Test:** Created `tests/test_recent_sync.py` with 3 comprehensive tests: `test_recent_sync_clear_all`, `test_recent_sync_single_delete` (using `history_service.delete(row1_id, delete_file=False)`), and `test_recent_sync_consecutive_tab_switches`. Followed the strict Qt event propagation rule (never sending events directly to outer tab objects). (Commit `bccf87e`)
 - **Verification Gate:** Verified scope with `git diff --name-only 62c8db1` (zero protected files touched), ran Phase B test suite (9 / 9 passed in 1.64s), verified all 4 Real-PC checks, saved screenshot `screenshot_phase_b_sync.png`, recorded evidence in `docs/verification/phase_B.md`, and committed gate. (Commit `0275b9b`)
 
-Awaiting owner approval (`approved`) to proceed to Phase C (`plan/05_PHASE_C_TWO_LANES.md`).
+---
+
+## User Query:
+approved
+
+## Assistant Response:
+Phase C (`plan/05_PHASE_C_TWO_LANES.md`) has been fully implemented, verified, and gated across all 5 chunks:
+
+- **Chunk C.1 — Manager requires kind & Enqueue guard:**
+  - Made `kind` parameter strictly mandatory on `DownloadManager(kind: str)` and `get_download_manager(kind: str)` without default values.
+  - Added singleton registry `_managers: Dict[str, DownloadManager] = {}`.
+  - Added AST scan test `test_no_get_download_manager_calls_without_kind` enforcing 100% compliance across all call sites in `app/`.
+  - Added enqueue guard in `DownloadManager.enqueue()` rejecting mismatched job kinds with warning log.
+  - Updated all call sites across `video_tab.py`, `audio_tab.py`, `queue_widget.py`, `main_window.py`, and test files. (Commit `e5fd8a1`)
+
+- **Chunk C.2 — Safe legacy queue migration under threading lock:**
+  - Implemented `migrate_legacy_queue_if_needed(app_data_dir)` protected by `_migration_lock = threading.Lock()`.
+  - Handles corrupt/empty `queue.json` by safely renaming to `queue.json.corrupt`.
+  - Partitions valid legacy items to `queue_video.json` and `queue_audio.json`, backs up legacy file as `queue.json.bak`, and guarantees idempotent execution without overwriting existing lane files. (Commit `babedf8`)
+
+- **Chunk C.3 — Cross-lane same-video-id deferral & thread-safe multi-path wake-up:**
+  - Implemented `deferred_job_ids() -> Set[str]`, lazy lookup helper `_get_other_manager()`, and `_wake_all_lanes()`.
+  - Enforced strict lane FIFO: deferred head job blocks subsequent jobs in its lane until the active job in the other lane completes.
+  - Bound member slots on `DownloadManager` with sender validation (`sender is self._worker` and matching `job_id`), safely ignoring stale signals.
+  - Connected multi-path wake-up across finish, cancel active/queued, fail/auto-repair, and deferred removal paths. (Commit `d2fe8e9`)
+
+- **Chunk C.4 — Manager shutdown, shared deadline closeEvent, and offline propagation:**
+  - Implemented `DownloadManager.shutdown()` safely stopping worker without advancing queue and persisting state.
+  - Propagated `set_online(False)` / `set_online(True)` in `MainWindow` offline/online handlers to pause and resume active workers in both lanes.
+  - Overrode `closeEvent` in `MainWindow`: prompts single confirmation dialog when either lane is active, calls non-blocking `shutdown()` on both lanes first, and waits for both workers with ONE shared 2.0-second deadline (`deadline = time.monotonic() + 2.0`), logging a warning if any worker exceeds the deadline. (Commit `010cf58`)
+
+- **Chunk C.5 — Startup after restore:**
+  - Implemented `DownloadManager.start_restored_jobs()` automatically starting waiting jobs if idle and online.
+  - Wired startup sequence in `MainWindow`: initializes network state on both lanes and begins processing restored queue items independently. (Commit `7359982`)
+
+- **Verification Gate:**
+  - Verified scope with `git diff --name-only 62c8db1` (0 of 15 protected engine files modified).
+  - Target test suite passed: **43 / 43 passed in 2.88s** (`pytest tests/test_download_lanes.py tests/test_close_event.py tests/test_download_manager.py tests/test_queue.py tests/test_phase8_stress_edge_cases.py`).
+  - Full test suite passed: **297 / 297 passed in 21.11s** (+57 tests over baseline 240, zero regressions).
+  - Verified all 7 Real-PC checks (Legacy Migration, Parallel Downloads, Same Video ID Deferral, Lane Queue Isolation, Offline Pause/Resume, Safe Close, Restored Queue Auto-Start).
+  - Captured screenshot `screenshot_phase_c_parallel.png`.
+  - Recorded verification evidence in `docs/verification/phase_C.md`. (Gate commit `16ce129`)
+
+Phase C is complete. Awaiting owner approval (`approved`) before proceeding to Phase D (`plan/06_PHASE_D_QUEUE_CARDS.md`).
 
 

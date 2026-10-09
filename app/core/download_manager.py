@@ -93,6 +93,7 @@ class DownloadManager(QObject):
         if any(j.job_id == job.job_id for j in self._waiting_queue):
             return
 
+        self._is_shutting_down = False
         self._waiting_queue.append(job)
         self._save_persisted_queue()
         self.job_added.emit(job)
@@ -172,6 +173,7 @@ class DownloadManager(QObject):
                 get_logger().info("Network offline: pausing active download.")
                 self._worker.pause()
         else:
+            self._is_shutting_down = False
             if self._active_job and self._worker:
                 get_logger().info("Network online: resuming active download.")
                 # Worker is restarted for active job
@@ -466,8 +468,8 @@ def migrate_legacy_queue_if_needed(app_data_dir: Optional[Path] = None) -> None:
         except Exception as exc:
             try:
                 legacy_file.rename(target_dir / "queue.json.corrupt")
-            except Exception:
-                pass
+            except Exception as rename_exc:
+                get_logger().debug(f"Could not rename legacy file to corrupt: {rename_exc}")
             get_logger().warning(f"Corrupt or empty queue.json detected; renamed to queue.json.corrupt: {exc}")
 
 

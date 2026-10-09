@@ -12,10 +12,23 @@ if str(ROOT) not in sys.path:
 
 from app.core.download_manager import DownloadManager, get_download_manager
 from app.core.info_fetcher import VideoInfo
+import pytest
 from app.core.jobs import DownloadJob
 from app.ui.main_window import MainWindow
 
 _app = QApplication.instance() or QApplication(sys.argv)
+
+
+@pytest.fixture(autouse=True)
+def reset_lanes():
+    for k in ("video", "audio"):
+        mgr = get_download_manager(k)
+        mgr._is_offline = False
+        mgr._is_shutting_down = False
+        mgr._waiting_queue.clear()
+        mgr._active_job = None
+        mgr._deferred_job_ids.clear()
+    yield
 
 
 def test_video_queue_sequential_and_remove(tmp_path, monkeypatch):

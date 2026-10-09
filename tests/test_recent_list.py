@@ -146,3 +146,31 @@ def test_recent_row_missing_file_no_play_btn_and_shows_file_missing(tmp_path):
     assert "#FF4E45" not in meta_labels[0].styleSheet()
     assert "#AAAAAA" in meta_labels[0].styleSheet()
 
+
+def test_recent_list_multiple_refreshes_no_duplicate_elements(monkeypatch):
+    mock_items = [
+        HistoryItem(
+            id=i,
+            title=f"Item {i}",
+            url=f"https://youtube.com/watch?v=item{i}12345",
+            type="video",
+            quality="1080p",
+            file_path="/path/to/item",
+            size_bytes=1024,
+            file_missing=0,
+        )
+        for i in range(1, 3)
+    ]
+    monkeypatch.setattr("app.ui.recent_list.list_items", lambda type_filter: mock_items)
+
+    recent = RecentList(kind="video")
+    for _ in range(5):
+        recent.refresh()
+
+    header_labels = [lbl for lbl in recent.findChildren(QLabel) if lbl.text() == "Recently downloaded"]
+    see_all_btns = [btn for btn in recent.findChildren(QPushButton) if "See all" in btn.text()]
+
+    assert len(header_labels) == 1
+    assert len(see_all_btns) == 1
+
+

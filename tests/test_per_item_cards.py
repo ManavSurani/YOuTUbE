@@ -212,3 +212,45 @@ def test_queue_widget_ignores_wrong_kind_without_exception(qapp):
 
     qw.refresh()
     assert not qw.isVisible()
+
+
+def test_tab_scroll_bounds_with_many_queued_items(qapp):
+    from PySide6.QtCore import Qt
+    from app.ui.main_window import MainWindow
+
+    video_manager = get_download_manager("video")
+    audio_manager = get_download_manager("audio")
+    video_manager._waiting_queue.clear()
+    video_manager._failed_jobs.clear()
+    audio_manager._waiting_queue.clear()
+    audio_manager._failed_jobs.clear()
+
+    win = MainWindow()
+    win.resize(760, 560)
+    win.show()
+    QApplication.processEvents()
+
+    initial_height = win.height()
+
+    try:
+        for i in range(15):
+            job = make_test_job(job_id=f"scroll_vid_{i}", title=f"Video Item {i}")
+            video_manager._waiting_queue.append(job)
+
+        video_manager.queue_changed.emit()
+        QApplication.processEvents()
+
+        video_tab = win.video_tab
+        assert video_tab.scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert video_tab.scroll.verticalScrollBar().maximum() > 0
+        assert win.height() == initial_height
+
+        audio_tab = win.audio_tab
+        assert audio_tab.scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    finally:
+        video_manager._waiting_queue.clear()
+        audio_manager._waiting_queue.clear()
+        win.tray_icon.hide()
+        win.tray_icon.deleteLater()
+        win.deleteLater()
+        QApplication.processEvents()

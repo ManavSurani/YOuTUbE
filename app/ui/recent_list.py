@@ -6,7 +6,7 @@ Updates immediately upon download completion and links directly to History tab.
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -130,7 +130,16 @@ class RecentList(QWidget):
         self._layout.setContentsMargins(0, 8, 0, 8)
         self._layout.setSpacing(6)
 
+        parent_widget = self.parent()
+        if parent_widget is not None:
+            parent_widget.installEventFilter(self)
+
         self.refresh()
+
+    def eventFilter(self, watched, event):
+        if watched == self.parent() and event.type() == QEvent.Type.Show:
+            self.refresh()
+        return super().eventFilter(watched, event)
 
     def _clear_layout(self, layout: Optional[QLayout]) -> None:
         """Recursively clear layout and deleteLater all widgets."""

@@ -2,7 +2,9 @@
 
 from pathlib import Path
 from unittest.mock import patch
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtCore import QEvent
+from PySide6.QtGui import QShowEvent
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 import pytest
 
 from app.core.history_db import HistoryItem
@@ -172,5 +174,38 @@ def test_recent_list_multiple_refreshes_no_duplicate_elements(monkeypatch):
 
     assert len(header_labels) == 1
     assert len(see_all_btns) == 1
+
+
+def test_recent_list_refreshes_on_parent_show(monkeypatch):
+    mock_items = [
+        HistoryItem(
+            id=i,
+            title=f"Item {i}",
+            url=f"https://youtube.com/watch?v=item{i}12345",
+            type="video",
+            quality="1080p",
+            file_path="/path/to/item",
+            size_bytes=1024,
+            file_missing=0,
+        )
+        for i in range(1, 3)
+    ]
+    monkeypatch.setattr("app.ui.recent_list.list_items", lambda type_filter: mock_items)
+
+    parent = QWidget()
+    recent = RecentList(kind="video", parent=parent)
+    parent.show()
+
+    assert recent.isVisible()
+    assert len(recent.findChildren(RecentRow)) == 2
+
+    # Clear database (empty list)
+    monkeypatch.setattr("app.ui.recent_list.list_items", lambda type_filter: [])
+
+    # Send QShowEvent to parent
+    QApplication.sendEvent(parent, QShowEvent())
+
+    assert not recent.isVisible()
+
 
 

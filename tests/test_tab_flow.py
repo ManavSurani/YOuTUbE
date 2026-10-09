@@ -385,6 +385,98 @@ def test_tab_changed_resets_messages_on_video_and_audio():
                 win.tray_icon.hide()
 
 
+# --- Chunk A.4 Tests: Persist Thumbnail Before Enqueueing Job ---
+
+def _setup_tab_for_thumb_test(TabClass, module_name, monkeypatch, thumb_bytes):
+    tab = TabClass()
+    fake_mgr = FakeManager()
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda: fake_mgr)
+    tab._wire_manager()
+
+    call_order = []
+
+    def mock_save_thumb(vid, data):
+        call_order.append(("save_thumbnail", vid, data))
+        return "thumb_path"
+
+    def mock_enqueue(job):
+        call_order.append(("enqueue", job))
+
+    monkeypatch.setattr(f"app.ui.{module_name}.save_thumbnail", mock_save_thumb)
+    fake_mgr.enqueue = mock_enqueue
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Video",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    tab._on_info_fetched(info)
+    tab.info_card.thumb_bytes = thumb_bytes
+    return tab, call_order
+
+
+def test_video_tab_start_download_saves_thumbnail_before_enqueue(monkeypatch):
+    tab, call_order = _setup_tab_for_thumb_test(VideoTab, "video_tab", monkeypatch, b"video_thumb_bytes")
+    tab.start_download()
+
+    assert len(call_order) == 2
+    assert call_order[0] == ("save_thumbnail", "dQw4w9WgXcQ", b"video_thumb_bytes")
+    assert call_order[1][0] == "enqueue"
+
+
+def test_video_tab_add_to_queue_saves_thumbnail_before_enqueue(monkeypatch):
+    tab, call_order = _setup_tab_for_thumb_test(VideoTab, "video_tab", monkeypatch, b"video_queue_thumb_bytes")
+    tab.add_to_queue()
+
+    assert len(call_order) == 2
+    assert call_order[0] == ("save_thumbnail", "dQw4w9WgXcQ", b"video_queue_thumb_bytes")
+    assert call_order[1][0] == "enqueue"
+
+
+def test_audio_tab_start_download_saves_thumbnail_before_enqueue(monkeypatch):
+    tab, call_order = _setup_tab_for_thumb_test(AudioTab, "audio_tab", monkeypatch, b"audio_thumb_bytes")
+    tab.start_download()
+
+    assert len(call_order) == 2
+    assert call_order[0] == ("save_thumbnail", "dQw4w9WgXcQ", b"audio_thumb_bytes")
+    assert call_order[1][0] == "enqueue"
+
+
+def test_audio_tab_add_to_queue_saves_thumbnail_before_enqueue(monkeypatch):
+    tab, call_order = _setup_tab_for_thumb_test(AudioTab, "audio_tab", monkeypatch, b"audio_queue_thumb_bytes")
+    tab.add_to_queue()
+
+    assert len(call_order) == 2
+    assert call_order[0] == ("save_thumbnail", "dQw4w9WgXcQ", b"audio_queue_thumb_bytes")
+    assert call_order[1][0] == "enqueue"
+
+
+def test_video_tab_empty_thumbnail_bytes_does_not_call_save_thumbnail(monkeypatch):
+    tab, call_order = _setup_tab_for_thumb_test(VideoTab, "video_tab", monkeypatch, b"")
+    tab.start_download()
+
+    assert len(call_order) == 1
+    assert call_order[0][0] == "enqueue"
+
+
+def test_audio_tab_empty_thumbnail_bytes_does_not_call_save_thumbnail(monkeypatch):
+    tab, call_order = _setup_tab_for_thumb_test(AudioTab, "audio_tab", monkeypatch, b"")
+    tab.start_download()
+
+    assert len(call_order) == 1
+    assert call_order[0][0] == "enqueue"
+
+
+
 
 
 

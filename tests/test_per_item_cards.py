@@ -1,0 +1,134 @@
+from pathlib import Path
+from typing import Optional
+import pytest
+from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtWidgets import QApplication
+
+from app.core.download_manager import get_download_manager
+from app.core.jobs import DownloadJob
+from app.ui.queue_widget import QueueRow, QueueWidget
+
+
+@pytest.fixture(autouse=True, scope="module")
+def qapp():
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
+
+
+def make_test_job(
+    job_id: str = "job_1",
+    kind: str = "video",
+    video_id: str = "dQw4w9WgXcQ",
+    title: str = "Test Video",
+    quality_label: str = "1080p",
+) -> DownloadJob:
+    return DownloadJob(
+        job_id=job_id,
+        url=f"https://www.youtube.com/watch?v={video_id}",
+        video_id=video_id,
+        title=title,
+        channel="Channel",
+        duration_seconds=60,
+        thumbnail_url="",
+        thumbnail_bytes=None,
+        kind=kind,
+        quality_label=quality_label,
+        height=1080 if kind == "video" else None,
+        audio_format="mp3" if kind == "audio" else None,
+        output_dir="C:/downloads",
+        created_at="2026-10-09T00:00:00Z",
+    )
+
+
+def test_queue_row_has_progress_bar(qapp):
+    job = make_test_job(job_id="job_vid_1")
+    row = QueueRow(job=job, can_remove=True)
+    assert hasattr(row, "progress_bar")
+    assert row.progress_bar is not None
+    assert row.progress_bar.value() == 0
+    assert row.progress_bar.height() == 6
+
+
+def test_queue_row_deferred_status_text(qapp, monkeypatch):
+    job = make_test_job(job_id="job_def_1", title="Deferred Video")
+    manager = get_download_manager("video")
+    monkeypatch.setattr(manager, "deferred_job_ids", lambda: {"job_def_1"})
+    row = QueueRow(job=job)
+    assert "Waiting for the same video to finish" in row.status_lbl.text()
+
+
+def test_queue_row_failed_state(qapp):
+    job = make_test_job(job_id="job_fail_1", title="Failed Video")
+    # Test with custom reason
+    row = QueueRow(job=(job, "Network connection lost"))
+    assert row.status_lbl.text() == "Failed: Network connection lost"
+    assert row.progress_bar.value() == 0
+    assert row.retry_btn is not None
+    assert row.remove_btn is not None
+
+    # Test with empty reason -> fallback "Something went wrong"
+    row_empty = QueueRow(job=(job, ""))
+    assert row_empty.status_lbl.text() == "Failed: Something went wrong"
+
+
+def test_queue_row_thumbnail_saved_shows_real_image(qapp, tmp_path: Path, monkeypatch):
+    import app.core.thumbnails as thumb_mod
+    monkeypatch.setattr(thumb_mod, "THUMBS_DIR", tmp_path)
+
+    # 1. Create a job without saved thumbnail:
+    job_placeholder = make_test_job(job_id="job_ph", video_id="ph111111111")
+    row_ph = QueueRow(job=job_placeholder)
+    ph_pix = row_ph.thumb.pixmap()
+    assert ph_pix is not None
+    assert not ph_pix.isNull()
+
+    # 2. Create a job with saved thumbnail (Phase A.4):
+    img = QImage(64, 36, QImage.Format.Format_ARGB32)
+    img.fill(QColor(12, 34, 56))
+    img.save(str(tmp_path / "real1111111.jpg"), "JPG")
+
+    job_real = make_test_job(job_id="job_real", video_id="real1111111")
+    row_real = QueueRow(job=job_real)
+    real_pix = row_real.thumb.pixmap()
+    assert real_pix is not None
+    assert not real_pix.isNull()
+    # The real pixmap should not equal the placeholder pixmap image bytes
+    assert real_pix.toImage() != ph_pix.toImage()
+
+
+def test_queue_row_thumbnail_not_saved_shows_placeholder(qapp, tmp_path: Path, monkeypatch):
+    import app.core.thumbnails as thumb_mod
+    monkeypatch.setattr(thumb_mod, "THUMBS_DIR", tmp_path)
+
+    job = make_test_job(job_id="job_no_thumb", video_id="nothumb1111")
+    # Displays placeholder without errors
+    row = QueueRow(job=job)
+    pix = row.thumb.pixmap()
+    assert pix is not None
+    assert not pix.isNull()
+
+
+def test_queue_row_remove_action(qapp, monkeypatch):
+    job = make_test_job(job_id="job_rem_1", title="Remove Video")
+    manager = get_download_manager("video")
+    cancelled_ids = []
+    monkeypatch.setattr(manager, "cancel_job", lambda jid: cancelled_ids.append(jid))
+
+    row = QueueRow(job=job, can_remove=True)
+    assert row.remove_btn is not None
+    row.remove_btn.click()
+    assert cancelled_ids == ["job_rem_1"]
+
+
+def test_queue_row_retry_action(qapp, monkeypatch):
+    job = make_test_job(job_id="job_ret_1", title="Retry Video")
+    manager = get_download_manager("video")
+    retried_ids = []
+    monkeypatch.setattr(manager, "retry_job", lambda jid: retried_ids.append(jid))
+
+    row = QueueRow(job=(job, "some error"))
+    assert row.retry_btn is not None
+    row.retry_btn.click()
+    assert retried_ids == ["job_ret_1"]

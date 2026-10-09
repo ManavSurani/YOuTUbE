@@ -448,3 +448,119 @@ def test_set_online_true_resumes_active_workers_in_both_lanes(tmp_path, monkeypa
     assert "v1" in started_workers
     assert "a1" in started_workers
 
+
+def test_restored_waiting_items_start_automatically_when_online(tmp_path, monkeypatch):
+    """Restored waiting items in both lanes automatically start when online."""
+    from dataclasses import asdict
+    import json
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "_managers", {})
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+
+    job_v = _make_job("v_restored", "video", "vid1")
+    job_a = _make_job("a_restored", "audio", "vid2")
+    (tmp_path / "queue_video.json").write_text(json.dumps([asdict(job_v)]), encoding="utf-8")
+    (tmp_path / "queue_audio.json").write_text(json.dumps([asdict(job_a)]), encoding="utf-8")
+
+    v_mgr = get_download_manager("video")
+    a_mgr = get_download_manager("audio")
+
+    v_started = []
+    a_started = []
+    monkeypatch.setattr(v_mgr, "_start_worker", lambda j: v_started.append(j.job_id))
+    monkeypatch.setattr(a_mgr, "_start_worker", lambda j: a_started.append(j.job_id))
+
+    v_mgr.set_online(True)
+    a_mgr.set_online(True)
+
+    v_mgr.start_restored_jobs()
+    a_mgr.start_restored_jobs()
+
+    assert v_mgr.active_job is not None
+    assert v_mgr.active_job.job_id == "v_restored"
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a_restored"
+    assert v_started == ["v_restored"]
+    assert a_started == ["a_restored"]
+
+
+def test_restored_waiting_items_do_not_start_when_offline_until_reconnect(tmp_path, monkeypatch):
+    """Restored waiting items do not start when offline and start when connection returns."""
+    from dataclasses import asdict
+    import json
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "_managers", {})
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+
+    job_v = _make_job("v_restored", "video", "vid1")
+    job_a = _make_job("a_restored", "audio", "vid2")
+    (tmp_path / "queue_video.json").write_text(json.dumps([asdict(job_v)]), encoding="utf-8")
+    (tmp_path / "queue_audio.json").write_text(json.dumps([asdict(job_a)]), encoding="utf-8")
+
+    v_mgr = get_download_manager("video")
+    a_mgr = get_download_manager("audio")
+
+    v_started = []
+    a_started = []
+    monkeypatch.setattr(v_mgr, "_start_worker", lambda j: v_started.append(j.job_id))
+    monkeypatch.setattr(a_mgr, "_start_worker", lambda j: a_started.append(j.job_id))
+
+    # Offline at startup
+    v_mgr.set_online(False)
+    a_mgr.set_online(False)
+
+    v_mgr.start_restored_jobs()
+    a_mgr.start_restored_jobs()
+
+    # Nothing starts while offline
+    assert v_mgr.active_job is None
+    assert a_mgr.active_job is None
+    assert len(v_mgr.waiting_jobs) == 1
+    assert len(a_mgr.waiting_jobs) == 1
+    assert v_started == []
+    assert a_started == []
+
+    # Network restored -> both lanes start their waiting items
+    v_mgr.set_online(True)
+    a_mgr.set_online(True)
+
+    assert v_mgr.active_job is not None
+    assert v_mgr.active_job.job_id == "v_restored"
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a_restored"
+    assert v_started == ["v_restored"]
+    assert a_started == ["a_restored"]
+
+
+def test_restored_same_video_id_pair_starts_one_and_defers_other(tmp_path, monkeypatch):
+    """A restored same-video-id pair starts one and defers the other."""
+    from dataclasses import asdict
+    import json
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "_managers", {})
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+
+    job_v = _make_job("v_shared", "video", "same_vid_123")
+    job_a = _make_job("a_shared", "audio", "same_vid_123")
+    (tmp_path / "queue_video.json").write_text(json.dumps([asdict(job_v)]), encoding="utf-8")
+    (tmp_path / "queue_audio.json").write_text(json.dumps([asdict(job_a)]), encoding="utf-8")
+
+    v_mgr = get_download_manager("video")
+    a_mgr = get_download_manager("audio")
+
+    monkeypatch.setattr(v_mgr, "_start_worker", lambda j: None)
+    monkeypatch.setattr(a_mgr, "_start_worker", lambda j: None)
+
+    v_mgr.set_online(True)
+    a_mgr.set_online(True)
+
+    v_mgr.start_restored_jobs()
+    a_mgr.start_restored_jobs()
+
+    # Video started first, audio was deferred
+    assert v_mgr.active_job is not None
+    assert v_mgr.active_job.job_id == "v_shared"
+    assert a_mgr.active_job is None
+    assert "a_shared" in a_mgr.deferred_job_ids()
+
+

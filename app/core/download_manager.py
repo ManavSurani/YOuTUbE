@@ -159,6 +159,11 @@ class DownloadManager(QObject):
         self._completed_jobs.clear()
         self.queue_changed.emit()
 
+    def start_restored_jobs(self) -> None:
+        """Begin processing restored queue items if online and idle."""
+        if not self._is_offline and not self._active_job and self._waiting_queue:
+            self._process_next()
+
     def set_online(self, online: bool) -> None:
         """Pause or resume downloads based on network connectivity."""
         self._is_offline = not online

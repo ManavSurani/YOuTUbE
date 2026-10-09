@@ -305,6 +305,24 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             get_logger().debug(f"Title bar theming skipped: {exc}")
 
+        if not getattr(self, "_restored_started", False):
+            self._restored_started = True
+            self._init_network_and_restored_jobs()
+
+    def _init_network_and_restored_jobs(self) -> None:
+        """Initialize online state for both lanes and start restored jobs if online."""
+        is_online = self.network_monitor.is_online() if hasattr(self, "network_monitor") else True
+        v_mgr = get_download_manager("video")
+        a_mgr = get_download_manager("audio")
+        v_mgr.set_online(is_online)
+        a_mgr.set_online(is_online)
+        if is_online:
+            v_mgr.start_restored_jobs()
+            a_mgr.start_restored_jobs()
+        else:
+            self.video_tab.set_online(False)
+            self.audio_tab.set_online(False)
+
     def _on_see_all_history(self, kind: str) -> None:
         self.header.select_tab(2)
         self.history_tab.show_filter(kind)

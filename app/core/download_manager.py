@@ -7,7 +7,7 @@ Maintains queue state, retries, and coordinates with HistoryService.
 import json
 from pathlib import Path
 import threading
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from PySide6.QtCore import QObject, Signal
 
@@ -41,10 +41,28 @@ class DownloadManager(QObject):
         self._failed_jobs: Dict[str, Tuple[DownloadJob, str]] = {}
         self._completed_jobs: List[Tuple[DownloadJob, str]] = []
         self._repaired_jobs: set = set()
+        self._deferred_job_ids: Set[str] = set()
         self._is_offline = False
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
 
         self._load_persisted_queue()
+
+    def deferred_job_ids(self) -> Set[str]:
+        """Return the set of job IDs that are currently deferred due to cross-lane same video_id conflict."""
+        return set(self._deferred_job_ids)
+
+    def _get_other_manager(self) -> Optional["DownloadManager"]:
+        """Lazy lookup for the other lane manager without construction recursion."""
+        other_kind = "audio" if self.kind == "video" else "video"
+        return _managers.get(other_kind)
+
+    def _wake_all_lanes(self) -> None:
+        """Wake up both this lane and the other lane thread-safely."""
+        if not self._is_offline:
+            self._process_next()
+        other = self._get_other_manager()
+        if other and not other._is_offline:
+            other._process_next()
 
     @property
     def active_job(self) -> Optional[DownloadJob]:
@@ -84,17 +102,17 @@ class DownloadManager(QObject):
 
     def cancel_active(self) -> None:
         """Cancel currently downloading job."""
-        if self._active_job and self._worker:
+        if self._active_job:
             get_logger().info(f"Cancelling active download: {self._active_job.title}")
             job = self._active_job
-            self._worker.cancel()
-            self._worker = None
+            if self._worker:
+                self._worker.cancel()
+                self._worker = None
             self._active_job = None
             self.job_cancelled.emit(job)
             self.queue_changed.emit()
-            # Start next item after cancel
-            if not self._is_offline:
-                self._process_next()
+            # Start next item after cancel and wake other lane
+            self._wake_all_lanes()
 
     def cancel_job(self, job_id: str) -> None:
         """Cancel or remove a job by ID."""
@@ -105,9 +123,11 @@ class DownloadManager(QObject):
         for i, job in enumerate(self._waiting_queue):
             if job.job_id == job_id:
                 removed = self._waiting_queue.pop(i)
+                self._deferred_job_ids.discard(job_id)
                 self._save_persisted_queue()
                 self.job_cancelled.emit(removed)
                 self.queue_changed.emit()
+                self._wake_all_lanes()
                 return
 
         if job_id in self._failed_jobs:
@@ -141,9 +161,23 @@ class DownloadManager(QObject):
                 self._process_next()
 
     def _process_next(self) -> None:
-        """Start the next waiting job if one is available."""
+        """Start the next waiting job if one is available and not deferred."""
         if self._active_job or not self._waiting_queue or self._is_offline:
             return
+
+        head = self._waiting_queue[0]
+        other_mgr = self._get_other_manager()
+        other_active = other_mgr.active_job if other_mgr else None
+
+        if other_active and other_active.video_id and other_active.video_id == head.video_id:
+            if head.job_id not in self._deferred_job_ids:
+                self._deferred_job_ids.add(head.job_id)
+                self.queue_changed.emit()
+            return
+
+        if head.job_id in self._deferred_job_ids:
+            self._deferred_job_ids.discard(head.job_id)
+            self.queue_changed.emit()
 
         job = self._waiting_queue.pop(0)
         self._save_persisted_queue()
@@ -181,23 +215,56 @@ class DownloadManager(QObject):
             is_dual_stream=is_dual,
             parent=self,
         )
+        self._worker.job_id = job.job_id
 
-        self._worker.stage.connect(lambda st: self._on_worker_stage(job, st))
-        self._worker.progress.connect(lambda pct, sp, eta, done, tot: self._on_worker_progress(job, pct, sp, eta, done, tot))
-        self._worker.finished.connect(lambda path: self._on_worker_finished(job, path))
-        self._worker.failed.connect(lambda err: self._on_worker_failed(job, err))
+        self._worker.stage.connect(self._on_worker_stage)
+        self._worker.progress.connect(self._on_worker_progress)
+        self._worker.finished.connect(self._on_worker_finished)
+        self._worker.failed.connect(self._on_worker_failed)
         self._worker.start()
 
-    def _on_worker_stage(self, job: DownloadJob, stage_name: str) -> None:
-        if self._active_job and self._active_job.job_id == job.job_id:
+    def _on_worker_stage(self, a1, a2=None) -> None:
+        if a2 is not None:
+            job = a1
+            stage_name = a2
+        else:
+            job = self._active_job
+            stage_name = a1
+        sender = self.sender()
+        if sender is not None:
+            if sender is not self._worker or getattr(sender, "job_id", None) != (self._active_job.job_id if self._active_job else None):
+                return
+        if self._active_job and job and self._active_job.job_id == job.job_id:
             self.stage.emit(job, stage_name)
 
-    def _on_worker_progress(self, job: DownloadJob, pct: float, speed: str, eta: str, done: int, total: int) -> None:
-        if self._active_job and self._active_job.job_id == job.job_id:
+    def _on_worker_progress(self, *args) -> None:
+        if len(args) == 6:
+            job, pct, speed, eta, done, total = args
+        elif len(args) == 5:
+            job = self._active_job
+            pct, speed, eta, done, total = args
+        else:
+            return
+        sender = self.sender()
+        if sender is not None:
+            if sender is not self._worker or getattr(sender, "job_id", None) != (self._active_job.job_id if self._active_job else None):
+                return
+        if self._active_job and job and self._active_job.job_id == job.job_id:
             self.progress.emit(job, pct, speed, eta, done, total)
 
-    def _on_worker_finished(self, job: DownloadJob, final_path: str) -> None:
-        if not self._active_job or self._active_job.job_id != job.job_id:
+    def _on_worker_finished(self, a1, a2=None) -> None:
+        if a2 is not None:
+            job = a1
+            final_path = a2
+        else:
+            job = self._active_job
+            final_path = a1
+        sender = self.sender()
+        if sender is not None:
+            if sender is not self._worker or getattr(sender, "job_id", None) != (self._active_job.job_id if self._active_job else None):
+                get_logger().debug(f"Ignored finished signal from stale worker: {sender}")
+                return
+        if not self._active_job or not job or self._active_job.job_id != job.job_id:
             return
 
         get_logger().info(f"Download finished: {job.title} -> {final_path}")
@@ -214,12 +281,22 @@ class DownloadManager(QObject):
         self.job_finished.emit(job, final_path)
         self.queue_changed.emit()
 
-        # Start next waiting job
-        if not self._is_offline:
-            self._process_next()
+        # Multi-path wake up both lanes
+        self._wake_all_lanes()
 
-    def _on_worker_failed(self, job: DownloadJob, raw_error: str) -> None:
-        if not self._active_job or self._active_job.job_id != job.job_id:
+    def _on_worker_failed(self, a1, a2=None) -> None:
+        if a2 is not None:
+            job = a1
+            raw_error = a2
+        else:
+            job = self._active_job
+            raw_error = a1
+        sender = self.sender()
+        if sender is not None:
+            if sender is not self._worker or getattr(sender, "job_id", None) != (self._active_job.job_id if self._active_job else None):
+                get_logger().debug(f"Ignored failed signal from stale worker: {sender}")
+                return
+        if not self._active_job or not job or self._active_job.job_id != job.job_id:
             return
 
         # Chunk 7.3 Task 3: Auto-repair on extraction failure
@@ -245,7 +322,7 @@ class DownloadManager(QObject):
                 self._active_job = None
                 self.stage.emit(job, "Retrying after tool update…")
                 self._waiting_queue.insert(0, job)
-                self._process_next()
+                self._wake_all_lanes()
                 return
 
         friendly_reason = explain(raw_error)
@@ -258,9 +335,8 @@ class DownloadManager(QObject):
         self.job_failed.emit(job, friendly_reason)
         self.queue_changed.emit()
 
-        # Isolate failure: continue queue with next item
-        if not self._is_offline:
-            self._process_next()
+        # Multi-path wake up both lanes
+        self._wake_all_lanes()
 
     def _save_persisted_queue(self) -> None:
         """Persist waiting jobs to queue.json."""

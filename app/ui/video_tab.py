@@ -631,5 +631,8 @@ class VideoTab(QWidget):
     def _on_manager_cancelled(self, job: DownloadJob) -> None:
         if job.kind == "video":
             self.progress_card.reset()
-            self._clear_inputs()
-            self.set_state(TabState.IDLE)
+            if self._current_info is not None:
+                self.set_state(TabState.READY)
+            else:
+                self._clear_inputs()
+                self.set_state(TabState.IDLE)

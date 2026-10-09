@@ -137,3 +137,255 @@ def test_legacy_queue_migration_idempotent(tmp_path, monkeypatch):
     new_legacy.write_text(json.dumps([{"job_id": "999", "kind": "video"}]), encoding="utf-8")
     dm_mod.migrate_legacy_queue_if_needed(tmp_path)
     assert (tmp_path / "queue_video.json").read_text(encoding="utf-8") == v_content_before
+
+
+from PySide6.QtCore import QObject, Signal
+
+
+class FakeWorker(QObject):
+    stage = Signal(str)
+    progress = Signal(float, str, str, int, int)
+    finished = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, job_id="job_default", parent=None):
+        super().__init__(parent)
+        self.job_id = job_id
+
+
+def _make_job(job_id: str, kind: str, video_id: str, title: str = "Test") -> DownloadJob:
+    return DownloadJob(
+        job_id=job_id,
+        url=f"https://youtube.com/watch?v={video_id}",
+        video_id=video_id,
+        title=title,
+        channel="Chan",
+        duration_seconds=60,
+        thumbnail_url="",
+        thumbnail_bytes=None,
+        kind=kind,
+        quality_label="1080p" if kind == "video" else "mp3",
+        height=1080 if kind == "video" else None,
+        audio_format=None if kind == "video" else "mp3",
+        output_dir="",
+        created_at="2026-01-01T00:00:00",
+    )
+
+
+def test_stale_worker_finished_signal_ignored(tmp_path):
+    """A finished signal from an old, cancelled worker does not finish the new active job."""
+    manager = DownloadManager(kind="video")
+    manager._queue_file = tmp_path / "queue_video.json"
+    job_active = _make_job("job_active", "video", "vid_active")
+    manager._active_job = job_active
+    current_worker = FakeWorker("job_active")
+    manager._worker = current_worker
+
+    old_worker = FakeWorker("job_old")
+    old_worker.finished.connect(manager._on_worker_finished)
+    old_worker.finished.emit(str(tmp_path / "stale.mkv"))
+
+    assert manager.active_job is job_active
+    assert len(manager.completed_jobs) == 0
+
+
+def test_stale_worker_failed_signal_ignored(tmp_path):
+    """A failed signal from an old worker does not fail the new active job."""
+    manager = DownloadManager(kind="video")
+    manager._queue_file = tmp_path / "queue_video.json"
+    job_active = _make_job("job_active", "video", "vid_active")
+    manager._active_job = job_active
+    current_worker = FakeWorker("job_active")
+    manager._worker = current_worker
+
+    old_worker = FakeWorker("job_old")
+    old_worker.failed.connect(manager._on_worker_failed)
+    old_worker.failed.emit("Stale error")
+
+    assert manager.active_job is job_active
+    assert len(manager.failed_jobs) == 0
+
+
+def test_current_worker_signal_processed_once(tmp_path):
+    """A normal signal from the current worker is processed exactly once."""
+    manager = DownloadManager(kind="video")
+    manager._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("job_cur", "video", "vid_cur")
+    manager._active_job = job
+    worker = FakeWorker("job_cur")
+    manager._worker = worker
+
+    file_out = tmp_path / "cur.mkv"
+    file_out.write_bytes(b"content")
+    worker.finished.connect(manager._on_worker_finished)
+    worker.finished.emit(str(file_out))
+
+    assert manager.active_job is None
+    assert len(manager.completed_jobs) == 1
+    assert manager.completed_jobs[0][0].job_id == "job_cur"
+
+
+def _setup_lanes(tmp_path, monkeypatch):
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "_managers", {})
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    v_mgr = get_download_manager("video")
+    a_mgr = get_download_manager("audio")
+    v_mgr._waiting_queue.clear()
+    a_mgr._waiting_queue.clear()
+    v_mgr._active_job = None
+    a_mgr._active_job = None
+    v_mgr._deferred_job_ids.clear()
+    a_mgr._deferred_job_ids.clear()
+    v_mgr._queue_file = tmp_path / "queue_video.json"
+    a_mgr._queue_file = tmp_path / "queue_audio.json"
+    monkeypatch.setattr(v_mgr, "_start_worker", lambda j: None)
+    monkeypatch.setattr(a_mgr, "_start_worker", lambda j: None)
+    return v_mgr, a_mgr
+
+
+def test_same_video_id_deferral(tmp_path, monkeypatch):
+    """Enqueueing video X and audio X simultaneously defers audio X and keeps video X active."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "same_vid")
+    job_a = _make_job("a1", "audio", "same_vid")
+
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a)
+
+    assert v_mgr.active_job is not None
+    assert v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job is None
+    assert "a1" in a_mgr.deferred_job_ids()
+    assert len(a_mgr.waiting_jobs) == 1
+
+
+def test_strict_fifo_preserved_when_deferred(tmp_path, monkeypatch):
+    """Later jobs in the same lane must not jump ahead of a deferred job."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "same_vid")
+    job_a1 = _make_job("a1", "audio", "same_vid")
+    job_a2 = _make_job("a2", "audio", "other_vid")
+
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a1)
+    a_mgr.enqueue(job_a2)
+
+    assert a_mgr.active_job is None
+    assert "a1" in a_mgr.deferred_job_ids()
+    assert len(a_mgr.waiting_jobs) == 2
+    assert a_mgr.waiting_jobs[0].job_id == "a1"
+    assert a_mgr.waiting_jobs[1].job_id == "a2"
+
+
+def test_wake_both_lanes_on_finish(tmp_path, monkeypatch):
+    """When video X finishes, deferred audio X wakes up and starts immediately."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "same_vid")
+    job_a = _make_job("a1", "audio", "same_vid")
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a)
+
+    assert a_mgr.active_job is None
+    file_v = tmp_path / "v1.mkv"
+    file_v.write_bytes(b"content")
+    v_mgr._on_worker_finished(job_v, str(file_v))
+
+    assert v_mgr.active_job is None
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a1"
+    assert "a1" not in a_mgr.deferred_job_ids()
+
+
+def test_wake_both_lanes_on_cancel_active(tmp_path, monkeypatch):
+    """Cancelling active video X immediately wakes up deferred audio X."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "same_vid")
+    job_a = _make_job("a1", "audio", "same_vid")
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a)
+
+    assert a_mgr.active_job is None
+    v_mgr.cancel_active()
+
+    assert v_mgr.active_job is None
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a1"
+    assert "a1" not in a_mgr.deferred_job_ids()
+
+
+def test_wake_both_lanes_on_fail(tmp_path, monkeypatch):
+    """Failing active video X immediately wakes up deferred audio X."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "same_vid")
+    job_a = _make_job("a1", "audio", "same_vid")
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a)
+
+    assert a_mgr.active_job is None
+    v_mgr._on_worker_failed(job_v, "ERROR: Private video")
+
+    assert v_mgr.active_job is None
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a1"
+    assert "a1" not in a_mgr.deferred_job_ids()
+
+
+def test_wake_both_lanes_on_deferred_removal(tmp_path, monkeypatch):
+    """Removing deferred job allows next waiting job in the lane to start."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "same_vid")
+    job_a1 = _make_job("a1", "audio", "same_vid")
+    job_a2 = _make_job("a2", "audio", "diff_vid")
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a1)
+    a_mgr.enqueue(job_a2)
+
+    assert a_mgr.active_job is None
+    a_mgr.cancel_job("a1")
+
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a2"
+
+
+def test_two_thread_simultaneous_history_save(tmp_path, monkeypatch):
+    """Simulate two threads saving history simultaneously; assert zero SQLite lock errors."""
+    import threading
+    db_file = tmp_path / "history.db"
+    monkeypatch.setattr("app.core.history_db.HISTORY_DB", db_file)
+    from app.core.history_db import list_items
+    from app.core.history_service import save_from_job
+
+    job_v = _make_job("v_hist", "video", "vid_h", "Thread Video")
+    job_a = _make_job("a_hist", "audio", "aud_h", "Thread Audio")
+
+    file_v = tmp_path / "v_hist.mkv"
+    file_v.write_bytes(b"video data")
+    file_a = tmp_path / "a_hist.mp3"
+    file_a.write_bytes(b"audio data")
+
+    errors = []
+
+    def save_job(job, path):
+        try:
+            save_from_job(job, str(path), custom_db=db_file)
+        except Exception as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=save_job, args=(job_v, file_v))
+    t2 = threading.Thread(target=save_job, args=(job_a, file_a))
+
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert not errors, f"Concurrent save encountered errors: {errors}"
+    items = list_items(custom_path=db_file)
+    assert len(items) == 2

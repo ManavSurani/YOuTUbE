@@ -359,6 +359,9 @@ def test_see_all_clicked_switches_to_history_with_filter():
                 win.network_monitor.stop()
             if hasattr(win, "tray_icon") and win.tray_icon:
                 win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()
 
 
 def test_tab_changed_resets_messages_on_video_and_audio():
@@ -383,6 +386,9 @@ def test_tab_changed_resets_messages_on_video_and_audio():
                 win.network_monitor.stop()
             if hasattr(win, "tray_icon") and win.tray_icon:
                 win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()
 
 
 # --- Chunk A.4 Tests: Persist Thumbnail Before Enqueueing Job ---

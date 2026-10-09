@@ -1811,4 +1811,28 @@ Phase C (`plan/05_PHASE_C_TWO_LANES.md`) has been fully implemented, verified, a
 
 Phase C is complete. Awaiting owner approval (`approved`) before proceeding to Phase D (`plan/06_PHASE_D_QUEUE_CARDS.md`).
 
+---
+
+## User Query:
+python scratch/verify_phase_c.py Traceback (most recent call last):
+  File "C:\Vs\YOuTUbE\app\ui\kit\progress_card.py", line 52, in highlight_pos
+    self.update()
+    ~~~~~~~~~~~^^
+  File "C:\Vs\YOuTUbE\app\ui\kit\progress_card.py", line 55, in paintEvent
+    painter = QPainter(self)
+  File "C:\Vs\YOuTUbE\app\ui\recent_list.py", line 140, in eventFilter
+    if watched == self.parent() and event.type() == QEvent.Type.Show:
+                  ~~~~~~~~~~~^^
+  File "C:\Vs\YOuTUbE\app\ui\header.py", line 155, in paintEvent
+    r = int(self._start_color.red() * (1 - p) + self._target_color.red() * p)
+            ^^^^^^^^^^^^^^^^^
+AttributeError: Error calling Python override of QProgressBar::paintEvent(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::paintEvent(): 'AnimatedStatusDot' object has no attribute '_start_color'. Did you mean: '_target_color'?
+ this is the thing i got last
+
+## Assistant Response:
+Identified and resolved the root cause of the `_start_color` AttributeError in `app/ui/header.py`:
+- **Why it happened:** In `AnimatedStatusDot`, `_start_color` was never initialized in `__init__`. When network transitions triggered `set_online(online)`, `QPropertyAnimation` set progress to `0.0`. During widget repaint, `paintEvent` evaluated `p < 1.0` and attempted to interpolate from `self._start_color`, raising `AttributeError`.
+- **Fix:** Initialized `self._start_color = QColor("#2BA640")` in `__init__`, updated both `_start_color` and `_color` in `set_online()`, and added safety check `hasattr(self, "_start_color")` in `paintEvent`. (Commit `4db7f12`)
+- **Verification:** Ran `python scratch/verify_phase_c.py` -> 100% clean exit (`ALL PASS` across all 7 checks). Ran full test suite -> **297 / 297 passed in 21.23s**. Ready for Phase D (`plan/06_PHASE_D_QUEUE_CARDS.md`).
+
 

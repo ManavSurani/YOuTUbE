@@ -338,7 +338,7 @@ def test_audio_hint_visibility_idle_and_ready():
 def test_see_all_clicked_switches_to_history_with_filter():
     from app.ui.main_window import MainWindow
 
-    with patch("app.ui.main_window.NetworkMonitor.start"):
+    with patch("app.ui.main_window.NetworkMonitor.start"), patch.object(MainWindow, "_check_for_updates"):
         win = MainWindow()
         try:
             # Emitting see_all_clicked on audio tab
@@ -364,7 +364,7 @@ def test_see_all_clicked_switches_to_history_with_filter():
 def test_tab_changed_resets_messages_on_video_and_audio():
     from app.ui.main_window import MainWindow
 
-    with patch("app.ui.main_window.NetworkMonitor.start"):
+    with patch("app.ui.main_window.NetworkMonitor.start"), patch.object(MainWindow, "_check_for_updates"):
         win = MainWindow()
         try:
             win.video_tab.inline_msg.show_error("Video Error")

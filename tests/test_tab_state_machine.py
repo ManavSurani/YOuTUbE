@@ -297,3 +297,199 @@ def test_video_tab_cancel_download_restores_correct_state(monkeypatch):
     tab.cancel_download()
     assert tab._state == TabState.IDLE
 
+
+# --- Chunk A.3 Tests: Sticky Downloading Look & Enablement Table (Audio Tab) ---
+
+@pytest.mark.parametrize(
+    "state_case,expected_queue_vis,expected_queue_en,expected_cancel_vis,expected_dl_vis",
+    [
+        ("running_empty", True, True, True, False),
+        ("running_fetching", True, False, True, False),
+        ("running_ready", True, True, True, False),
+        ("running_offline", True, False, True, False),
+        ("no_job", False, False, False, True),
+    ],
+)
+def test_audio_tab_queue_btn_enablement_by_state(
+    state_case, expected_queue_vis, expected_queue_en, expected_cancel_vis, expected_dl_vis, monkeypatch
+):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+
+    if state_case == "running_empty":
+        job = MagicMock(kind="audio", job_id="a1")
+        monkeypatch.setattr(mgr, "_active_job", job)
+        tab._current_info = None
+        tab.url_input.setText("")
+        tab.set_state(TabState.DOWNLOADING)
+    elif state_case == "running_fetching":
+        job = MagicMock(kind="audio", job_id="a1")
+        monkeypatch.setattr(mgr, "_active_job", job)
+        tab.set_state(TabState.FETCHING)
+    elif state_case == "running_ready":
+        job = MagicMock(kind="audio", job_id="a1")
+        monkeypatch.setattr(mgr, "_active_job", job)
+        info = VideoInfo(
+            url="https://youtube.com/watch?v=1",
+            title="Test",
+            channel="Chan",
+            duration=60,
+            duration_str="1:00",
+            thumbnail_url="",
+            qualities=[("1080p", 1080)],
+            filesize_approx=1024,
+        )
+        tab._current_info = info
+        tab.set_state(TabState.READY)
+    elif state_case == "running_offline":
+        job = MagicMock(kind="audio", job_id="a1")
+        monkeypatch.setattr(mgr, "_active_job", job)
+        tab.set_online(False)
+    elif state_case == "no_job":
+        monkeypatch.setattr(mgr, "_active_job", None)
+        info = VideoInfo(
+            url="https://youtube.com/watch?v=1",
+            title="Test",
+            channel="Chan",
+            duration=60,
+            duration_str="1:00",
+            thumbnail_url="",
+            qualities=[("1080p", 1080)],
+            filesize_approx=1024,
+        )
+        tab._current_info = info
+        tab.set_state(TabState.READY)
+
+    assert tab.queue_btn.isVisibleTo(tab) == expected_queue_vis
+    if expected_queue_vis:
+        assert tab.queue_btn.isEnabled() == expected_queue_en
+    assert tab.cancel_btn.isVisibleTo(tab) == expected_cancel_vis
+    assert tab.download_btn.isVisibleTo(tab) == expected_dl_vis
+
+
+def test_audio_tab_queue_btn_enabled_when_downloading_empty_box(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+    job = MagicMock(kind="audio", job_id="a1")
+    monkeypatch.setattr(mgr, "_active_job", job)
+
+    tab._current_info = None
+    tab.url_input.setText("")
+    tab.set_state(TabState.DOWNLOADING)
+
+    assert tab.queue_btn.isVisibleTo(tab)
+    assert tab.queue_btn.isEnabled()
+
+
+def test_audio_tab_pasting_link_during_download_keeps_cancel(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+    job = MagicMock(kind="audio", job_id="a1")
+    monkeypatch.setattr(mgr, "_active_job", job)
+
+    tab.set_state(TabState.DOWNLOADING)
+    assert tab.cancel_btn.isVisibleTo(tab)
+
+    tab.set_state(TabState.FETCHING)
+    assert tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)
+
+
+def test_audio_tab_info_fetched_during_download_keeps_cancel(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+    job = MagicMock(kind="audio", job_id="a1")
+    monkeypatch.setattr(mgr, "_active_job", job)
+
+    tab.set_state(TabState.DOWNLOADING)
+
+    info = VideoInfo(
+        url="https://youtube.com/watch?v=new",
+        title="New Audio",
+        channel="Chan",
+        duration=120,
+        duration_str="2:00",
+        thumbnail_url="",
+        qualities=[("1080p", 1080)],
+        filesize_approx=2048,
+    )
+    tab._on_info_fetched(info)
+
+    assert tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)
+    assert tab.queue_btn.isVisibleTo(tab)
+    assert tab.queue_btn.isEnabled()
+
+
+def test_audio_tab_clearing_link_during_download_keeps_cancel(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+    job = MagicMock(kind="audio", job_id="a1")
+    monkeypatch.setattr(mgr, "_active_job", job)
+
+    tab.set_state(TabState.DOWNLOADING)
+    assert tab.cancel_btn.isVisibleTo(tab)
+
+    tab.url_input.setText("")
+    assert tab.cancel_btn.isVisibleTo(tab)
+    assert not tab.download_btn.isVisibleTo(tab)
+
+
+def test_audio_tab_job_running_kind_isolation(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+    job = MagicMock(kind="video", job_id="v1")
+    monkeypatch.setattr(mgr, "_active_job", job)
+
+    if hasattr(tab, "_job_running"):
+        assert tab._job_running() is False
+
+    info = VideoInfo(
+        url="https://youtube.com/watch?v=vid",
+        title="Audio",
+        channel="Chan",
+        duration=60,
+        duration_str="1:00",
+        thumbnail_url="",
+        qualities=[("1080p", 1080)],
+        filesize_approx=1024,
+    )
+    tab._current_info = info
+    tab.set_state(TabState.READY)
+
+    assert tab.download_btn.isVisibleTo(tab)
+    assert not tab.cancel_btn.isVisibleTo(tab)
+
+
+def test_audio_tab_cancel_download_restores_correct_state(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager()
+    job = MagicMock(kind="audio", job_id="a1")
+    monkeypatch.setattr(mgr, "_active_job", job)
+
+    info = VideoInfo(
+        url="https://youtube.com/watch?v=fetch",
+        title="Fetched",
+        channel="Chan",
+        duration=60,
+        duration_str="1:00",
+        thumbnail_url="",
+        qualities=[("1080p", 1080)],
+        filesize_approx=1024,
+    )
+    tab._current_info = info
+    tab.cancel_download()
+    assert tab._state == TabState.READY
+
+    tab._current_info = None
+    tab.cancel_download()
+    assert tab._state == TabState.IDLE
+
+

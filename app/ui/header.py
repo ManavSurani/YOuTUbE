@@ -109,6 +109,7 @@ class AnimatedStatusDot(QWidget):
         super().__init__(parent)
         self.setFixedSize(8, 8)
         self._color = QColor("#2BA640")
+        self._start_color = QColor("#2BA640")
         self._target_color = QColor("#2BA640")
         self._progress = 1.0
         self._anim: Optional[QPropertyAnimation] = None
@@ -124,11 +125,13 @@ class AnimatedStatusDot(QWidget):
 
     def set_color(self, color_hex: str) -> None:
         self._color = QColor(color_hex)
+        self._start_color = self._color
         self._target_color = self._color
         self.update()
 
     def set_online(self, online: bool) -> None:
         new_color = QColor("#2BA640" if online else "#CC0000")
+        self._start_color = self._color
         self._color = new_color
         self._target_color = new_color
 
@@ -151,7 +154,7 @@ class AnimatedStatusDot(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         p = self._progress
-        if p < 1.0:
+        if p < 1.0 and hasattr(self, "_start_color"):
             r = int(self._start_color.red() * (1 - p) + self._target_color.red() * p)
             g = int(self._start_color.green() * (1 - p) + self._target_color.green() * p)
             b = int(self._start_color.blue() * (1 - p) + self._target_color.blue() * p)

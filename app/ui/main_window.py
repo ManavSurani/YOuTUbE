@@ -369,6 +369,8 @@ class MainWindow(QMainWindow):
         self.header.set_online(False)
         self.video_tab.set_online(False)
         self.audio_tab.set_online(False)
+        get_download_manager("video").set_online(False)
+        get_download_manager("audio").set_online(False)
 
         QMessageBox.information(
             self,
@@ -380,6 +382,8 @@ class MainWindow(QMainWindow):
         self.header.set_online(True)
         self.video_tab.set_online(True)
         self.audio_tab.set_online(True)
+        get_download_manager("video").set_online(True)
+        get_download_manager("audio").set_online(True)
 
     def _on_redownload(self, url: str, item_type: str, quality: str = "") -> None:
         if item_type.lower() == "audio":
@@ -398,7 +402,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         v_mgr = get_download_manager("video")
         a_mgr = get_download_manager("audio")
-        if v_mgr.active_job or a_mgr.active_job:
+        v_active = v_mgr.active_job is not None
+        a_active = a_mgr.active_job is not None
+
+        if v_active or a_active:
             settings = load_settings()
             if settings.get("confirm_exit_on_download", True):
                 msg_box = QMessageBox(self)
@@ -412,12 +419,25 @@ class MainWindow(QMainWindow):
                     event.ignore()
                     return
 
-            for mgr in (v_mgr, a_mgr):
-                if mgr.active_job:
-                    worker = mgr._worker
-                    mgr.cancel_active()
-                    if worker and hasattr(worker, "wait"):
-                        worker.wait(2000)
+            v_worker = getattr(v_mgr, "_worker", None)
+            a_worker = getattr(a_mgr, "_worker", None)
+
+            # (1) Call shutdown() on both lanes first (non-blocking)
+            v_mgr.shutdown()
+            a_mgr.shutdown()
+
+            # (2) Wait for both workers with ONE shared 2-second deadline in total
+            deadline = time.monotonic() + 2.0
+            for worker in (v_worker, a_worker):
+                if worker and hasattr(worker, "wait"):
+                    remaining_s = max(0.0, deadline - time.monotonic())
+                    timeout_ms = int(remaining_s * 1000)
+                    stopped = worker.wait(timeout_ms)
+                    if stopped is False or (hasattr(worker, "isRunning") and worker.isRunning()):
+                        get_logger().warning(f"Worker did not stop within deadline: {worker}")
+        else:
+            v_mgr.shutdown()
+            a_mgr.shutdown()
 
         if hasattr(self, "tray_icon") and self.tray_icon:
             self.tray_icon.hide()
@@ -429,4 +449,5 @@ class MainWindow(QMainWindow):
         if self.update_banner._download_worker and self.update_banner._download_worker.isRunning():
             self.update_banner._download_worker.cancel()
             self.update_banner._download_worker.wait(500)
+        event.accept()
         super().closeEvent(event)

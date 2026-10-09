@@ -1,5 +1,6 @@
 import ast
 from pathlib import Path
+from unittest.mock import MagicMock
 import pytest
 
 from app.core.download_manager import DownloadManager, get_download_manager
@@ -389,3 +390,61 @@ def test_two_thread_simultaneous_history_save(tmp_path, monkeypatch):
     assert not errors, f"Concurrent save encountered errors: {errors}"
     items = list_items(custom_path=db_file)
     assert len(items) == 2
+
+
+def test_set_online_false_pauses_active_workers_in_both_lanes(tmp_path, monkeypatch):
+    """set_online(False) pauses running workers in both lanes."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "vid1")
+    job_a = _make_job("a1", "audio", "vid2")
+
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a)
+
+    v_worker = MagicMock()
+    a_worker = MagicMock()
+    v_mgr._worker = v_worker
+    a_mgr._worker = a_worker
+
+    v_mgr.set_online(False)
+    a_mgr.set_online(False)
+
+    v_worker.pause.assert_called_once()
+    a_worker.pause.assert_called_once()
+    assert v_mgr._is_offline is True
+    assert a_mgr._is_offline is True
+
+
+def test_set_online_true_resumes_active_workers_in_both_lanes(tmp_path, monkeypatch):
+    """set_online(True) restarts workers for active jobs in both lanes."""
+    v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
+
+    job_v = _make_job("v1", "video", "vid1")
+    job_a = _make_job("a1", "audio", "vid2")
+
+    v_mgr.enqueue(job_v)
+    a_mgr.enqueue(job_a)
+
+    v_mgr.set_online(False)
+    a_mgr.set_online(False)
+
+    started_workers = []
+    def mock_start(job):
+        started_workers.append(job.job_id)
+
+    monkeypatch.setattr(v_mgr, "_start_worker", mock_start)
+    monkeypatch.setattr(a_mgr, "_start_worker", mock_start)
+
+    # Worker reference exists from previous run
+    v_mgr._worker = MagicMock()
+    a_mgr._worker = MagicMock()
+
+    v_mgr.set_online(True)
+    a_mgr.set_online(True)
+
+    assert v_mgr._is_offline is False
+    assert a_mgr._is_offline is False
+    assert "v1" in started_workers
+    assert "a1" in started_workers
+

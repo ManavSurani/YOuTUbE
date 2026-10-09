@@ -43,6 +43,7 @@ class DownloadManager(QObject):
         self._repaired_jobs: set = set()
         self._deferred_job_ids: Set[str] = set()
         self._is_offline = False
+        self._is_shutting_down = False
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
 
         self._load_persisted_queue()
@@ -134,6 +135,19 @@ class DownloadManager(QObject):
             del self._failed_jobs[job_id]
             self.queue_changed.emit()
 
+    def shutdown(self) -> None:
+        """Stop running worker without starting next waiting job; keep waiting jobs persisted."""
+        self._is_shutting_down = True
+        if self._worker:
+            try:
+                self._worker.cancel()
+            except Exception as exc:
+                get_logger().debug(f"Worker cancel error during shutdown: {exc}")
+        if self._active_job:
+            self._active_job = None
+            self.queue_changed.emit()
+        self._save_persisted_queue()
+
     def retry_job(self, job_id: str) -> None:
         """Retry a previously failed job."""
         if job_id in self._failed_jobs:
@@ -162,7 +176,7 @@ class DownloadManager(QObject):
 
     def _process_next(self) -> None:
         """Start the next waiting job if one is available and not deferred."""
-        if self._active_job or not self._waiting_queue or self._is_offline:
+        if self._is_shutting_down or self._active_job or not self._waiting_queue or self._is_offline:
             return
 
         head = self._waiting_queue[0]
@@ -266,6 +280,8 @@ class DownloadManager(QObject):
                 return
         if not self._active_job or not job or self._active_job.job_id != job.job_id:
             return
+        if self._is_shutting_down:
+            return
 
         get_logger().info(f"Download finished: {job.title} -> {final_path}")
         self._worker = None
@@ -297,6 +313,8 @@ class DownloadManager(QObject):
                 get_logger().debug(f"Ignored failed signal from stale worker: {sender}")
                 return
         if not self._active_job or not job or self._active_job.job_id != job.job_id:
+            return
+        if self._is_shutting_down:
             return
 
         # Chunk 7.3 Task 3: Auto-repair on extraction failure

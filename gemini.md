@@ -1276,3 +1276,48 @@ I have thoroughly analyzed the two problems against the codebase, identified the
 - Run `python -m pytest` (100% passing across all 241+ tests).
 - Run `git grep -n "print(" app/` (zero hits).
 - Present final verification evidence and request confirmation.
+
+---
+
+## User Query:
+Approved: Phase A only. Stop after the Phase A verification gate and wait for my approval before Phase B.
+
+Corrections before you start:
+1. Make no commits during analysis steps. Take the baseline hash after your gemini.md commit and
+   allow docs files, or tell me if you want that commit reverted.
+2. In chunk B.3 use history_service.delete(row_id, delete_file=False). There is no delete_item.
+3. If tools/check_scope.py does not exist locally, use "git diff --name-only <baseline>" for scope checks.
+4. _job_running() must count only a job of THIS tab's kind (video tab: active_job.kind == "video";
+   audio tab: "audio"). If the other kind is running, show the normal Download button; a new
+   download then waits in the shared queue. Cancel and the progress card belong only to the tab's own job.
+5. cancel_download() must restore Ready if a link is fetched, otherwise Idle.
+6. Add a test for 4 and 5 in each tab.
+7. Keep every other rule from the plan: protected files untouched, failing test first, smallest change,
+   no colour changes, no terminal windows, no extra code.
+
+Begin with Chunk A.1 (failing tests, Video tab). here understand this part and don't mack a change right now only understand this thing okey
+
+## Assistant Response:
+I fully understand all 7 corrections and the exact requirements for Chunk A.1. Zero code changes have been made.
+
+### Understanding of the 7 Corrections:
+1. **Baseline Commit & No Commits During Analysis:** Baseline commit hash is `8fedb5402a8a3e5093f182714e99fc603771d673`. No commits during analysis steps.
+2. **`history_service.delete(row_id, delete_file=False)`:** Verified that `app/core/history_service.py` defines `delete(row_id: int, delete_file: bool = False, custom_db: Optional[Path | str] = None)`. Chunk B.3 will strictly use `history_service.delete`.
+3. **Scope Checks:** We will use both `tools/check_scope.py --final` and `git diff --name-only 8fedb54` to ensure zero out-of-scope edits.
+4. **Tab-Specific `_job_running()`:**
+   - In `VideoTab`: counts only `active_job.kind == "video"`.
+   - In `AudioTab`: counts only `active_job.kind == "audio"`.
+   - If a job of the *other* tab's kind is running, the tab displays its normal `Download` button; clicking Download enqueues the job into the shared manager queue. `Cancel` and `ProgressCard` are strictly isolated to the tab matching the running job's kind.
+5. **`cancel_download()` State Restoration:** If a link is fetched (`_current_info is not None`), restore `TabState.READY`; otherwise, restore `TabState.IDLE`.
+6. **Tests for Rules 4 and 5:** Dedicated tests will be written for both VideoTab and AudioTab verifying cross-tab job independence and cancel state restoration.
+7. **Strict Adherence:** Protected files untouched, failing test first, minimal changes, zero console/terminal windows.
+
+### Understanding of Chunk A.1 Scope:
+In Chunk A.1, we write failing tests for `VideoTab` in `tests/test_tab_state_machine.py` with an active video job in `DownloadManager`:
+- Test A-1: Empty link box -> `queue_btn` is visible and enabled (fails today: disabled).
+- Test A-2a: Paste link -> during fetch, `cancel_btn` visible and `download_btn` hidden (fails today: cancel hidden).
+- Test A-2b: Fetch completes -> `cancel_btn` visible, `download_btn` hidden, `queue_btn` enabled (fails today: shows download, hides cancel).
+- Test A-3: Clear link box -> `cancel_btn` and `progress_card` remain visible (fails today: hides cancel and progress).
+- Test Correction 4: Active job is audio -> `video_tab._job_running()` is False, shows Download (not Cancel), hides ProgressCard.
+- Test Correction 5: Cancel with fetched link -> restores READY state; without link -> restores IDLE state.
+We verify that these tests fail for the exact identified reasons, without editing `video_tab.py` yet.

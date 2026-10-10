@@ -32,8 +32,5 @@ env/
 .DS_Store
 Thumbs.db
 
-# Planning and development scratch
-plan/
+# Development scratch
 scratch/
-docs/reports/
-docs/verification/baseline_tests.md

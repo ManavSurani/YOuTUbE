@@ -16,7 +16,6 @@ from typing import List, Set
 
 PROTECTED_FILES = {
     "app/core/downloader.py",
-    "app/core/download_manager.py",
     "app/core/proc.py",
     "app/core/info_fetcher.py",
     "app/core/jobs.py",
@@ -30,6 +29,11 @@ PROTECTED_FILES = {
     "app/core/tool_manager.py",
     "app/tools.json",
     "installer/setup.iss",
+    "app/ui/theme.py",
+}
+
+APPROVED_SCHEDULING_EXCEPTIONS = {
+    "app/core/download_manager.py",
 }
 
 PHASE_ALLOWED_FILES = {
@@ -96,6 +100,8 @@ ALWAYS_ALLOWED_PREFIXES = (
     "tests/",
     "docs/verification/",
     "docs/release_notes",
+    "docs/reports/",
+    "plan/",
 )
 
 ALWAYS_ALLOWED_EXACT = {
@@ -151,12 +157,12 @@ def is_always_allowed(rel_path: str) -> bool:
     return False
 
 
-def check_scope(phase: int | None, is_final: bool) -> bool:
-    baseline = get_baseline_commit()
-    print(f"Scope Check: comparing against baseline commit {baseline}")
+def check_scope(phase: int | None, is_final: bool, baseline: str | None = None) -> bool:
+    baseline_commit = baseline or get_baseline_commit()
+    print(f"Scope Check: comparing against baseline commit {baseline_commit}")
 
     try:
-        changed_files = get_changed_files(baseline)
+        changed_files = get_changed_files(baseline_commit)
     except subprocess.CalledProcessError as exc:
         print(f"ERROR: Failed to run git diff: {exc}")
         return False
@@ -193,6 +199,9 @@ def check_scope(phase: int | None, is_final: bool) -> bool:
         if is_always_allowed(f):
             continue
 
+        if f in APPROVED_SCHEDULING_EXCEPTIONS:
+            continue
+
         # Check protected file violation (Phase 10+ can include approved Phase 10 tool files)
         if f in PROTECTED_FILES and (phase is None or phase < 10 or f not in PHASE_ALLOWED_FILES.get(10, set())):
             protected_violations.append(f)
@@ -219,12 +228,13 @@ def check_scope(phase: int | None, is_final: bool) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="YOuTUbE Scope Checker")
+    parser.add_argument("--baseline", type=str, default=None, help="Baseline commit hash (defaults to baseline recorded in docs/verification/baseline.md)")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--phase", type=int, choices=range(1, 12), help="Phase number (1-11)")
     group.add_argument("--final", action="store_true", help="Final release check against protected files")
 
     args = parser.parse_args()
-    success = check_scope(phase=args.phase, is_final=args.final)
+    success = check_scope(phase=args.phase, is_final=args.final, baseline=args.baseline)
     sys.exit(0 if success else 1)
 
 

@@ -1862,14 +1862,14 @@ Phase D (Queue Cards & Polish) has been fully built, verified, and completed acr
   - Resolved test isolation in `tests/test_queue.py` and `tests/test_tab_flow.py`. (Commits `4f41ae8`, `ee70d83`)
 
 - **Phase D Verification Gate:**
-  - Verified scope with `git diff --name-only 62c8db1`: **15 of 15 protected files 100% untouched** (0 lines changed).
+  - Verified scope with `git diff --name-only 62c8db1`: **15 of 15 protected files untouched (git diff against 62c8db1 showed zero changes)**.
   - Target test suite: **12 / 12 passed in 1.48s** (`tests/test_per_item_cards.py`).
   - Full test suite: **308 passed, 1 failed** (pre-existing Windows path casing failure `test_exact_command_string_unicode` present at baseline).
   - Real-PC manual checks: all 5 passed (Per-item cards, Transition between items, Strict tab isolation, Remove queued item, Deferred status display).
   - Captured screenshot: `screenshot_phase_d_queue_cards.png`.
   - Recorded evidence in `docs/verification/phase_D.md`. (Gate commit `2914622`)
 
-All 4 phases (A, B, C, D) are now 100% complete, fully verified, and passing tests cleanly.
+All 4 phases (A, B, C, D) are implemented and verified; pending owner approval.
 
 ---
 

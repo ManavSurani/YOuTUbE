@@ -45,4 +45,5 @@ tests\test_tab_looks.py ..........                                       [100%]
 
 ## Decision
 - Status: PASS
+- Owner check status: pending owner verification
 - Reason: 58/58 phase tests pass cleanly (higher than baseline count); zero protected files touched; all 7 Real-PC checks pass.

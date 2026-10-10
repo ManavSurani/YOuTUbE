@@ -34,13 +34,13 @@ Target Suite (`pytest tests/test_download_lanes.py tests/test_close_event.py tes
 ============================= 43 passed in 2.88s ==============================
 ```
 
-Full Test Suite (`pytest --ignore=tests/test_check_scope.py`):
+Full Test Suite (`pytest` with no `--ignore` after correction pass):
 ```
-============================ 297 passed in 21.11s =============================
+=========================== 324 passed in 32.22s ============================
 ```
 Baseline passed tests: 240.
-Current passed tests: 297 (+57 new tests passing).
-Known pre-existing failure: `tests/test_check_scope.py` (legacy 11-phase script checking commit `51a9d986`). Zero regressions.
+Current passed tests: 324 (+84 new tests passing).
+Pre-existing failure fixed; zero regressions.
 
 ## Real-PC Manual Checks
 | Check # | Check Name | Result | Notes |
@@ -58,4 +58,5 @@ Known pre-existing failure: `tests/test_check_scope.py` (legacy 11-phase script 
 
 ## Decision
 - Status: PASS
-- Reason: Full suite passes (297/297 passed, baseline 240); zero protected files modified; dual independent video and audio download lanes verified.
+- Owner check status: pending owner verification
+- Reason: Full suite passes (324/324 passed, baseline 240); zero protected files modified; dual independent video and audio download lanes verified.

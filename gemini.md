@@ -1871,4 +1871,19 @@ Phase D (Queue Cards & Polish) has been fully built, verified, and completed acr
 
 All 4 phases (A, B, C, D) are now 100% complete, fully verified, and passing tests cleanly.
 
+---
+
+## User Query:
+give me detail rport .md file for each 6 phases we added
+
+## Assistant Response:
+Generated individual, comprehensive `.md` report files for each of the 6 plans and phases under `docs/reports/`:
+1. `docs/reports/01_RULES_AND_SCOPE_REPORT.md`: Rules, golden principles, 15 protected engine files integrity, chunk workflow, scope proof.
+2. `docs/reports/02_FINDINGS_AND_BEHAVIOUR_REPORT.md`: Root cause analysis of findings A-1 to D-2, race conditions, and target behavioral specifications R1 to R6.
+3. `docs/reports/03_PHASE_A_ADD_TO_QUEUE_REPORT.md`: Phase A implementation, sticky downloading state, 4-second hint banner, Cancel button preservation.
+4. `docs/reports/04_PHASE_B_RECENT_LIST_REPORT.md`: Phase B implementation, cross-tab History synchronization via parent Show event filter, instant SQLite updates without restart.
+5. `docs/reports/05_PHASE_C_TWO_LANES_REPORT.md`: Phase C implementation, dual-lane scheduling engine (`video` & `audio`), safe legacy queue migration under threading lock, same video ID deferral preserving FIFO, shared 2.0s deadline closeEvent, offline pause/resume.
+6. `docs/reports/06_PHASE_D_QUEUE_CARDS_REPORT.md`: Phase D implementation, per-item queue cards with 6px progress bars, thumbnails, action buttons, strict visual tab isolation, layout geometry fixes.
+7. `docs/reports/MASTER_PROJECT_REPORT.md`: Master project report indexing all phases, key metrics, architecture diagrams, and test suite summary (308 passed, 0 regressions).
+
 

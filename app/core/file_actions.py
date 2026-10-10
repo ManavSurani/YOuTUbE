@@ -12,8 +12,8 @@ logger = get_logger()
 
 
 def build_select_command(path: Union[str, Path]) -> str:
-    """Build the Explorer /select parameter string."""
-    norm_path = Path(path).resolve()
+    """Build the Explorer /select parameter string (pure text work, no disk access)."""
+    norm_path = os.path.abspath(str(path))
     return f'/select,"{norm_path}"'
 
 

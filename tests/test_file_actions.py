@@ -25,6 +25,10 @@ def test_exact_command_string_unicode():
     assert cmd == r'/select,"C:\Downloads\｜ ： ⧸ é 日本語 😀.mkv"'
 
 
+def test_select_command_keeps_path_text_as_given():
+    assert build_select_command(r"C:\DOWNLOADS\Clip.mkv") == r'/select,"C:\DOWNLOADS\Clip.mkv"'
+
+
 def test_missing_file_returns_false_and_message(tmp_path):
     missing_file = tmp_path / "does_not_exist.mp4"
     with patch("app.core.file_actions.open_folder") as mock_open_folder:

@@ -564,3 +564,156 @@ def test_restored_same_video_id_pair_starts_one_and_defers_other(tmp_path, monke
     assert "a_shared" in a_mgr.deferred_job_ids()
 
 
+def test_set_online_true_when_already_online_does_not_duplicate_worker(tmp_path, monkeypatch):
+    """Calling set_online(True) when already online must NOT start a second worker for the active job."""
+    mgr = DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("v_1", "video", "vid_1")
+    mgr._active_job = job
+    fake_worker = MagicMock()
+    fake_worker.isRunning.return_value = True
+    mgr._worker = fake_worker
+    mgr._is_offline = False
+
+    started = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+
+    mgr.set_online(True)
+    assert started == [], "Must not restart worker if already online"
+
+
+def test_set_online_when_shutting_down_does_not_revive_job(tmp_path, monkeypatch):
+    """Calling set_online(True) when shutting down must not revive the job."""
+    mgr = DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("v_1", "video", "vid_1")
+    mgr._active_job = job
+    fake_worker = MagicMock()
+    mgr._worker = fake_worker
+    mgr._is_offline = True
+    mgr._paused_worker = fake_worker
+    mgr._is_shutting_down = True
+
+    started = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+
+    mgr.set_online(True)
+    assert started == [], "Must not revive job when shutting down"
+
+
+def test_set_online_after_offline_resumes_job(tmp_path, monkeypatch):
+    """Active job pausing on offline and resuming on online starts worker exactly once."""
+    mgr = DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("v_1", "video", "vid_1")
+    mgr._active_job = job
+    fake_worker = MagicMock()
+    fake_worker.isRunning.return_value = False
+    mgr._worker = fake_worker
+    mgr._is_offline = False
+
+    started = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+
+    mgr.set_online(False)
+    assert fake_worker.pause.called
+    assert mgr._is_offline is True
+
+    mgr.set_online(True)
+    assert started == [job]
+
+
+def test_resume_waits_until_old_worker_stopped(tmp_path, monkeypatch):
+    """set_online(True) must defer starting new worker until old worker stops running."""
+    from PySide6.QtCore import QTimer
+
+    mgr = DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("v_1", "video", "vid_1")
+    mgr._active_job = job
+    fake_worker = MagicMock()
+    fake_worker.isRunning.return_value = True
+    mgr._worker = fake_worker
+    mgr._is_offline = False
+
+    started = []
+    callbacks = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
+
+    mgr.set_online(False)
+    mgr.set_online(True)
+
+    # Old worker is still running -> _start_worker NOT called yet, callback scheduled
+    assert started == []
+    assert len(callbacks) == 1
+
+    # Simulate old worker thread has now stopped
+    fake_worker.isRunning.return_value = False
+    callbacks[0]()
+
+    assert started == [job]
+
+
+def test_resume_gives_up_after_20_attempts_without_starting_second_worker(tmp_path, monkeypatch, caplog):
+    """If old worker stays running, gives up after 20 attempts without starting second worker."""
+    from PySide6.QtCore import QTimer
+    from app.core.logger import get_logger
+
+    mgr = DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("v_1", "video", "vid_1")
+    mgr._active_job = job
+    fake_worker = MagicMock()
+    fake_worker.isRunning.return_value = True
+    mgr._worker = fake_worker
+    mgr._is_offline = False
+
+    started = []
+    callbacks = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
+
+    logger = get_logger()
+    logger.propagate = True
+    try:
+        with caplog.at_level("WARNING", logger="youtube_app"):
+            mgr.set_online(False)
+            mgr.set_online(True)
+
+            # Fire singleShot callbacks 21 times while isRunning stays True
+            for _ in range(21):
+                if callbacks:
+                    cb = callbacks.pop(0)
+                    cb()
+
+            assert started == []
+            assert any("did not stop; resume skipped" in r.message for r in caplog.records)
+    finally:
+        logger.propagate = False
+
+
+def test_second_online_call_does_not_start_another_worker(tmp_path, monkeypatch):
+    """After successful resume, subsequent set_online(True) calls do not start another worker."""
+    mgr = DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = _make_job("v_1", "video", "vid_1")
+    mgr._active_job = job
+    fake_worker = MagicMock()
+    fake_worker.isRunning.return_value = False
+    mgr._worker = fake_worker
+    mgr._is_offline = False
+
+    started = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+
+    mgr.set_online(False)
+    mgr.set_online(True)
+    assert len(started) == 1
+
+    # Second call while already online
+    mgr.set_online(True)
+    assert len(started) == 1
+
+
+

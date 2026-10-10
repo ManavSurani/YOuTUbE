@@ -9,7 +9,7 @@ from pathlib import Path
 import threading
 from typing import Dict, List, Optional, Set, Tuple
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from app.core.downloader import DownloadWorker, build_audio_cmd, build_video_cmd
 from app.core.errors import explain
@@ -44,6 +44,8 @@ class DownloadManager(QObject):
         self._deferred_job_ids: Set[str] = set()
         self._is_offline = False
         self._is_shutting_down = False
+        self._paused_worker = None
+        self._resume_attempts = 0
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
 
         self._load_persisted_queue()
@@ -167,19 +169,39 @@ class DownloadManager(QObject):
 
     def set_online(self, online: bool) -> None:
         """Pause or resume downloads based on network connectivity."""
+        was_offline = self._is_offline
         self._is_offline = not online
         if not online:
-            if self._worker and self._active_job:
+            if not was_offline and self._active_job and self._worker:   # only on online -> offline
                 get_logger().info("Network offline: pausing active download.")
                 self._worker.pause()
+                self._paused_worker = self._worker
+            return
+        if self._is_shutting_down:
+            return                                   # never revive a closing lane
+        if was_offline and (self._paused_worker is not None or (self._active_job and self._worker)):
+            if self._paused_worker is None:
+                self._paused_worker = self._worker
+            self._resume_attempts = 0
+            self._resume_active_job()                # offline -> online: resume exactly once
         else:
-            self._is_shutting_down = False
-            if self._active_job and self._worker:
-                get_logger().info("Network online: resuming active download.")
-                # Worker is restarted for active job
-                self._start_worker(self._active_job)
-            elif not self._active_job and self._waiting_queue:
-                self._process_next()
+            self._process_next()                     # already online: only wake an idle lane
+
+    def _resume_active_job(self) -> None:
+        """Start a new worker for the paused job only after the old thread has really stopped."""
+        old, job = self._paused_worker, self._active_job
+        if old is None or job is None or self._is_offline or self._is_shutting_down:
+            return
+        is_running = old.isRunning() if hasattr(old, "isRunning") else False
+        if is_running is True:
+            self._resume_attempts += 1
+            if self._resume_attempts <= 20:          # about 2 seconds, never blocks the UI
+                QTimer.singleShot(100, self._resume_active_job)
+            else:
+                get_logger().warning("Old %s worker did not stop; resume skipped", self.kind)
+            return
+        self._paused_worker = None
+        self._start_worker(job)
 
     def _process_next(self) -> None:
         """Start the next waiting job if one is available and not deferred."""

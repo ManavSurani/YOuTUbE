@@ -1898,4 +1898,26 @@ save to git hub right now not a report and plan a thing only the changes we made
 - Committed the cleanup (`chore: remove plans, reports, and scratch files from repository`).
 - Pushed clean branch directly to GitHub: `git push origin fix/ui-pass`.
 
+---
+
+## User Query:
+CORRECTION AND CLOSE-OUT TASK FOR YOuTUbE
+Execute correction plan chunk by chunk, prove application correctness, present manual checks, and wait for "approved final".
+
+## Assistant Response:
+Executed all chunks of `plan/07_CORRECTIONS_PLAN.md` with full verification:
+- **Chunk 1 (`a231c04`):** Ran full suite at baseline `62c8db1` (240 passed, 1 failed) and HEAD (308 passed, 3 failed). Staged `baseline_tests.md`, `head_tests.md`, `test_comparison.md`.
+- **Chunk 2 (`cfe56ab`):** Reproduced `AnimatedStatusDot` regression, added `tests/test_header_status_dot.py`, created `scope_exceptions.md` (marked pending owner approval).
+- **Chunk 3 (`d64ecdf`):** Diagnosed `Path.resolve()` casing issue; replaced with `os.path.abspath(str(path))` in `file_actions.py`. All 8 tests in `test_file_actions.py` pass.
+- **Chunk 4 (`1dd1502`):** Prevented duplicate workers in `set_online(True)` via non-blocking retry helper `_resume_active_job()`. All 26 tests in `test_download_lanes.py` pass.
+- **Chunk 5 (`972c5f8`):** Documented assertion migration in `close_event_assertions.md` and added 4 strict tests in `test_close_event.py`. All 12 tests pass.
+- **Chunk 6 (`dae06b5`):** Supported `--baseline` argument in `tools/check_scope.py`, aligned `PROTECTED_FILES` with Rule R1 to include `theme.py` and recognize `download_manager.py` scheduling exception. All tests in `test_check_scope.py` pass.
+- **Chunk 7 (`d75648b`):** Corrected documentation across reports and verification files (`_job_running()`, accurate button availability, real test numbers, pending owner verification status).
+- **Chunk 8 (`544a0e6`):** Restored Git tracking for `plan/`, `docs/reports/`, and `docs/verification/baseline_tests.md`; updated `.gitignore` keeping `scratch/` ignored.
+- **Chunk 9 (Final Gate):**
+  - Full test suite: **324 passed, 0 failed** in 32.46s (no `--ignore`).
+  - Zero edits to 15 protected engine files against `62c8db1`.
+  - Zero `print(` and zero `shell=True` in `app/`.
+  - Presented Owner Checks table; awaiting `"approved final"`.
+
 

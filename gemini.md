@@ -1918,6 +1918,16 @@ Executed all chunks of `plan/07_CORRECTIONS_PLAN.md` with full verification:
   - Full test suite: **324 passed, 0 failed** in 32.46s (no `--ignore`).
   - Zero edits to 15 protected engine files against `62c8db1`.
   - Zero `print(` and zero `shell=True` in `app/`.
-  - Presented Owner Checks table; awaiting `"approved final"`.
+  - Presented Owner Checks table; received "approved final".
+- **Chunk 10 (Push & Merge):**
+  - Clean working tree verified.
+  - Zero secrets verified.
+  - Pushed `fix/ui-pass` to GitHub: `git push origin fix/ui-pass` (`99d865c`).
+  - Upon "approved merge":
+    - Fast-forward merged `fix/ui-pass` into `main` (`git merge --ff-only fix/ui-pass`).
+    - Verified full test suite on `main`: **324 passed in 32.97s**.
+    - Pushed `main` to GitHub: `git push origin main`.
+    - Both `origin/main` and `origin/fix/ui-pass` verified at matching hash.
+    - Switched back to `fix/ui-pass`.
 
 

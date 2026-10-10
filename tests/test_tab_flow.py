@@ -20,6 +20,12 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def no_duplicate_dialog(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.find_duplicate", lambda *a, **kw: None)
+    monkeypatch.setattr("app.ui.audio_tab.find_duplicate", lambda *a, **kw: None)
+
+
 class FakeManager(QObject):
     job_started = Signal(DownloadJob)
     progress = Signal(str, float, str, str, int, int)

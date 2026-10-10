@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QLayout,
     QLineEdit,
     QMessageBox,
     QScrollArea,
@@ -87,7 +86,6 @@ class AudioTab(QWidget):
         container = QWidget()
         container.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(container)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(0, 8, 0, 16)
         layout.setSpacing(12)
 

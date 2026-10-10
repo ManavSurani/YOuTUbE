@@ -242,6 +242,9 @@ def test_tab_scroll_bounds_with_many_queued_items(qapp):
 
         video_tab = win.video_tab
         assert video_tab.scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        # Force Qt to recalculate the container geometry so the scrollbar range updates.
+        video_tab.scroll.widget().adjustSize()
+        QApplication.processEvents()
         assert video_tab.scroll.verticalScrollBar().maximum() > 0
         assert win.height() == initial_height
 
@@ -250,6 +253,11 @@ def test_tab_scroll_bounds_with_many_queued_items(qapp):
     finally:
         video_manager._waiting_queue.clear()
         audio_manager._waiting_queue.clear()
+        # Emit so QueueWidgets in this window and any future VideoTab/AudioTab
+        # that connects to the singleton managers sees 0 items immediately.
+        video_manager.queue_changed.emit()
+        audio_manager.queue_changed.emit()
+        QApplication.processEvents()
         win.tray_icon.hide()
         win.tray_icon.deleteLater()
         win.deleteLater()

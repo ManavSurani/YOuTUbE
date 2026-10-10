@@ -223,6 +223,13 @@ class QueueWidget(QWidget):
             )
             self._layout.addWidget(row)
 
+        # Notify Qt that this widget's size hint has changed. The parent
+        # QScrollArea (setWidgetResizable=True) will re-layout on the next
+        # event loop pass. The test_tab_scroll_bounds test calls
+        # scroll.widget().adjustSize() explicitly before checking the range.
+        self.adjustSize()
+        self.updateGeometry()
+
     def _clear_failed(self) -> None:
         if hasattr(self.manager, "clear_failed"):
             self.manager.clear_failed()

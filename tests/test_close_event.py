@@ -264,3 +264,163 @@ def test_close_completes_and_logs_warning_when_worker_never_stops(caplog):
                 win.tray_icon.deleteLater()
             win.deleteLater()
             QApplication.processEvents()
+
+
+def test_close_cancels_both_lanes():
+    v_mgr = MagicMock()
+    v_mgr.active_job = MagicMock(title="Video")
+    a_mgr = MagicMock()
+    a_mgr.active_job = MagicMock(title="Audio")
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
+
+    with patch("app.ui.main_window.NetworkMonitor.start"), \
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm):
+        win = MainWindow()
+        try:
+            def fake_exec(*args, **kwargs):
+                box = win.findChild(QMessageBox)
+                if box:
+                    for btn in box.buttons():
+                        if btn.text() == "Quit":
+                            box._mock_clicked = btn
+                            break
+
+            with patch("PySide6.QtWidgets.QMessageBox.exec", side_effect=fake_exec), \
+                 patch("PySide6.QtWidgets.QMessageBox.clickedButton", side_effect=lambda *a: getattr(win.findChild(QMessageBox), "_mock_clicked", None)):
+                event = QCloseEvent()
+                win.closeEvent(event)
+
+                assert event.isAccepted()
+                v_mgr.shutdown.assert_called_once()
+                a_mgr.shutdown.assert_called_once()
+        finally:
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()
+
+
+def test_close_uses_one_shared_deadline():
+    import itertools
+
+    v_mgr = MagicMock()
+    v_mgr.active_job = MagicMock()
+    v_worker = MagicMock()
+    v_mgr._worker = v_worker
+
+    a_mgr = MagicMock()
+    a_mgr.active_job = MagicMock()
+    a_worker = MagicMock()
+    a_mgr._worker = a_worker
+
+    timeouts = []
+    v_worker.wait.side_effect = lambda ms: timeouts.append(ms) or True
+    a_worker.wait.side_effect = lambda ms: timeouts.append(ms) or True
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
+
+    ticks = itertools.count(0.0, 0.75)
+
+    with patch("app.ui.main_window.NetworkMonitor.start"), \
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm), \
+         patch("app.ui.main_window.time.monotonic", side_effect=lambda: next(ticks)):
+        win = MainWindow()
+        try:
+            def fake_exec(*args, **kwargs):
+                box = win.findChild(QMessageBox)
+                if box:
+                    for btn in box.buttons():
+                        if btn.text() == "Quit":
+                            box._mock_clicked = btn
+                            break
+
+            with patch("PySide6.QtWidgets.QMessageBox.exec", side_effect=fake_exec), \
+                 patch("PySide6.QtWidgets.QMessageBox.clickedButton", side_effect=lambda *a: getattr(win.findChild(QMessageBox), "_mock_clicked", None)):
+                event = QCloseEvent()
+                win.closeEvent(event)
+
+                assert event.isAccepted()
+                assert len(timeouts) == 2
+                assert timeouts[1] < timeouts[0]
+                assert all(t <= 2000 for t in timeouts)
+        finally:
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()
+
+
+def test_close_with_no_active_jobs_does_not_ask():
+    v_mgr = MagicMock()
+    v_mgr.active_job = None
+    a_mgr = MagicMock()
+    a_mgr.active_job = None
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
+
+    with patch("app.ui.main_window.NetworkMonitor.start"), \
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm), \
+         patch.object(QMessageBox, "exec") as mock_exec:
+        win = MainWindow()
+        try:
+            event = QCloseEvent()
+            win.closeEvent(event)
+
+            assert event.isAccepted()
+            mock_exec.assert_not_called()
+            v_mgr.shutdown.assert_called_once()
+            a_mgr.shutdown.assert_called_once()
+        finally:
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()
+
+
+def test_close_rejected_leaves_both_lanes_running():
+    v_mgr = MagicMock()
+    v_mgr.active_job = MagicMock(title="Video")
+    a_mgr = MagicMock()
+    a_mgr.active_job = MagicMock(title="Audio")
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
+
+    with patch("app.ui.main_window.NetworkMonitor.start"), \
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm):
+        win = MainWindow()
+        try:
+            def fake_exec(*args, **kwargs):
+                box = win.findChild(QMessageBox)
+                if box:
+                    for btn in box.buttons():
+                        if btn.text() == "Keep downloading":
+                            box._mock_clicked = btn
+                            break
+
+            with patch("PySide6.QtWidgets.QMessageBox.exec", side_effect=fake_exec), \
+                 patch("PySide6.QtWidgets.QMessageBox.clickedButton", side_effect=lambda *a: getattr(win.findChild(QMessageBox), "_mock_clicked", None)):
+                event = QCloseEvent()
+                win.closeEvent(event)
+
+                assert not event.isAccepted()
+                v_mgr.shutdown.assert_not_called()
+                a_mgr.shutdown.assert_not_called()
+        finally:
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()
+

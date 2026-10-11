@@ -214,8 +214,8 @@ class ProgressCard(QWidget):
         total_bytes: int = 0,
         stats: str = "",
     ) -> None:
-        # Never go backwards
-        self._max_percent = max(self._max_percent, percent)
+        if percent > 0 or self._max_percent == 0:
+            self._max_percent = percent
         pct_int = int(self._max_percent)
         self.progress_bar.setValue(pct_int)
         self.percent_label.setText(f"{pct_int}%")

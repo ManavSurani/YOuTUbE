@@ -11,7 +11,7 @@ from pathlib import Path
 import shutil
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -39,7 +39,12 @@ from app.ui.kit import (
 )
 from app.ui.queue_widget import QueueWidget
 from app.ui.recent_list import RecentList
-from app.ui.video_tab import MediaInfoCard, TabState
+from app.ui.video_tab import (
+    _FETCH_CACHE,
+    AnimatedComboBox,
+    MediaInfoCard,
+    TabState,
+)
 
 
 class AudioTab(QWidget):
@@ -62,6 +67,8 @@ class AudioTab(QWidget):
         self._prev_state = TabState.IDLE
         self._current_info: Optional[VideoInfo] = None
         self._fetch_worker: Optional[InfoFetchWorker] = None
+        self._active_workers: set[InfoFetchWorker] = set()
+        self._fetch_seq = 0
         self._last_fetched_url = ""
         self._preselected_quality: Optional[str] = None
 
@@ -121,7 +128,7 @@ class AudioTab(QWidget):
         actions_row = QHBoxLayout()
         actions_row.setSpacing(8)
 
-        self.format_combo = QComboBox(container)
+        self.format_combo = AnimatedComboBox(container)
         self.format_combo.setFixedHeight(36)
         self.format_combo.setMinimumWidth(210)
         for label, fmt_key in self.AUDIO_FORMATS:
@@ -363,19 +370,66 @@ class AudioTab(QWidget):
             self.inline_msg.show_error("Please paste a valid YouTube link.")
             return
 
+        # Cache check BEFORE state transition or showing any banner / spinner
+        if cleaned in _FETCH_CACHE:
+            if self._fetch_worker is not None:
+                try:
+                    self._fetch_worker.fetched.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+                try:
+                    self._fetch_worker.failed.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+            self._fetch_seq += 1
+            self._last_fetched_url = cleaned
+            self.inline_msg.clear()
+            self._on_info_fetched(_FETCH_CACHE[cleaned])
+            return
+
+        if self._fetch_worker is not None:
+            try:
+                self._fetch_worker.fetched.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                self._fetch_worker.failed.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+
+        self._fetch_seq += 1
+        current_seq = self._fetch_seq
         self._last_fetched_url = cleaned
         self.set_state(TabState.FETCHING)
+        self.inline_msg.show_info("Getting video info…", auto_hide_ms=0)
 
-        self._fetch_worker = InfoFetchWorker(cleaned, parent=self)
-        self._fetch_worker.fetched.connect(self._on_info_fetched)
-        self._fetch_worker.failed.connect(self._on_info_failed)
-        self._fetch_worker.start()
+        worker = InfoFetchWorker(cleaned, parent=self)
+        self._fetch_worker = worker
+        self._active_workers.add(worker)
+        if hasattr(worker, "finished"):
+            worker.finished.connect(lambda: self._active_workers.discard(worker))
+
+        def _handle_fetched(info: VideoInfo) -> None:
+            if current_seq != self._fetch_seq:
+                return
+            _FETCH_CACHE[cleaned] = info
+            self._on_info_fetched(info)
+
+        def _handle_failed(err: str) -> None:
+            if current_seq != self._fetch_seq:
+                return
+            self._on_info_failed(err)
+
+        worker.fetched.connect(_handle_fetched)
+        worker.failed.connect(_handle_failed)
+        worker.start()
 
     def preselect_quality(self, quality: str) -> None:
         """Pre-select requested audio format/quality when video info is fetched."""
         self._preselected_quality = quality
 
     def _on_info_fetched(self, info: VideoInfo) -> None:
+        self.inline_msg.clear()
         self._current_info = info
         self.info_card.set_info(info)
 
@@ -541,3 +595,10 @@ class AudioTab(QWidget):
             else:
                 self._clear_inputs()
                 self.set_state(TabState.IDLE)
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.StyleChange:
+            if hasattr(self, "format_combo") and hasattr(self.format_combo, "_update_popup_style"):
+                self.format_combo._update_popup_style()
+

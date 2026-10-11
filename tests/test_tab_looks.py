@@ -16,8 +16,16 @@ def qapp():
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
+    for w in app.topLevelWidgets():
+        if hasattr(w, "close"):
+            w.close()
+    app.processEvents()
     app.setStyleSheet(build_qss("dark"))
     yield app
+    for w in app.topLevelWidgets():
+        if hasattr(w, "close"):
+            w.close()
+    app.processEvents()
 
 
 def _check_tab_background_transparency(TabClass):
@@ -210,6 +218,225 @@ def test_combobox_down_arrow_rule_in_both_themes():
         assert match is not None, f"QComboBox::down-arrow rule missing or malformed for theme {theme}"
         arrow_path = match.group(1).strip("'\"")
         assert Path(arrow_path).exists(), f"Arrow image path does not exist: {arrow_path}"
+
+
+def test_combobox_popups_use_qlistview_and_styled():
+    """Both quality_combo and format_combo use QListView and contain required styling."""
+    from PySide6.QtWidgets import QListView
+
+    video_tab = VideoTab()
+    audio_tab = AudioTab()
+
+    for combo in (video_tab.quality_combo, audio_tab.format_combo):
+        view = combo.view()
+        assert isinstance(view, QListView)
+        qss = view.styleSheet()
+
+        # Item min-height about 32 px
+        assert "min-height: 32px" in qss
+        # Inner padding about 4 px
+        assert "padding: 4px" in qss
+        # Item padding about 6 px 12 px
+        assert "padding: 6px 12px" in qss
+        # Popup rounded corners about 8 px
+        assert "border-radius: 8px" in qss
+        # Item rounded corners about 4 px
+        assert "border-radius: 4px" in qss
+        # No focus outline
+        assert "outline: none" in qss
+        # Max visible items at most 8 before scrolling
+        assert combo.maxVisibleItems() <= 8
+
+
+def test_combobox_popups_theme_colors_and_switch(qapp):
+    """Popup colors match active theme tokens in dark and light, following theme switches."""
+    from app.ui.theme import LIGHT_TOKENS, DARK_TOKENS, build_qss
+
+    qapp.setStyleSheet(build_qss("dark"))
+    video_tab = VideoTab()
+    audio_tab = AudioTab()
+
+    for combo in (video_tab.quality_combo, audio_tab.format_combo):
+        qss = combo.view().styleSheet()
+        # In dark theme: matches DARK_TOKENS
+        assert DARK_TOKENS["surface"] in qss
+        assert DARK_TOKENS["border"] in qss
+        assert DARK_TOKENS["text"] in qss
+        assert DARK_TOKENS["surface_hover"] in qss
+        # Does not have light theme surface
+        assert LIGHT_TOKENS["surface"] not in qss
+
+    # Switch theme to light
+    qapp.setStyleSheet(build_qss("light"))
+    for tab in (video_tab, audio_tab):
+        combo = tab.quality_combo if hasattr(tab, "quality_combo") else tab.format_combo
+        combo._update_popup_style()
+
+    for combo in (video_tab.quality_combo, audio_tab.format_combo):
+        qss = combo.view().styleSheet()
+        # In light theme: matches LIGHT_TOKENS
+        assert LIGHT_TOKENS["surface"] in qss
+        assert LIGHT_TOKENS["border"] in qss
+        assert LIGHT_TOKENS["text"] in qss
+        assert LIGHT_TOKENS["surface_hover"] in qss
+        # Does not have dark theme surface
+        assert DARK_TOKENS["surface"] not in qss
+
+    # Reset back to dark for other tests
+    qapp.setStyleSheet(build_qss("dark"))
+
+
+def test_other_comboboxes_unchanged():
+    """Other combos (e.g. SettingsDialog theme_combo) remain untouched."""
+    from app.ui.settings_dialog import SettingsDialog
+
+    dlg = SettingsDialog()
+    theme_combo = dlg.theme_combo
+    # Theme combo in SettingsDialog does not have the custom popup stylesheet
+    assert theme_combo.view().styleSheet() == ""
+    assert "min-height: 32px" not in theme_combo.view().styleSheet()
+
+
+def test_animated_combobox_click_fade_and_completion(qapp):
+    """Real click starts the fade and it ends at opacity 1.0 after ~250 ms, restoring effect flag."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt, QPropertyAnimation
+    from PySide6.QtWidgets import QMainWindow
+    from app.ui.video_tab import VideoTab, AnimatedComboBox, TabState
+
+    win = QMainWindow()
+    tab = VideoTab()
+    win.setCentralWidget(tab)
+    tab.set_state(TabState.READY)
+    cb = tab.quality_combo
+    assert isinstance(cb, AnimatedComboBox)
+    cb.addItem("1080p")
+    cb.addItem("720p")
+    win.show()
+    QApplication.processEvents()
+
+    # Initial state
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo) is True
+
+    # Real click open
+    QTest.mouseClick(cb, Qt.MouseButton.LeftButton)
+    # Check immediate start
+    assert cb._anim.state() == QPropertyAnimation.State.Running or cb._container.isVisible()
+    # The effect flag was restored in finally
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo) is True
+
+    # Wait for completion (~250 ms)
+    QTest.qWait(250)
+    assert cb._container.windowOpacity() == 1.0
+    assert cb._anim.state() == QPropertyAnimation.State.Stopped
+
+    cb.hidePopup()
+    assert cb._container.windowOpacity() == 1.0
+    win.close()
+
+
+def test_animated_combobox_rapid_open_close_cycles(qapp):
+    """20 quick open/close cycles: opacity 1.0, no running anim, same single anim object, flag restored."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt, QPropertyAnimation
+    from app.ui.video_tab import AnimatedComboBox
+
+    cb = AnimatedComboBox()
+    cb.addItem("1080p")
+    cb.addItem("720p")
+
+    anim_id = id(cb._anim)
+
+    for _ in range(20):
+        cb.showPopup()
+        QTest.qWait(10)
+        cb.hidePopup()
+        QTest.qWait(5)
+        assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo) is True
+
+    assert cb._container.windowOpacity() == 1.0
+    assert cb._anim.state() == QPropertyAnimation.State.Stopped
+    assert id(cb._anim) == anim_id
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo) is True
+
+
+def test_animated_combobox_close_paths_stop_animation(qapp):
+    """Escape, item selection, and container Hide event stop animation and restore opacity 1.0."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt, QPropertyAnimation
+    from app.ui.video_tab import AnimatedComboBox
+
+    cb = AnimatedComboBox()
+    cb.addItem("1080p")
+    cb.addItem("720p")
+    cb.addItem("480p")
+
+    # (a) Escape key on container
+    cb.showPopup()
+    QTest.qWait(50)  # during animation
+    assert cb._anim.state() == QPropertyAnimation.State.Running
+    QTest.keyClick(cb._container, Qt.Key.Key_Escape)
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Stopped
+    assert cb._container.windowOpacity() == 1.0
+
+    # (b) Hide event on container (outside click / dismissal)
+    cb.showPopup()
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Running
+    cb._container.hide()
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Stopped
+    assert cb._container.windowOpacity() == 1.0
+
+    # (c) Item selection with mouse
+    cb.showPopup()
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Running
+    rect = cb.view_widget.visualRect(cb.view_widget.model().index(1, 0))
+    QTest.mouseClick(cb.view_widget, Qt.MouseButton.LeftButton, pos=rect.center())
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Stopped
+    assert cb._container.windowOpacity() == 1.0
+
+    # (d) Item selection with Enter key
+    cb.showPopup()
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Running
+    QTest.keyClick(cb.view_widget, Qt.Key.Key_Down)
+    QTest.keyClick(cb.view_widget, Qt.Key.Key_Return)
+    QTest.qWait(50)
+    assert cb._anim.state() == QPropertyAnimation.State.Stopped
+    assert cb._container.windowOpacity() == 1.0
+
+
+def test_animated_combobox_plain_combo_keeps_roll(qapp):
+    """Plain combos (e.g. SettingsDialog theme_combo) still show QRollEffect after AnimatedComboBox runs."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt
+    from app.ui.video_tab import AnimatedComboBox
+    from app.ui.settings_dialog import SettingsDialog
+
+    anim_cb = AnimatedComboBox()
+    anim_cb.addItem("Option A")
+    anim_cb.showPopup()
+    anim_cb.hidePopup()
+
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo) is True
+
+    dlg = SettingsDialog()
+    dlg.show()
+    QTest.mouseClick(dlg.theme_combo, Qt.MouseButton.LeftButton)
+
+    roll_found = any(
+        w.isVisible() and "Roll" in w.metaObject().className()
+        for w in qapp.topLevelWidgets()
+    )
+    assert roll_found is True
+    dlg.theme_combo.hidePopup()
+    dlg.close()
+
+
 
 
 

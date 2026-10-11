@@ -12,18 +12,29 @@ import shutil
 from typing import Optional
 import urllib.request
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QPropertyAnimation,
+    Qt,
+    QThread,
+    Signal,
+)
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
+from app.ui.theme import DARK_TOKENS, LIGHT_TOKENS
 
 from app.core.download_manager import DownloadManager, get_download_manager
 from app.core.history_db import find_duplicate
@@ -41,6 +52,133 @@ from app.ui.kit import (
 )
 from app.ui.queue_widget import QueueWidget
 from app.ui.recent_list import RecentList
+
+_FETCH_CACHE: dict[str, VideoInfo] = {}
+
+
+def get_current_theme_tokens() -> dict[str, str]:
+    app = QApplication.instance()
+    if app:
+        qss = app.styleSheet()
+        if f"background-color: {DARK_TOKENS['bg']}" in qss:
+            return DARK_TOKENS
+        if f"background-color: {LIGHT_TOKENS['bg']}" in qss:
+            return LIGHT_TOKENS
+        if DARK_TOKENS["surface"] in qss:
+            return DARK_TOKENS
+        if LIGHT_TOKENS["surface"] in qss:
+            return LIGHT_TOKENS
+    settings = load_settings()
+    theme = settings.get("theme", "dark").lower()
+    return LIGHT_TOKENS if theme == "light" else DARK_TOKENS
+
+
+def build_combo_popup_qss(tokens: dict[str, str]) -> str:
+    return (
+        f"QListView {{\n"
+        f"    background-color: {tokens['surface']};\n"
+        f"    border: 1px solid {tokens['border']};\n"
+        f"    border-radius: 8px;\n"
+        f"    padding: 4px;\n"
+        f"    outline: none;\n"
+        f"    selection-background-color: {tokens['surface_hover']};\n"
+        f"    selection-color: {tokens['text']};\n"
+        f"}}\n"
+        f"QListView::item {{\n"
+        f"    min-height: 32px;\n"
+        f"    padding: 6px 12px;\n"
+        f"    border-radius: 4px;\n"
+        f"    color: {tokens['text']};\n"
+        f"    background-color: transparent;\n"
+        f"}}\n"
+        f"QListView::item:hover {{\n"
+        f"    background-color: {tokens['surface_hover']};\n"
+        f"    color: {tokens['text']};\n"
+        f"}}\n"
+        f"QListView::item:selected {{\n"
+        f"    background-color: {tokens['surface_hover']};\n"
+        f"    color: {tokens['text']};\n"
+        f"}}\n"
+    )
+
+
+class _PopupContainerFilter(QObject):
+    def __init__(self, combo: "AnimatedComboBox") -> None:
+        super().__init__(combo)
+        self._combo = combo
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Hide:
+            if self._combo is not None:
+                self._combo._on_container_hide()
+        return super().eventFilter(obj, event)
+
+
+class AnimatedComboBox(QComboBox):
+    """QComboBox with smooth windowOpacity fade, styled QListView popup, and restored UI_AnimateCombo."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.view_widget = QListView(self)
+        self.setView(self.view_widget)
+        self.setMaxVisibleItems(8)
+
+        self._container = self.view_widget.window()
+        self._container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._container.setWindowFlags(
+            Qt.WindowType.Popup
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
+
+        self._filter = _PopupContainerFilter(self)
+        self._container.installEventFilter(self._filter)
+
+        self._anim = QPropertyAnimation(self._container, b"windowOpacity", self)
+        self._anim.setDuration(150)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._update_popup_style()
+
+    def _update_popup_style(self) -> None:
+        tokens = get_current_theme_tokens()
+        self.view_widget.setStyleSheet(build_combo_popup_qss(tokens))
+
+    def _on_container_hide(self) -> None:
+        self._anim.stop()
+        if self._container is not None:
+            self._container.setWindowOpacity(1.0)
+
+    def showPopup(self) -> None:
+        self._update_popup_style()
+        self._anim.stop()
+        self._container.setWindowOpacity(0.0)
+
+        if self.width() > self.view_widget.minimumWidth():
+            self.view_widget.setMinimumWidth(self.width())
+
+        app = QApplication.instance()
+        was = app.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo) if app else False
+        if app and was:
+            app.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, False)
+
+        try:
+            super().showPopup()
+        finally:
+            if app and was:
+                app.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, True)
+
+        self._anim.setStartValue(0.0)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
+
+    def hidePopup(self) -> None:
+        self._anim.stop()
+        if self._container is not None:
+            self._container.setWindowOpacity(1.0)
+        super().hidePopup()
+
+
 
 
 class TabState(Enum):
@@ -168,6 +306,8 @@ class VideoTab(QWidget):
         self._prev_state = TabState.IDLE
         self._current_info: Optional[VideoInfo] = None
         self._fetch_worker: Optional[InfoFetchWorker] = None
+        self._active_workers: set[InfoFetchWorker] = set()
+        self._fetch_seq = 0
         self._last_fetched_url = ""
         self._preselected_quality: Optional[str] = None
 
@@ -224,7 +364,7 @@ class VideoTab(QWidget):
         actions_row = QHBoxLayout()
         actions_row.setSpacing(8)
 
-        self.quality_combo = QComboBox(container)
+        self.quality_combo = AnimatedComboBox(container)
         self.quality_combo.setFixedHeight(36)
         self.quality_combo.setMinimumWidth(160)
         actions_row.addWidget(self.quality_combo)
@@ -453,19 +593,66 @@ class VideoTab(QWidget):
             self.inline_msg.show_error("Please paste a valid YouTube link.")
             return
 
+        # Cache check BEFORE state transition or showing any banner / spinner
+        if cleaned in _FETCH_CACHE:
+            if self._fetch_worker is not None:
+                try:
+                    self._fetch_worker.fetched.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+                try:
+                    self._fetch_worker.failed.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+            self._fetch_seq += 1
+            self._last_fetched_url = cleaned
+            self.inline_msg.clear()
+            self._on_info_fetched(_FETCH_CACHE[cleaned])
+            return
+
+        if self._fetch_worker is not None:
+            try:
+                self._fetch_worker.fetched.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                self._fetch_worker.failed.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+
+        self._fetch_seq += 1
+        current_seq = self._fetch_seq
         self._last_fetched_url = cleaned
         self.set_state(TabState.FETCHING)
+        self.inline_msg.show_info("Getting video info…", auto_hide_ms=0)
 
-        self._fetch_worker = InfoFetchWorker(cleaned, parent=self)
-        self._fetch_worker.fetched.connect(self._on_info_fetched)
-        self._fetch_worker.failed.connect(self._on_info_failed)
-        self._fetch_worker.start()
+        worker = InfoFetchWorker(cleaned, parent=self)
+        self._fetch_worker = worker
+        self._active_workers.add(worker)
+        if hasattr(worker, "finished"):
+            worker.finished.connect(lambda: self._active_workers.discard(worker))
+
+        def _handle_fetched(info: VideoInfo) -> None:
+            if current_seq != self._fetch_seq:
+                return
+            _FETCH_CACHE[cleaned] = info
+            self._on_info_fetched(info)
+
+        def _handle_failed(err: str) -> None:
+            if current_seq != self._fetch_seq:
+                return
+            self._on_info_failed(err)
+
+        worker.fetched.connect(_handle_fetched)
+        worker.failed.connect(_handle_failed)
+        worker.start()
 
     def preselect_quality(self, quality: str) -> None:
         """Pre-select requested quality when video info is fetched."""
         self._preselected_quality = quality
 
     def _on_info_fetched(self, info: VideoInfo) -> None:
+        self.inline_msg.clear()
         self._current_info = info
         self.info_card.set_info(info)
 
@@ -638,3 +825,10 @@ class VideoTab(QWidget):
             else:
                 self._clear_inputs()
                 self.set_state(TabState.IDLE)
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.StyleChange:
+            if hasattr(self, "quality_combo") and hasattr(self.quality_combo, "_update_popup_style"):
+                self.quality_combo._update_popup_style()
+

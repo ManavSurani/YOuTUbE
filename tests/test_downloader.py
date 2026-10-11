@@ -360,3 +360,157 @@ def test_download_worker_signals():
     assert hasattr(worker, "paused")
     assert hasattr(worker, "pause")
     assert hasattr(worker, "cancel")
+
+
+# ---------------------------------------------------------------------------
+# Chunk 3 Tests: Self-correcting progress latch & real log sequence
+# ---------------------------------------------------------------------------
+
+def test_parse_line_first_fragment_equal_gives_zero_percent():
+    line = "[download] YTPROG|downloading|712|NA|712|526.1|NA|vp09.00.40.08|none"
+    res = parse_line(line)
+    assert res.kind == "progress"
+    assert res.progress is not None
+    assert res.progress.percent == 0.0
+    assert res.progress.total_bytes == 0
+    assert res.progress.is_exact is False
+
+
+def test_download_worker_fluctuating_estimates_sequence(monkeypatch):
+    """Test user sequence: 712 B, 1.1 MB, 276 KB, 1.39 GB, 463 MB, 2.04 GB."""
+    lines = [
+        # 1. Fragment 1: 712 B / 712 B estimate -> must be 0%
+        "[download] YTPROG|downloading|712|NA|712|526|NA|vp09.00.40.08|none\n",
+        # 2. 1.1 MB estimate (1,107,872 B) with 1 MB downloaded -> 94.6% video (80.4% scaled)
+        "[download] YTPROG|downloading|1048576|NA|1107872|526|NA|vp09.00.40.08|none\n",
+        # 3. Estimate drops to 276 KB (276,968 B) -> shift > 25%, dl = 1736 B -> 0.63% video (0.53% scaled)
+        "[download] YTPROG|downloading|1736|NA|276968|526|NA|vp09.00.40.08|none\n",
+        # 4. Estimate expands to 1.39 GB (1,390,810,372 B) -> shift > 25%, dl = 1.78 MB -> 0.13% video (0.11% scaled)
+        "[download] YTPROG|downloading|1788030|NA|1390810372|1145527|NA|vp09.00.40.08|none\n",
+        # 5. Estimate shifts to 463 MB (463,695,780 B) -> shift > 25%, dl = 1.78 MB -> 0.38% video (0.33% scaled)
+        "[download] YTPROG|downloading|1789054|NA|463695780|1236809|318|vp09.00.40.08|none\n",
+        # 6. Estimate shifts to 2.04 GB (2,040,000,000 B) -> shift > 25%, dl = 10 MB -> 0.49% video (0.42% scaled)
+        "[download] YTPROG|downloading|10000000|NA|2040000000|2000000|1000|vp09.00.40.08|none\n",
+        # 7. Video finishes: 2.04 GB downloaded, finished -> must reach video stage end 85.0%
+        "[download] YTPROG|finished|2040000000|NA|2040000000|2000000|0|vp09.00.40.08|none\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, output_lines):
+            self.stdout = output_lines
+            self.returncode = 0
+        def wait(self): pass
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+
+    worker = DownloadWorker(["dummy"], is_dual_stream=True, job_id="test-fluct")
+    emitted = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: emitted.append(pct))
+    worker.run()
+
+    # Reading 1: 0.0%
+    assert emitted[0] == 0.0
+
+    # Reading 2: early spike to 80.4%
+    assert abs(emitted[1] - 80.4) < 1.0
+
+    # Reading 3: estimate dropped by >25% (1.1MB -> 276KB), bar adjusts to 0.53% (does not stay at 80.4%)
+    assert emitted[2] < 1.0
+
+    # Reading 4: estimate expanded by >25% (276KB -> 1.39GB), bar adjusts to 0.11%
+    assert emitted[3] < 1.0
+
+    # Floor never violated (all values >= 0.0)
+    assert all(val >= 0.0 for val in emitted)
+
+    # Ends at video stage end (85.0%) before final completion (100.0%)
+    assert emitted[-2] == 85.0
+    assert emitted[-1] == 100.0
+
+
+def test_download_worker_video_to_audio_transition(monkeypatch):
+    """Test video-to-audio transition: bar stays at or above 85, no false downward correction."""
+    lines = [
+        # Video stream ends at 85.0%
+        "[download] YTPROG|finished|1000000|1000000|NA|1000|0|avc1|none\n",
+        # Audio stream starts: dl = 1 KB, tot = 86.8 MB (86,800,000 B) -> 85.0%
+        "[download] YTPROG|downloading|1000|86800000|NA|500|100|none|mp4a\n",
+        # Audio stream fluctuating estimate: tot = NA, est = 120 MB (120,000,000 B), dl = 10 MB
+        "[download] YTPROG|downloading|10000000|NA|120000000|500|100|none|mp4a\n",
+        # Audio stream finished
+        "[download] YTPROG|finished|86800000|86800000|NA|500|0|none|mp4a\n",
+        # Merger stage
+        "[Merger] Merging formats into 'video.mkv'\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, output_lines):
+            self.stdout = output_lines
+            self.returncode = 0
+        def wait(self): pass
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+
+    worker = DownloadWorker(["dummy"], is_dual_stream=True, job_id="test-trans")
+    emitted = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: emitted.append(pct))
+    worker.run()
+
+    # Audio stream readings must all be >= 85.0
+    audio_readings = emitted[1:]
+    assert all(val >= 85.0 for val in audio_readings)
+
+    # Merger reading must be at least 95.0
+    assert emitted[-1] >= 95.0
+
+
+def test_early_garbage_sub_100k_estimate_gives_zero_percent():
+    line = "[download] YTPROG|downloading|400|NA|712|526|NA|vp09.00.40.08|none"
+    res = parse_line(line)
+    assert res.kind == "progress"
+    assert res.progress is not None
+    assert res.progress.percent == 0.0
+    assert res.progress.total_bytes == 0
+    assert res.progress.is_exact is False
+
+
+def test_normal_estimate_above_100k_is_used():
+    line = "[download] YTPROG|downloading|500000|NA|1100000|1000000|10|avc1|none"
+    res = parse_line(line)
+    assert res.kind == "progress"
+    assert res.progress is not None
+    assert abs(res.progress.percent - (500000 / 1100000 * 100.0)) < 0.1
+    assert res.progress.total_bytes == 1100000
+    assert res.progress.is_exact is False
+
+
+def test_small_real_file_finishes_at_stage_end(monkeypatch):
+    """Small real file: estimate stays under 100 KB, then finished reaches stage end."""
+    lines = [
+        # Sub-100KB estimate noise -> 0.0%
+        "[download] YTPROG|downloading|10000|NA|50000|1000|10|avc1|none\n",
+        # Finished line -> exact total used even if under 100 KB
+        "[download] YTPROG|finished|50000|NA|50000|1000|0|avc1|none\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, output_lines):
+            self.stdout = output_lines
+            self.returncode = 0
+        def wait(self): pass
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+
+    worker = DownloadWorker(["dummy"], is_dual_stream=True, job_id="test-small")
+    emitted = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: emitted.append(pct))
+    worker.run()
+
+    # Reading 1 was sub-100KB estimate -> 0.0%
+    assert emitted[0] == 0.0
+    # Reading 2 was finished -> reaches 85.0%
+    assert emitted[-2] == 85.0
+    # Process exit -> 100.0%
+    assert emitted[-1] == 100.0
+
+

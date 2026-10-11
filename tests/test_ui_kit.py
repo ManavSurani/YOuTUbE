@@ -184,3 +184,128 @@ def test_gear_icon_outline_not_null_and_non_empty():
     assert img32.pixelColor(23, 16).alpha() == 0
 
 
+def test_progress_card_new_job_increasing():
+    # 1. A new job (after bind_job): 0 -> 0 -> small values -> increasing values shows increasing values as before.
+    from app.core.jobs import DownloadJob
+
+    card = ProgressCard()
+    job = DownloadJob(
+        job_id="job_inc",
+        url="https://youtube.com/watch?v=12345678901",
+        video_id="12345678901",
+        title="Test Inc",
+        channel="Channel",
+        duration_seconds=60,
+        thumbnail_url="",
+        thumbnail_bytes=None,
+        kind="video",
+        quality_label="1080p",
+        height=1080,
+        audio_format=None,
+        output_dir="",
+        created_at="2026-10-12T00:00:00",
+    )
+    card.bind_job(job)
+    assert card.progress_bar.value() == 0
+    assert card.percent_label.text() == "0%"
+
+    # (downloaded=0, estimate=0) - invented: startup zeros
+    card.set_progress(0.0)
+    assert card.progress_bar.value() == 0
+    assert card.percent_label.text() == "0%"
+
+    # (downloaded=0, estimate=104857600) - invented: initial estimate before dl
+    card.set_progress(0.0)
+    assert card.progress_bar.value() == 0
+    assert card.percent_label.text() == "0%"
+
+    # (downloaded=524288, estimate=104857600) -> 0.5% (scaled 0.42%) - invented: small initial chunk
+    card.set_progress(0.42)
+    assert card.progress_bar.value() == 0  # int(0.42) == 0
+    assert card.percent_label.text() == "0%"
+
+    # (downloaded=5242880, estimate=104857600) -> 5.0% (scaled 4.25%) - invented: small chunk
+    card.set_progress(4.25)
+    assert card.progress_bar.value() == 4
+    assert card.percent_label.text() == "4%"
+
+    # (downloaded=20971520, estimate=104857600) -> 20.0% (scaled 17.0%) - invented: progressive chunk
+    card.set_progress(17.0)
+    assert card.progress_bar.value() == 17
+    assert card.percent_label.text() == "17%"
+
+    # (downloaded=62914560, estimate=104857600) -> 60.0% (scaled 51.0%) - invented: progressive chunk
+    card.set_progress(51.0)
+    assert card.progress_bar.value() == 51
+    assert card.percent_label.text() == "51%"
+
+
+def test_progress_card_spike_and_self_correction():
+    # 2. Early spike then self-correction: 0 -> 80.4 -> 0.53 -> 0.11 shows 80, then 0 (int of 0.53), then 0.
+    # Assert the bar AND the percent label follow the lower values.
+    card = ProgressCard()
+    # (downloaded=0, estimate=0) - invented: starting reading
+    card.set_progress(0.0)
+    assert card.progress_bar.value() == 0
+    assert card.percent_label.text() == "0%"
+
+    # (downloaded=712, estimate=712) -> 80.4% - from audit report: Trigger B fragment spike
+    card.set_progress(80.4)
+    assert card.progress_bar.value() == 80
+    assert card.percent_label.text() == "80%"
+
+    # (downloaded=1148846, estimate=220200960) -> 0.53% - from app.log.2 / audit report: early fragment estimate correction
+    card.set_progress(0.53)
+    assert card.progress_bar.value() == 0
+    assert card.percent_label.text() == "0%"
+
+    # (downloaded=276480, estimate=1492528128) -> 0.11% - from app.log.2 / audit report: multi-GB stream estimate correction
+    card.set_progress(0.11)
+    assert card.progress_bar.value() == 0
+    assert card.percent_label.text() == "0%"
+
+
+def test_progress_card_resume_noise_keeps_progress():
+    # 3. Resume noise: 40 -> set_progress(0.0, "", "", 0, 0) keeps the bar at 40.
+    card = ProgressCard()
+    # (downloaded=40000000, estimate=100000000) -> 40.0% - invented: progress before offline pause
+    card.set_progress(40.0, speed="5.2 MB/s", eta="00:15", done_bytes=40000000, total_bytes=100000000)
+    assert card.progress_bar.value() == 40
+    assert card.percent_label.text() == "40%"
+
+    # (downloaded=0, estimate=0) -> 0.0% - from app.log.1: early startup noise / empty emit on resume
+    card.set_progress(0.0, "", "", 0, 0)
+    assert card.progress_bar.value() == 40
+    assert card.percent_label.text() == "40%"
+
+
+def test_progress_card_normal_increasing_sequence():
+    # 4. Normal increasing sequence 1, 20, 40, 60, 100 shows increasing values.
+    card = ProgressCard()
+    # (downloaded=1048576, estimate=104857600) -> 1.0% - invented: 1% progress
+    card.set_progress(1.0)
+    assert card.progress_bar.value() == 1
+    assert card.percent_label.text() == "1%"
+
+    # (downloaded=20971520, estimate=104857600) -> 20.0% - invented: 20% progress
+    card.set_progress(20.0)
+    assert card.progress_bar.value() == 20
+    assert card.percent_label.text() == "20%"
+
+    # (downloaded=41943040, estimate=104857600) -> 40.0% - invented: 40% progress
+    card.set_progress(40.0)
+    assert card.progress_bar.value() == 40
+    assert card.percent_label.text() == "40%"
+
+    # (downloaded=62914560, estimate=104857600) -> 60.0% - invented: 60% progress
+    card.set_progress(60.0)
+    assert card.progress_bar.value() == 60
+    assert card.percent_label.text() == "60%"
+
+    # (downloaded=104857600, total=104857600) -> 100.0% - real from app.log.1: 100% completion
+    card.set_progress(100.0)
+    assert card.progress_bar.value() == 100
+    assert card.percent_label.text() == "100%"
+
+
+

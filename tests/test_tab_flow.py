@@ -488,6 +488,348 @@ def test_audio_tab_empty_thumbnail_bytes_does_not_call_save_thumbnail(monkeypatc
     assert call_order[0][0] == "enqueue"
 
 
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_fetch_url_shows_getting_info_message_and_clears_on_fetched(TabClass, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+
+    tab = TabClass()
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker.start", lambda self: None)
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker.start", lambda self: None)
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.fetch_url()
+
+    assert tab.inline_msg.isVisibleTo(tab)
+    assert "Getting video info…" in tab.inline_msg.text()
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Title",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    tab._on_info_fetched(info)
+    assert not tab.inline_msg.isVisibleTo(tab)
+    assert tab.inline_msg.text() == ""
+
+
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_stale_fetch_worker_is_ignored(TabClass, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+
+    tab = TabClass()
+    created_workers = []
+
+    class FakeWorker:
+        def __init__(self, url, parent=None):
+            self.url = url
+            self.fetched_cb = None
+            self.failed_cb = None
+            created_workers.append(self)
+
+        class _Signal:
+            def __init__(self, owner, name):
+                self.owner = owner
+                self.name = name
+            def connect(self, slot):
+                if self.name == "fetched":
+                    self.owner.fetched_cb = slot
+                else:
+                    self.owner.failed_cb = slot
+            def disconnect(self):
+                if self.name == "fetched":
+                    self.owner.fetched_cb = None
+                else:
+                    self.owner.failed_cb = None
+
+        @property
+        def fetched(self):
+            return self._Signal(self, "fetched")
+
+        @property
+        def failed(self):
+            return self._Signal(self, "failed")
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", FakeWorker)
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", FakeWorker)
+
+    # First fetch for URL 1
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=video111111")
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+    assert len(created_workers) == 1
+    worker1 = created_workers[0]
+
+    # Second fetch for URL 2
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=video222222")
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+    assert len(created_workers) == 2
+    worker2 = created_workers[1]
+
+    # Worker 1 finishes late with URL 1 info
+    info1 = VideoInfo(
+        url="https://www.youtube.com/watch?v=video111111",
+        title="Video 1",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    if worker1.fetched_cb:
+        worker1.fetched_cb(info1)
+
+    # Worker 1 was stale, current info must NOT be Video 1
+    assert tab._current_info is None
+
+    # Worker 2 finishes with URL 2 info
+    info2 = VideoInfo(
+        url="https://www.youtube.com/watch?v=video222222",
+        title="Video 2",
+        channel="Channel",
+        duration=200,
+        duration_str="3:20",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    if worker2.fetched_cb:
+        worker2.fetched_cb(info2)
+
+    assert tab._current_info is not None
+    assert tab._current_info.title == "Video 2"
+
+
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_fetch_cache_hit_skips_worker_creation(TabClass, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+
+    cached_url = "https://www.youtube.com/watch?v=cached12345"
+    info = VideoInfo(
+        url=cached_url,
+        title="Cached Video",
+        channel="Channel",
+        duration=120,
+        duration_str="2:00",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+    _FETCH_CACHE[cached_url] = info
+
+    tab = TabClass()
+    worker_started = False
+    def mock_worker_init(*args, **kwargs):
+        nonlocal worker_started
+        worker_started = True
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker.__init__", mock_worker_init)
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker.__init__", mock_worker_init)
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText(cached_url)
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+
+    assert worker_started is False
+    assert tab._fetch_worker is None
+    assert tab._state == TabState.READY
+    assert tab._current_info == info
+    assert not tab.inline_msg.isVisibleTo(tab)
+
+
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_failed_fetch_is_not_cached(TabClass, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+
+    fail_url = "https://www.youtube.com/watch?v=fail1234567"
+    tab = TabClass()
+
+    class FailingWorker:
+        def __init__(self, url, parent=None):
+            self.failed_cb = None
+        class _Sig:
+            def __init__(self, owner): self.owner = owner
+            def connect(self, slot): self.owner.failed_cb = slot
+            def disconnect(self): pass
+        @property
+        def fetched(self): return self._Sig(self)
+        @property
+        def failed(self): return self._Sig(self)
+        def start(self):
+            if self.failed_cb:
+                self.failed_cb("Video unavailable")
+
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", FailingWorker)
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", FailingWorker)
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText(fail_url)
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+
+    assert fail_url not in _FETCH_CACHE
+    assert tab.inline_msg.isVisibleTo(tab)
+    assert "Video unavailable" in tab.inline_msg.text()
+
+
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_repasted_link_after_fetch_is_instant_from_cache(TabClass, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+
+    test_url = "https://www.youtube.com/watch?v=repaste1234"
+    tab = TabClass()
+    worker_count = 0
+
+    class CountingWorker:
+        def __init__(self, url, parent=None):
+            nonlocal worker_count
+            worker_count += 1
+            self.fetched_cb = None
+            self.failed_cb = None
+        class _Sig:
+            def __init__(self, owner, name):
+                self.owner = owner
+                self.name = name
+            def connect(self, slot):
+                if self.name == "fetched":
+                    self.owner.fetched_cb = slot
+                else:
+                    self.owner.failed_cb = slot
+            def disconnect(self): pass
+        @property
+        def fetched(self): return self._Sig(self, "fetched")
+        @property
+        def failed(self): return self._Sig(self, "failed")
+        def start(self):
+            if self.fetched_cb:
+                self.fetched_cb(VideoInfo(
+                    url=test_url,
+                    title="Repasted Video",
+                    channel="Channel",
+                    duration=60,
+                    duration_str="1:00",
+                    thumbnail_url="",
+                    qualities=[("1080p", 1000)],
+                    filesize_approx=1000,
+                ))
+
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", CountingWorker)
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", CountingWorker)
+
+    # First fetch -> worker runs and populates cache
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText(test_url)
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+    assert worker_count == 1
+    assert tab._state == TabState.READY
+    assert tab._current_info is not None
+
+    # Clear inputs (like user cleared or previous download finished)
+    tab._clear_inputs()
+    tab.set_state(TabState.IDLE)
+    assert tab._current_info is None
+
+    # Second fetch with same link -> instant cache hit, worker_count must stay 1
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText(test_url)
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+    assert worker_count == 1
+    assert tab._state == TabState.READY
+    assert tab._current_info is not None
+    assert tab._current_info.title == "Repasted Video"
+
+
+@pytest.mark.parametrize("TabClass", [VideoTab, AudioTab])
+def test_cache_key_is_requested_url_even_when_info_url_differs(TabClass, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+
+    # Requested URL cleans to https://www.youtube.com/watch?v=diffid12345
+    requested_url = "https://youtu.be/diffid12345"
+    cleaned_requested = "https://www.youtube.com/watch?v=diffid12345"
+    canonical_info_url = "https://www.youtube.com/watch?v=canonical_something_else"
+
+    tab = TabClass()
+    worker_count = 0
+
+    class DiffUrlWorker:
+        def __init__(self, url, parent=None):
+            nonlocal worker_count
+            worker_count += 1
+            self.fetched_cb = None
+            self.failed_cb = None
+        class _Sig:
+            def __init__(self, owner, name):
+                self.owner = owner
+                self.name = name
+            def connect(self, slot):
+                if self.name == "fetched":
+                    self.owner.fetched_cb = slot
+                else:
+                    self.owner.failed_cb = slot
+            def disconnect(self): pass
+        @property
+        def fetched(self): return self._Sig(self, "fetched")
+        @property
+        def failed(self): return self._Sig(self, "failed")
+        def start(self):
+            if self.fetched_cb:
+                self.fetched_cb(VideoInfo(
+                    url=canonical_info_url,  # info.url is different!
+                    title="Different Canonical URL",
+                    channel="Channel",
+                    duration=60,
+                    duration_str="1:00",
+                    thumbnail_url="",
+                    qualities=[("1080p", 1000)],
+                    filesize_approx=1000,
+                ))
+
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DiffUrlWorker)
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DiffUrlWorker)
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText(requested_url)
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+    assert worker_count == 1
+
+    # Assert cache is keyed by the requested cleaned URL
+    assert cleaned_requested in _FETCH_CACHE
+    assert canonical_info_url not in _FETCH_CACHE
+
+    # Clear and re-fetch using requested URL -> hits cache
+    tab._clear_inputs()
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText(requested_url)
+    tab.url_input.blockSignals(False)
+    tab.fetch_url()
+
+    assert worker_count == 1
+    assert tab._current_info is not None
+    assert tab._current_info.title == "Different Canonical URL"
+
+
+
+
 
 
 

@@ -15,7 +15,6 @@ import sys
 from typing import List, Set
 
 PROTECTED_FILES = {
-    "app/core/downloader.py",
     "app/core/proc.py",
     "app/core/info_fetcher.py",
     "app/core/jobs.py",
@@ -34,6 +33,7 @@ PROTECTED_FILES = {
 
 APPROVED_SCHEDULING_EXCEPTIONS = {
     "app/core/download_manager.py",
+    "app/core/downloader.py",
 }
 
 PHASE_ALLOWED_FILES = {

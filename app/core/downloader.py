@@ -41,6 +41,9 @@ _POST_TEMPLATE = (
     "|%(progress.postprocessor)s"
 )
 
+# Minimum bytes threshold to consider an estimate real (filters fragment-only noise)
+MIN_ESTIMATE_BYTES: int = 100_000
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -54,6 +57,8 @@ class ProgressInfo:
     done_bytes: int      # raw bytes downloaded
     total_bytes: int     # raw total bytes (may be estimate)
     stage: str           # "Downloading video" | "Downloading audio" | "Merging" | ...
+    is_exact: bool = False
+    status: str = "downloading"
 
 
 @dataclass
@@ -222,12 +227,33 @@ def parse_line(line: str) -> ParsedOutput:
         parts = payload.split("|")
         # Fields: 0=status | 1=downloaded | 2=total | 3=estimate | 4=speed | 5=eta | 6=vcodec | 7=acodec
         if len(parts) >= 6:
+            status = parts[0].strip().lower()
             dl   = _safe_int(parts[1])
             tot  = _safe_int(parts[2])
             est  = _safe_int(parts[3])
-            total_used = tot if tot > 0 else est
-            pct = (dl / total_used * 100.0) if total_used > 0 else 0.0
-            pct = min(99.9, pct)
+
+            is_exact = False
+            if tot > 0:
+                total_used = tot
+                is_exact = True
+            elif status == "finished":
+                total_used = dl if dl > 0 else est
+                is_exact = True
+            elif est > dl and est >= MIN_ESTIMATE_BYTES:
+                total_used = est
+                is_exact = False
+            else:
+                total_used = 0
+                is_exact = False
+
+            if total_used > 0:
+                pct = (dl / total_used * 100.0)
+                if status != "finished":
+                    pct = min(99.9, pct)
+                else:
+                    pct = min(100.0, pct)
+            else:
+                pct = 0.0
 
             vcodec = parts[6].strip() if len(parts) > 6 else ""
             acodec = parts[7].strip() if len(parts) > 7 else ""
@@ -247,6 +273,8 @@ def parse_line(line: str) -> ParsedOutput:
                     done_bytes=dl,
                     total_bytes=total_used,
                     stage=stage,
+                    is_exact=is_exact,
+                    status=status,
                 ),
             )
 
@@ -380,6 +408,8 @@ class DownloadWorker(QThread):
 
         # Track stream type from latest progress line for stage naming
         _last_stream_stage = "Downloading"
+        _last_total_used: int = 0
+        _current_stream_stage: str = ""
 
         for line in self._proc.stdout:
             line_str = line.rstrip("\n\r")
@@ -398,18 +428,47 @@ class DownloadWorker(QThread):
                 p = parsed.progress
                 _last_stream_stage = p.stage
 
+                # Reset per-stream latch state when stream changes (rule c)
+                if p.stage != _current_stream_stage:
+                    _current_stream_stage = p.stage
+                    _last_total_used = 0
+
                 # Weighted scaling: 85% video stream, 10% audio stream, 5% post
                 if self.is_dual_stream:
                     if p.stage == "Downloading video":
+                        floor = 0.0
                         scaled = p.percent * 0.85
                     elif p.stage == "Downloading audio":
+                        floor = 85.0
                         scaled = 85.0 + p.percent * 0.10
                     else:
+                        floor = 0.0
                         scaled = p.percent
                 else:
+                    floor = 0.0
                     scaled = p.percent * 0.95   # leave room for post-processing
 
-                overall = max(self._max_percent, scaled)
+                # Monotonic vs. self-correcting latch
+                if p.is_exact or p.status == "finished":
+                    overall = max(self._max_percent, scaled)
+                    if p.total_bytes > 0:
+                        _last_total_used = p.total_bytes
+                else:
+                    if p.total_bytes > 0:
+                        if _last_total_used > 0:
+                            ratio = abs(p.total_bytes - _last_total_used) / _last_total_used
+                            if ratio > 0.25:
+                                # Estimate shifted >25% in either direction: allow correction down/up
+                                overall = max(floor, scaled)
+                            else:
+                                overall = max(self._max_percent, scaled)
+                        else:
+                            overall = max(floor, max(self._max_percent, scaled))
+                        _last_total_used = p.total_bytes
+                    else:
+                        overall = self._max_percent
+
+                overall = max(floor, overall)
                 self._max_percent = overall
                 self.stage.emit(p.stage)
                 self.progress.emit(overall, p.speed, p.eta, p.done_bytes, p.total_bytes)

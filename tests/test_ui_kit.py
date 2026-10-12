@@ -357,10 +357,13 @@ def test_progress_card_sticky_numbers_survive_empty_update():
     card.set_progress(50.0, speed="10 MB/s", eta="00:30", done_bytes=52428800, total_bytes=104857600)
     assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
 
-    # Empty update arrives (e.g. sporadic yt-dlp pulse or intermediate step)
-    card.set_progress(50.0, speed="", eta="", done_bytes=0, total_bytes=0)
-    # Sticky numbers must survive
+    # Update with empty eta while speed is active keeps sticky ETA
+    card.set_progress(50.0, speed="10 MB/s", eta="", done_bytes=0, total_bytes=0)
     assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
+
+    # Empty update arrives (speed empty): sticky speed and sizes survive, stale ETA reverts to ETA --:--
+    card.set_progress(50.0, speed="", eta="", done_bytes=0, total_bytes=0)
+    assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA --:--"
 
 
 def test_progress_card_total_smaller_than_done_shows_done_slash_done():
@@ -373,17 +376,54 @@ def test_progress_card_total_smaller_than_done_shows_done_slash_done():
 
 def test_progress_card_stage_change_preserves_numbers():
     card = ProgressCard()
+    card.set_stage("Downloading video")
     card.set_progress(50.0, speed="10 MB/s", eta="00:30", done_bytes=52428800, total_bytes=104857600)
-    text_before = card.stats_label.text()
-    assert text_before == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
+    assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
 
     card.set_stage("Downloading audio")
     assert card.stage_label.text() == "Downloading audio"
-    # stats_label must not be reset or cleared on stage change
-    assert card.stats_label.text() == text_before
+    # Speed and size numbers are preserved on stage change
     assert card._last_done == 52428800
     assert card._last_total == 104857600
     assert card._last_speed == "10 MB/s"
+    # ETA is cleared for new stream
+    assert card._last_eta == ""
+    assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA --:--"
+
+
+def test_progress_card_eta_does_not_stick_after_stall():
+    card = ProgressCard()
+    # Active download with speed and ETA
+    card.set_progress(40.0, speed="10 MB/s", eta="00:25", done_bytes=40000000, total_bytes=100000000)
+    assert card.stats_label.text() == "10 MB/s • 38.1 MB / 95.4 MB • ETA 00:25"
+
+    # Stall occurs: speed drops to empty
+    card.set_progress(40.0, speed="", eta="", done_bytes=40000000, total_bytes=100000000)
+    # ETA does NOT stick after a stall; reverts to ETA --:--
+    assert card._last_eta == ""
+    assert card.stats_label.text() == "10 MB/s • 38.1 MB / 95.4 MB • ETA --:--"
+
+
+def test_progress_card_eta_cleared_on_stream_change_and_non_downloading_stage():
+    card = ProgressCard()
+    card.set_stage("Downloading video")
+    card.set_progress(80.0, speed="8 MB/s", eta="00:10", done_bytes=80000000, total_bytes=100000000)
+    assert card.stats_label.text() == "8 MB/s • 76.3 MB / 95.4 MB • ETA 00:10"
+
+    # Stage change to new stream ("Downloading audio")
+    card.set_stage("Downloading audio")
+    # Old video ETA must not stick to audio stream
+    assert card._last_eta == ""
+    assert card.stats_label.text() == "8 MB/s • 76.3 MB / 95.4 MB • ETA --:--"
+    assert card._last_done == 80000000
+    assert card._last_speed == "8 MB/s"
+
+    # Stage change to non-downloading stage ("Merging…")
+    card.set_progress(95.0, speed="5 MB/s", eta="00:02", done_bytes=95000000, total_bytes=100000000)
+    assert "ETA 00:02" in card.stats_label.text()
+    card.set_stage("Merging…")
+    assert card._last_eta == ""
+    assert card.stats_label.text() == "5 MB/s • 90.6 MB / 95.4 MB • ETA --:--"
 
 
 def test_progress_card_three_slots_always_present():
@@ -484,16 +524,36 @@ def test_animated_checkbox_focus_ring_unclipped_dark_and_light():
         assert cb.hasFocus() is True
         img = cb.grab().toImage()
 
-        # Ring pixels in column 1 (x=1) must contain the full vertical line segment (at least 10 px)
-        # and match the drawn blue color #3EA6FF
-        col1_blue_y = [
-            y for y in range(img.height())
-            if img.pixelColor(1, y).blue() > 200 and img.pixelColor(1, y).red() < 100
+        # Collect blue ring pixels around the checkbox
+        ring_pixels = [
+            (x, y) for x in range(img.width()) for y in range(img.height())
+            if img.pixelColor(x, y).blue() > 200 and img.pixelColor(x, y).red() < 100
         ]
-        assert len(col1_blue_y) >= 10, f"Theme {theme_name}: expected >= 10 ring pixels in col 1, got {len(col1_blue_y)}"
-        assert any(img.pixelColor(1, y).name().upper() == "#3EA6FF" for y in range(img.height())), (
-            f"Theme {theme_name}: expected #3EA6FF in column 1"
+        assert len(ring_pixels) >= 20, f"Theme {theme_name}: focus ring must be drawn"
+        assert any(img.pixelColor(x, y).name().upper() == "#3EA6FF" for x, y in ring_pixels), (
+            f"Theme {theme_name}: expected #3EA6FF in focus ring"
         )
+
+        # Focus ring box pixels (bounding the checkbox indicator before text label)
+        box_ring = [p for p in ring_pixels if p[0] <= 35]
+        min_x = min(p[0] for p in box_ring)
+        max_x = max(p[0] for p in box_ring)
+        min_y = min(p[1] for p in box_ring)
+        max_y = max(p[1] for p in box_ring)
+
+        # 1. Left edge: unclipped at x >= 0, present in columns 0..2
+        assert min_x <= 2, f"Theme {theme_name}: left edge must start in columns 0..2, got {min_x}"
+        # 2. Right edge: drawn on the right side of the 18px box
+        assert max_x >= 20, f"Theme {theme_name}: right edge must reach >= 20, got {max_x}"
+        # 3. Top edge: drawn near the top of the box
+        assert min_y <= 3, f"Theme {theme_name}: top edge must be near top (<= 3), got {min_y}"
+        # 4. Bottom edge: drawn near the bottom of the box
+        assert max_y >= 20, f"Theme {theme_name}: bottom edge must reach >= 20, got {max_y}"
+
+        # Column 1 contains the vertical line segment
+        col1_blue_y = [p[1] for p in box_ring if p[0] == 1]
+        assert len(col1_blue_y) >= 10, f"Theme {theme_name}: expected >= 10 ring pixels in col 1, got {len(col1_blue_y)}"
+
         win.close()
         app.processEvents()
 

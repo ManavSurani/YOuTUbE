@@ -109,6 +109,7 @@ class ProgressCard(QWidget):
         self._last_total = 0
         self._last_speed = ""
         self._last_eta = ""
+        self._last_stage = ""
 
         self._collapse_timer = QTimer(self)
         self._collapse_timer.setSingleShot(True)
@@ -201,6 +202,7 @@ class ProgressCard(QWidget):
         self._last_total = 0
         self._last_speed = ""
         self._last_eta = ""
+        self._last_stage = "Starting…"
         self.title_lbl.setText(job.title)
         self.thumb.update_thumbnail(job.video_id, is_audio=(job.kind == "audio"))
         self.stage_label.setText("Starting…")
@@ -212,6 +214,37 @@ class ProgressCard(QWidget):
 
     def set_stage(self, stage_text: str) -> None:
         self.stage_label.setText(stage_text)
+        if stage_text != self._last_stage:
+            prev_stage = self._last_stage
+            self._last_stage = stage_text
+            is_non_downloading = not stage_text.startswith("Downloading")
+            is_stream_change = prev_stage.startswith("Downloading") and stage_text.startswith("Downloading")
+            if is_non_downloading or is_stream_change:
+                self._last_eta = ""
+                if self.stats_label.text():
+                    self._update_stats_label()
+
+    def _update_stats_label(self, stats: str = "") -> None:
+        speed_slot = self._last_speed if self._last_speed else "-- MB/s"
+
+        if stats:
+            size_slot = stats
+        elif self._last_done > 0:
+            done = self._last_done
+            if self._last_total > 0:
+                total = max(self._last_total, done)
+                size_slot = f"{self._fmt_bytes(done)} / {self._fmt_bytes(total)}"
+            else:
+                size_slot = self._fmt_bytes(done)
+        else:
+            size_slot = "calculating…"
+
+        if self._last_eta:
+            eta_slot = self._last_eta if self._last_eta.startswith("ETA ") else f"ETA {self._last_eta}"
+        else:
+            eta_slot = "ETA --:--"
+
+        self.stats_label.setText(f"{speed_slot} • {size_slot} • {eta_slot}")
 
     def set_progress(
         self,
@@ -234,29 +267,13 @@ class ProgressCard(QWidget):
             self._last_total = total_bytes
         if speed:
             self._last_speed = speed
-        if eta:
-            self._last_eta = eta
-
-        speed_slot = self._last_speed if self._last_speed else "-- MB/s"
-
-        if stats:
-            size_slot = stats
-        elif self._last_done > 0:
-            done = self._last_done
-            if self._last_total > 0:
-                total = max(self._last_total, done)
-                size_slot = f"{self._fmt_bytes(done)} / {self._fmt_bytes(total)}"
-            else:
-                size_slot = self._fmt_bytes(done)
+            if eta:
+                self._last_eta = eta
         else:
-            size_slot = "calculating…"
+            # Stall / missing speed: clear stale ETA
+            self._last_eta = ""
 
-        if self._last_eta:
-            eta_slot = self._last_eta if self._last_eta.startswith("ETA ") else f"ETA {self._last_eta}"
-        else:
-            eta_slot = "ETA --:--"
-
-        self.stats_label.setText(f"{speed_slot} • {size_slot} • {eta_slot}")
+        self._update_stats_label(stats=stats)
 
     def show_done(self, out_dir: str = "") -> None:
         """Show completion with real folder name (B15 fix)."""
@@ -278,6 +295,7 @@ class ProgressCard(QWidget):
         self._last_total = 0
         self._last_speed = ""
         self._last_eta = ""
+        self._last_stage = ""
         self.stats_label.setText("")
         self.setVisible(False)
 

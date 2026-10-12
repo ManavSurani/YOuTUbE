@@ -76,6 +76,9 @@ ERROR: unable to download video data: HTTP Error 403: Forbidden
 - **Test-Generated Lines (`app.log.1` lines 1951–1954):** Lines with codec `vp09.00.40.08` were recorded by an automated test run of `test_download_worker_fluctuating_estimates_sequence` logging mock output through `DownloadWorker`. Numbers such as `1048576` B (exactly 1 MiB) and `1107872` B are synthetic test fixture values, not live downloads from YouTube.
 - **Authentic Live Downloads (`app.log.2` lines 468–471):** Authentic live downloads from YouTube in `app.log.2` correspond to an AV1 stream (`av01.0.13M.08`) with exact total `6,497,425,295` bytes and downloaded byte progression `196832322`, `198929474`, `203123778`, `204771326`.
 
+### Known Limit: Audio Stage Resume Byte Text
+- When a dual-stream download resumes during the audio stage, the progress bar and percentage are held at the last reached floor (e.g. 85%) via `floor_percent`, preventing any downward bar jump. However, because yt-dlp skips the already completed video stream and downloads only the audio stream, the active worker's `done_bytes` and `total_bytes` reflect the audio stream only. The details line under the progress bar displays these audio-only bytes (e.g. `9.8 KB / 92.9 MB`) while the bar sits at the floor, until audio completion. This is an accepted design limit.
+
 ---
 
 ## 5. Investigation of Problem P4 (144p HTTP 403 Forbidden)

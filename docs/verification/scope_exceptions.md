@@ -4,6 +4,8 @@
 |---|---|---|---|---|
 | app/ui/header.py | 4db7f12 | Fixed AttributeError in AnimatedStatusDot paintEvent | test_status_dot_paints_mid_animation_without_start_color_error | pending owner approval |
 | .gitignore | 5e5a9c3 | Updated ignore rules | n/a (reverted in Chunk 8) | pending owner approval |
+| app/core/downloader.py | bdd80ac | Progress parsing fragment latch and format template updates | test_downloader.py | pending owner approval |
+| tools/check_scope.py | bdd80ac | Allowed app/core/downloader.py in scope check script | n/a | pending owner approval |
 
 ## Evidence and Verification
 

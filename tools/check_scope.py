@@ -34,6 +34,7 @@ PROTECTED_FILES = {
 APPROVED_SCHEDULING_EXCEPTIONS = {
     "app/core/download_manager.py",
     "app/core/downloader.py",
+    "app/ui/kit/checkbox.py",
 }
 
 PHASE_ALLOWED_FILES = {

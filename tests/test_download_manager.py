@@ -306,3 +306,70 @@ def test_forced_job_failure_retry_and_set_cleanup(tmp_path: Path, sample_jobs, m
     assert len(manager._failed_forced_job_ids) == 0
 
 
+def test_resume_passes_last_percent_floor(tmp_path: Path, sample_jobs, monkeypatch):
+    """Resume passes job's last percent as floor_percent only in _resume_active_job."""
+    manager = DownloadManager(kind="video")
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._queue_file = tmp_path / "queue_video.json"
+
+    captured_floors = []
+    def fake_worker(**kwargs):
+        captured_floors.append(kwargs.get("floor_percent", 0.0))
+        mock = MagicMock()
+        mock.isRunning.return_value = False
+        return mock
+
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", fake_worker)
+
+    job = sample_jobs[0]
+    # 1. First start: floor must be 0.0
+    manager.enqueue(job)
+    assert captured_floors[-1] == 0.0
+
+    # 2. Worker emits progress at 85.0%
+    manager._on_worker_progress(job, 85.0, "5 MB/s", "00:10", 425000000, 500000000)
+
+    # 3. Network goes offline -> pauses
+    manager.set_online(False)
+    assert manager._paused_worker is not None
+
+    # 4. Network comes online -> _resume_active_job resumes with floor 85.0
+    manager.set_online(True)
+    assert len(captured_floors) == 2
+    assert captured_floors[-1] == 85.0
+
+
+def test_first_start_and_retry_have_floor_zero(tmp_path: Path, sample_jobs, monkeypatch):
+    """First start and retry after failure both get floor_percent=0.0."""
+    manager = DownloadManager(kind="video")
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._queue_file = tmp_path / "queue_video.json"
+
+    captured_floors = []
+    def fake_worker(**kwargs):
+        captured_floors.append(kwargs.get("floor_percent", 0.0))
+        mock = MagicMock()
+        mock.isRunning.return_value = False
+        return mock
+
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", fake_worker)
+
+    job = sample_jobs[0]
+    # 1. First start gets 0.0
+    manager.enqueue(job)
+    assert captured_floors[-1] == 0.0
+
+    # Progress emitted at 50%
+    manager._on_worker_progress(job, 50.0, "5 MB/s", "00:10", 250000000, 500000000)
+
+    # 2. Job fails
+    manager._on_worker_failed(job, "HTTP 403 Forbidden")
+
+    # 3. Retry gets 0.0
+    manager.retry_job(job.job_id)
+    assert captured_floors[-1] == 0.0
+
+
+

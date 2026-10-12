@@ -308,4 +308,49 @@ def test_progress_card_normal_increasing_sequence():
     assert card.percent_label.text() == "100%"
 
 
+def test_resume_dual_stream_in_audio_stage_progress_drop(monkeypatch):
+    """Simulates a dual-stream job resumed in the audio stage:
+    1. Card was at 85% before.
+    2. A new worker starts with floor_percent=85.0, video stream skipped by yt-dlp, first audio line has 10 KB of ~97 MB.
+    3. With floor_percent=85.0, emitted percent stays at 85.0%, preserving 85% on card.
+    """
+    card = ProgressCard()
+    # Before resume: video completed, card at 85%
+    card.set_progress(85.0, speed="5 MB/s", eta="00:10", done_bytes=425000000, total_bytes=500000000)
+    assert card.progress_bar.value() == 85
+    assert card.percent_label.text() == "85%"
+
+    # New worker receives first audio line with 10 KB of 97,370,030 B
+    lines = [
+        "[download] YTPROG|downloading|10000|97370030|NA|5000000|20|none|opus\n"
+    ]
+
+    class FakeProc:
+        def __init__(self, out):
+            self.stdout = out
+            self.returncode = 0
+        def wait(self): pass
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+
+    from app.core.downloader import DownloadWorker
+    # Manager passes floor_percent=85.0 when resuming
+    worker = DownloadWorker(["dummy"], is_dual_stream=True, job_id="test-resume-audio", duration_seconds=0, floor_percent=85.0)
+    emitted = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: emitted.append((pct, spd, eta, done, tot)))
+    worker.run()
+
+    # First emitted audio reading is held at floor 85.0%
+    first_pct, spd, eta, done, tot = emitted[0]
+    assert first_pct >= 85.0, f"Expected >= 85.0%, got {first_pct}%"
+
+    card.set_progress(first_pct, speed=spd, eta=eta, done_bytes=done, total_bytes=tot)
+
+    # Bar value and label preserved at 85%
+    assert card.progress_bar.value() == 85
+    assert card.percent_label.text() == "85%"
+
+
+
+
 

@@ -387,6 +387,7 @@ class DownloadWorker(QThread):
         video_id: str = "",
         is_dual_stream: bool = True,
         duration_seconds: int = 0,
+        floor_percent: float = 0.0,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -396,10 +397,11 @@ class DownloadWorker(QThread):
         self.video_id      = video_id
         self.is_dual_stream = is_dual_stream
         self.duration_seconds = max(0, int(duration_seconds or 0))
+        self.floor_percent = max(0.0, min(99.9, float(floor_percent or 0.0)))
         self._proc         = None
         self._is_cancelled = False
         self._is_paused    = False
-        self._max_percent  = 0.0
+        self._max_percent  = self.floor_percent
         self._raw_lines: List[str] = []
         # Path file written by --print-to-file (UTF-8, B3 fix)
         self._path_file    = TMP_DIR / f"{self.job_id}.path"
@@ -492,6 +494,7 @@ class DownloadWorker(QThread):
                     else:
                         overall = self._max_percent
 
+                overall = max(self.floor_percent, overall)
                 overall = min(stream_cap, max(0.0, overall))
                 self._max_percent = overall
                 self.stage.emit(p.stage)

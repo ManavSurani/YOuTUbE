@@ -351,6 +351,99 @@ def test_resume_dual_stream_in_audio_stage_progress_drop(monkeypatch):
     assert card.percent_label.text() == "85%"
 
 
+def test_progress_card_sticky_numbers_survive_empty_update():
+    card = ProgressCard()
+    # Initial good update: 50 MB / 100 MB at 10 MB/s, ETA 00:30
+    card.set_progress(50.0, speed="10 MB/s", eta="00:30", done_bytes=52428800, total_bytes=104857600)
+    assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
+
+    # Empty update arrives (e.g. sporadic yt-dlp pulse or intermediate step)
+    card.set_progress(50.0, speed="", eta="", done_bytes=0, total_bytes=0)
+    # Sticky numbers must survive
+    assert card.stats_label.text() == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
+
+
+def test_progress_card_total_smaller_than_done_shows_done_slash_done():
+    card = ProgressCard()
+    # total_bytes (40 MB) is smaller than done_bytes (50 MB)
+    card.set_progress(90.0, speed="5 MB/s", eta="00:05", done_bytes=52428800, total_bytes=41943040)
+    # Expected: max(total, done) makes total 50 MB -> "50.0 MB / 50.0 MB"
+    assert "50.0 MB / 50.0 MB" in card.stats_label.text()
+
+
+def test_progress_card_stage_change_preserves_numbers():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="10 MB/s", eta="00:30", done_bytes=52428800, total_bytes=104857600)
+    text_before = card.stats_label.text()
+    assert text_before == "10 MB/s • 50.0 MB / 100.0 MB • ETA 00:30"
+
+    card.set_stage("Downloading audio")
+    assert card.stage_label.text() == "Downloading audio"
+    # stats_label must not be reset or cleared on stage change
+    assert card.stats_label.text() == text_before
+    assert card._last_done == 52428800
+    assert card._last_total == 104857600
+    assert card._last_speed == "10 MB/s"
+
+
+def test_progress_card_three_slots_always_present():
+    card = ProgressCard()
+    card.set_progress(0.0)
+    # With no readings yet, all three slots are present with placeholders
+    assert card.stats_label.text() == "-- MB/s • calculating… • ETA --:--"
+
+    # Partial reading: only speed
+    card.set_progress(0.0, speed="2.5 MB/s")
+    assert card.stats_label.text() == "2.5 MB/s • calculating… • ETA --:--"
+
+    # Partial reading: stats override
+    card.set_progress(10.0, stats="10 / 100 MB")
+    assert card.stats_label.text() == "2.5 MB/s • 10 / 100 MB • ETA --:--"
+
+
+def test_progress_card_reset_clears_sticky_state():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="10 MB/s", eta="00:30", done_bytes=52428800, total_bytes=104857600)
+    assert card._last_done == 52428800
+    assert card._last_total == 104857600
+    assert card._last_speed == "10 MB/s"
+    assert card._last_eta == "00:30"
+
+    card.reset()
+    assert card._last_done == 0
+    assert card._last_total == 0
+    assert card._last_speed == ""
+    assert card._last_eta == ""
+    assert card.stats_label.text() == ""
+
+    # Also test bind_job resets sticky state
+    card.set_progress(50.0, speed="10 MB/s", eta="00:30", done_bytes=52428800, total_bytes=104857600)
+    from app.core.jobs import DownloadJob
+    job = DownloadJob(
+        job_id="job_reset",
+        url="https://youtube.com/watch?v=12345678901",
+        video_id="12345678901",
+        title="Test Reset",
+        channel="Channel",
+        duration_seconds=60,
+        thumbnail_url="",
+        thumbnail_bytes=None,
+        kind="video",
+        quality_label="1080p",
+        height=1080,
+        audio_format=None,
+        output_dir="",
+        created_at="2026-10-12T00:00:00",
+    )
+    card.bind_job(job)
+    assert card._last_done == 0
+    assert card._last_total == 0
+    assert card._last_speed == ""
+    assert card._last_eta == ""
+    assert card.stats_label.text() == ""
+
+
+
 
 
 

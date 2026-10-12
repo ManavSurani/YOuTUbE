@@ -430,7 +430,7 @@ def test_set_online_true_resumes_active_workers_in_both_lanes(tmp_path, monkeypa
     a_mgr.set_online(False)
 
     started_workers = []
-    def mock_start(job):
+    def mock_start(job, *a, **kw):
         started_workers.append(job.job_id)
 
     monkeypatch.setattr(v_mgr, "_start_worker", mock_start)
@@ -613,7 +613,7 @@ def test_set_online_after_offline_resumes_job(tmp_path, monkeypatch):
     mgr._is_offline = False
 
     started = []
-    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, *a, **kw: started.append(j))
 
     mgr.set_online(False)
     assert fake_worker.pause.called
@@ -638,7 +638,7 @@ def test_resume_waits_until_old_worker_stopped(tmp_path, monkeypatch):
 
     started = []
     callbacks = []
-    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, *a, **kw: started.append(j))
     monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
 
     mgr.set_online(False)
@@ -671,7 +671,7 @@ def test_resume_gives_up_after_20_attempts_without_starting_second_worker(tmp_pa
 
     started = []
     callbacks = []
-    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, *a, **kw: started.append(j))
     monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
 
     logger = get_logger()
@@ -705,7 +705,7 @@ def test_second_online_call_does_not_start_another_worker(tmp_path, monkeypatch)
     mgr._is_offline = False
 
     started = []
-    monkeypatch.setattr(mgr, "_start_worker", lambda j: started.append(j))
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, *a, **kw: started.append(j))
 
     mgr.set_online(False)
     mgr.set_online(True)

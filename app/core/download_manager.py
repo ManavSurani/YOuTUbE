@@ -222,10 +222,7 @@ class DownloadManager(QObject):
         self._resume_attempts = 0
         floor = self._active_job_last_pct
         self._paused_worker = None
-        try:
-            self._start_worker(job, floor_percent=floor)
-        except TypeError:
-            self._start_worker(job)
+        self._start_worker(job, floor_percent=floor)
 
     def _process_next(self) -> None:
         """Start the next waiting job if one is available and not deferred."""

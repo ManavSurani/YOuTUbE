@@ -637,6 +637,44 @@ def test_animated_line_edit_plain_inputs_in_settings_and_history():
     assert type(s.folder_input) is QLineEdit
 
 
+def test_clear_history_dialog_opens_unchecked_with_cancel_focused():
+    from app.ui.history_tab import ClearAllDialog
+    from PySide6.QtWidgets import QApplication
+
+    dlg = ClearAllDialog()
+    dlg.show()
+    dlg.activateWindow()
+    QApplication.processEvents()
+
+    assert not dlg.chk_files.isChecked()
+    assert dlg.btn_cancel.hasFocus()
+    # Checkbox layout has room and is not clipped
+    assert dlg.chk_files.width() >= dlg.chk_files.sizeHint().width()
+    dlg.close()
+
+
+def test_settings_dialog_checkbox_toggles_and_layout():
+    from app.ui.settings_dialog import SettingsDialog
+    from PySide6.QtTest import QTest
+
+    dlg = SettingsDialog()
+    dlg.show()
+    dlg.activateWindow()
+    QApplication.processEvents()
+
+    initial = dlg.auto_update_check.isChecked()
+    QTest.mouseClick(dlg.auto_update_check, Qt.MouseButton.LeftButton)
+    assert dlg.auto_update_check.isChecked() != initial
+
+    QTest.mouseClick(dlg.auto_update_check, Qt.MouseButton.LeftButton)
+    assert dlg.auto_update_check.isChecked() == initial
+
+    # Layout check: checkbox width accommodates sizeHint
+    assert dlg.auto_update_check.width() >= dlg.auto_update_check.sizeHint().width()
+    dlg.close()
+
+
+
 
 
 

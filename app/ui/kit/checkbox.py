@@ -31,6 +31,9 @@ from PySide6.QtWidgets import (
 from app.ui.kit.anim import is_animations_enabled
 
 
+RING: float = 3.0
+
+
 class AnimatedCheckBox(QAbstractButton):
     """Custom checkbox drawn with clean vector graphics and animated checkmark."""
 
@@ -82,7 +85,7 @@ class AnimatedCheckBox(QAbstractButton):
         font.setPointSize(10)
         fm = self.fontMetrics()
         text_w = fm.horizontalAdvance(self.text()) if self.text() else 0
-        return QSize(20 + (8 if self.text() else 0) + text_w, 24)
+        return QSize(int(2 * RING) + 18 + (8 if self.text() else 0) + text_w, 24)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -91,7 +94,7 @@ class AnimatedCheckBox(QAbstractButton):
         h = self.height()
         box_size = 18.0
         box_y = (h - box_size) / 2.0
-        box_rect = QRectF(1.0, box_y, box_size, box_size)
+        box_rect = QRectF(RING, box_y, box_size, box_size)
         radius = 4.0
 
         p = self._check_progress
@@ -157,7 +160,8 @@ class AnimatedCheckBox(QAbstractButton):
         if text:
             painter.setFont(self.font())
             painter.setPen(QColor("#FFFFFF" if self.isEnabled() else "#777777"))
-            text_rect = QRectF(box_size + 10.0, 0, self.width() - box_size - 10.0, h)
+            text_x = RING + box_size + 8.0
+            text_rect = QRectF(text_x, 0, max(0.0, float(self.width() - text_x)), float(h))
             painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), text)
 
         painter.end()

@@ -443,6 +443,81 @@ def test_progress_card_reset_clears_sticky_state():
     assert card.stats_label.text() == ""
 
 
+def test_progress_card_explicit_stats_overrides_byte_totals():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="5 MB/s", eta="00:10", done_bytes=50000000, total_bytes=100000000, stats="Custom / String")
+    assert card.stats_label.text() == "5 MB/s • Custom / String • ETA 00:10"
+
+
+def test_animated_checkbox_size_hint_reserves_ring_margin():
+    cb_empty = AnimatedCheckBox("")
+    assert cb_empty.sizeHint().width() == 24
+    assert cb_empty.sizeHint().height() == 24
+
+    cb_text = AnimatedCheckBox("Include audio track")
+    text_w = cb_text.fontMetrics().horizontalAdvance("Include audio track")
+    assert cb_text.sizeHint().width() == 24 + 8 + text_w
+    assert cb_text.sizeHint().height() == 24
+
+
+def test_animated_checkbox_focus_ring_unclipped_dark_and_light():
+    from PySide6.QtWidgets import QDialog, QVBoxLayout, QApplication
+    from app.ui.theme import build_qss
+
+    app = QApplication.instance() or QApplication([])
+    for w in app.topLevelWidgets():
+        if hasattr(w, "close"):
+            w.close()
+    app.processEvents()
+
+    for theme_name in ("dark", "light"):
+        app.setStyleSheet(build_qss(theme_name))
+        win = QDialog()
+        layout = QVBoxLayout(win)
+        cb = AnimatedCheckBox("Include audio track", win)
+        layout.addWidget(cb)
+        win.show()
+        win.activateWindow()
+        cb.setFocus()
+        app.processEvents()
+
+        assert cb.hasFocus() is True
+        img = cb.grab().toImage()
+
+        # Ring pixels in column 1 (x=1) must contain the full vertical line segment (at least 10 px)
+        # and match the drawn blue color #3EA6FF
+        col1_blue_y = [
+            y for y in range(img.height())
+            if img.pixelColor(1, y).blue() > 200 and img.pixelColor(1, y).red() < 100
+        ]
+        assert len(col1_blue_y) >= 10, f"Theme {theme_name}: expected >= 10 ring pixels in col 1, got {len(col1_blue_y)}"
+        assert any(img.pixelColor(1, y).name().upper() == "#3EA6FF" for y in range(img.height())), (
+            f"Theme {theme_name}: expected #3EA6FF in column 1"
+        )
+        win.close()
+        app.processEvents()
+
+
+def test_animated_checkbox_clicking_text_toggles():
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import QPoint
+
+    cb = AnimatedCheckBox("Include audio track")
+    cb.resize(cb.sizeHint())
+    cb.show()
+    assert not cb.isChecked()
+
+    # Click on the text portion (near right side)
+    text_click_pos = QPoint(cb.width() - 5, cb.height() // 2)
+    QTest.mouseClick(cb, Qt.MouseButton.LeftButton, pos=text_click_pos)
+    assert cb.isChecked()
+
+    QTest.mouseClick(cb, Qt.MouseButton.LeftButton, pos=text_click_pos)
+    assert not cb.isChecked()
+
+
+
+
 
 
 

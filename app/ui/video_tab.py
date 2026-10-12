@@ -21,7 +21,7 @@ from PySide6.QtCore import (
     QThread,
     Signal,
 )
-from PySide6.QtGui import QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QContextMenuEvent, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListView,
+    QMenu,
     QMessageBox,
     QScrollArea,
     QVBoxLayout,
@@ -179,6 +180,89 @@ class AnimatedComboBox(QComboBox):
         super().hidePopup()
 
 
+class AnimatedLineEdit(QLineEdit):
+    """QLineEdit with 150 ms OutCubic windowOpacity fade on right-click context menu."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._anim = QPropertyAnimation(self)
+        self._anim.setPropertyName(b"windowOpacity")
+        self._anim.setDuration(150)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._current_menu: Optional[QMenu] = None
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        menu = self.createStandardContextMenu()
+        if not menu:
+            return
+
+        if self._current_menu is not None:
+            try:
+                self._current_menu.close()
+            except Exception:
+                pass
+
+        self._current_menu = menu
+        self._anim.stop()
+        self._anim.setTargetObject(menu)
+        menu.setWindowOpacity(0.0)
+
+        def _on_hide() -> None:
+            if self._anim.targetObject() == menu:
+                self._anim.stop()
+            try:
+                menu.setWindowOpacity(1.0)
+            except Exception:
+                pass
+            menu.deleteLater()
+            if self._current_menu is menu:
+                self._current_menu = None
+
+        menu.aboutToHide.connect(_on_hide)
+
+        pos = event.globalPos()
+        if pos.x() < 0 and pos.y() < 0:
+            pos = self.mapToGlobal(self.rect().center())
+
+        app = QApplication.instance()
+        was_fade = app.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) if app else False
+        was_anim = app.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) if app else False
+        if app and was_fade:
+            app.setEffectEnabled(Qt.UIEffect.UI_FadeMenu, False)
+        if app and was_anim:
+            app.setEffectEnabled(Qt.UIEffect.UI_AnimateMenu, False)
+
+        try:
+            menu.popup(pos)
+        except Exception:
+            menu.deleteLater()
+            if self._current_menu is menu:
+                self._current_menu = None
+            raise
+        finally:
+            if app and was_fade:
+                app.setEffectEnabled(Qt.UIEffect.UI_FadeMenu, True)
+            if app and was_anim:
+                app.setEffectEnabled(Qt.UIEffect.UI_AnimateMenu, True)
+
+        self._anim.setStartValue(0.0)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Menu or (
+            event.key() == Qt.Key.Key_F10
+            and bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        ):
+            c_ev = QContextMenuEvent(
+                QContextMenuEvent.Reason.Keyboard,
+                self.rect().center(),
+                self.mapToGlobal(self.rect().center()),
+            )
+            self.contextMenuEvent(c_ev)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class TabState(Enum):
@@ -339,7 +423,7 @@ class VideoTab(QWidget):
         input_row = QHBoxLayout()
         input_row.setSpacing(8)
 
-        self.url_input = QLineEdit(container)
+        self.url_input = AnimatedLineEdit(container)
         self.url_input.setPlaceholderText("Paste a YouTube link")
         self.url_input.setFixedHeight(36)
         self.url_input.textChanged.connect(self._on_url_text_changed)
@@ -690,24 +774,39 @@ class VideoTab(QWidget):
         if not job:
             return
 
+        manager = get_download_manager("video")
+        active = manager.active_job
+        if active and (active.video_id, active.kind, active.quality_label) == (job.video_id, job.kind, job.quality_label):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already downloading.")
+            return
+
+        waiting = manager.waiting_jobs or []
+        if any((w.video_id, w.kind, w.quality_label) == (job.video_id, job.kind, job.quality_label) for w in waiting):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already in the queue.")
+            return
+
         # Duplicate check (Chunk 4.3)
         dup = find_duplicate(job.video_id, job.kind, job.quality_label)
+        force_overwrite = False
         if dup:
             reply = QMessageBox.question(
                 self,
                 "Already Downloaded",
-                f"'{job.title}' ({job.quality_label}) has already been downloaded.\nDownload again?",
+                f"'{job.title}' ({job.quality_label}) has already been downloaded.\nDownload again and replace the existing file?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
+            force_overwrite = True
 
         if job.thumbnail_bytes:
             save_thumbnail(job.video_id, job.thumbnail_bytes)
 
-        manager = get_download_manager("video")
-        manager.enqueue(job)
+        if force_overwrite:
+            manager.enqueue(job, force_overwrite=True)
+        else:
+            manager.enqueue(job)
 
         # Clear inputs for next paste
         self._clear_inputs()
@@ -722,10 +821,20 @@ class VideoTab(QWidget):
         if not job:
             return
 
+        manager = get_download_manager("video")
+        active = manager.active_job
+        if active and (active.video_id, active.kind, active.quality_label) == (job.video_id, job.kind, job.quality_label):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already downloading.")
+            return
+
+        waiting = manager.waiting_jobs or []
+        if any((w.video_id, w.kind, w.quality_label) == (job.video_id, job.kind, job.quality_label) for w in waiting):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already in the queue.")
+            return
+
         if job.thumbnail_bytes:
             save_thumbnail(job.video_id, job.thumbnail_bytes)
 
-        manager = get_download_manager("video")
         manager.enqueue(job)
 
         self._clear_inputs()

@@ -437,6 +437,207 @@ def test_animated_combobox_plain_combo_keeps_roll(qapp):
     dlg.close()
 
 
+def test_animated_line_edit_action_clicks_and_states(qapp):
+    """Real click on each action works: Cut, Copy, Paste, Delete, Select All, Undo, Redo,
+    with the same enabled/disabled states as the plain menu.
+    """
+    from PySide6.QtWidgets import QLineEdit, QApplication
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtCore import QPoint
+    from app.ui.video_tab import AnimatedLineEdit
+
+    plain = QLineEdit("Sample Text")
+    anim = AnimatedLineEdit()
+    anim.setText("Sample Text")
+
+    # 1. Compare states when text is not selected
+    m_plain = plain.createStandardContextMenu()
+    m_anim = anim.createStandardContextMenu()
+
+    def get_action_states(m):
+        return {a.text().replace("&", "").split("\t")[0].strip(): a.isEnabled() for a in m.actions()}
+
+    assert get_action_states(m_plain) == get_action_states(m_anim)
+    m_plain.deleteLater()
+    m_anim.deleteLater()
+
+    # 2. Compare states when all text is selected
+    plain.selectAll()
+    anim.selectAll()
+    m_plain = plain.createStandardContextMenu()
+    m_anim = anim.createStandardContextMenu()
+    assert get_action_states(m_plain) == get_action_states(m_anim)
+    m_plain.deleteLater()
+    m_anim.deleteLater()
+
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5), anim.mapToGlobal(QPoint(5, 5)))
+
+    # 3. Test Select All
+    anim.setSelection(0, 0)
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    sel_all = [a for a in m.actions() if "Select All" in a.text().replace("&", "")][0]
+    sel_all.trigger()
+    m.close()
+    qapp.processEvents()
+    assert anim.selectedText() == "Sample Text"
+
+    # 4. Test Copy
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    copy_act = [a for a in m.actions() if "Copy" in a.text().replace("&", "")][0]
+    copy_act.trigger()
+    m.close()
+    qapp.processEvents()
+    assert qapp.clipboard().text() == "Sample Text"
+
+    # 5. Test Delete
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    del_act = [a for a in m.actions() if "Delete" in a.text().replace("&", "")][0]
+    del_act.trigger()
+    m.close()
+    qapp.processEvents()
+    assert anim.text() == ""
+
+    # 6. Test Undo
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    undo_act = [a for a in m.actions() if "Undo" in a.text().replace("&", "")][0]
+    undo_act.trigger()
+    m.close()
+    qapp.processEvents()
+    assert anim.text() == "Sample Text"
+
+    # 7. Test Redo
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    redo_act = [a for a in m.actions() if "Redo" in a.text().replace("&", "")][0]
+    redo_act.trigger()
+    m.close()
+    qapp.processEvents()
+    assert anim.text() == ""
+
+    # 8. Test Paste
+    qapp.clipboard().setText("Pasted Content")
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    paste_act = [a for a in m.actions() if "Paste" in a.text().replace("&", "")][0]
+    paste_act.trigger()
+    m.close()
+    qapp.processEvents()
+    assert anim.text() == "Pasted Content"
+
+    # 9. Test Cut
+    anim.selectAll()
+    anim.contextMenuEvent(ev)
+    m = anim._current_menu
+    cut_act = [a for a in m.actions() if "Cut" in a.text().replace("&", "")][0]
+    cut_act.trigger()
+    m.close()
+    qapp.processEvents()
+    assert anim.text() == ""
+    assert qapp.clipboard().text() == "Pasted Content"
+
+
+def test_animated_line_edit_keyboard_and_effects_restored(qapp, monkeypatch):
+    """Menu key and Shift+F10 open menu; effect flags restored after open, including when popup raises."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt, QPoint
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtWidgets import QMenu
+    from app.ui.video_tab import AnimatedLineEdit
+
+    line = AnimatedLineEdit()
+    line.show()
+
+    # Menu key opens menu
+    QTest.keyClick(line, Qt.Key.Key_Menu)
+    assert line._current_menu is not None
+    assert line._current_menu.isVisible()
+    line._current_menu.close()
+    qapp.processEvents()
+    assert line._current_menu is None
+
+    # Shift+F10 opens menu
+    QTest.keyClick(line, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
+    assert line._current_menu is not None
+    assert line._current_menu.isVisible()
+    line._current_menu.close()
+    qapp.processEvents()
+    assert line._current_menu is None
+
+    # Effects restored after normal open
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
+
+    # Effects restored when popup raises an exception
+    class ErrorLineEdit(AnimatedLineEdit):
+        def createStandardContextMenu(self):
+            m = super().createStandardContextMenu()
+            if m is not None:
+                m.popup = MagicMock(side_effect=RuntimeError("simulated popup error"))
+            return m
+
+    from unittest.mock import MagicMock
+    err_line = ErrorLineEdit()
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5), err_line.mapToGlobal(QPoint(5, 5)))
+
+    try:
+        err_line.contextMenuEvent(ev)
+    except RuntimeError:
+        pass
+
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
+    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
+    line.close()
+    err_line.close()
+
+
+def test_animated_line_edit_20_cycles_no_leaks(qapp):
+    """Opening and closing 20 times quickly leaves no stuck opacity or leftover menu widgets."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtWidgets import QMenu
+    from app.ui.video_tab import AnimatedLineEdit
+
+    line = AnimatedLineEdit()
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(10, 10), line.mapToGlobal(QPoint(10, 10)))
+
+    from PySide6.QtTest import QTest
+    for _ in range(20):
+        line.contextMenuEvent(ev)
+        m = line._current_menu
+        assert m is not None
+        m.close()
+        QTest.qWait(10)
+
+    QTest.qWait(50)
+    assert line._current_menu is None
+    leftover_menus = [w for w in qapp.topLevelWidgets() if isinstance(w, QMenu)]
+    assert leftover_menus == []
+
+
+def test_animated_line_edit_plain_inputs_in_settings_and_history():
+    """Settings folder box and history search box are plain QLineEdit, while tabs use AnimatedLineEdit."""
+    from PySide6.QtWidgets import QLineEdit
+    from app.ui.video_tab import AnimatedLineEdit, VideoTab
+    from app.ui.audio_tab import AudioTab
+    from app.ui.history_tab import HistoryTab
+    from app.ui.settings_dialog import SettingsDialog
+
+    v = VideoTab()
+    a = AudioTab()
+    h = HistoryTab()
+    s = SettingsDialog()
+
+    assert isinstance(v.url_input, AnimatedLineEdit)
+    assert isinstance(a.url_input, AnimatedLineEdit)
+    assert type(h.search_input) is QLineEdit
+    assert type(s.folder_input) is QLineEdit
+
+
+
 
 
 

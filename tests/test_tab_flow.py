@@ -38,6 +38,7 @@ class FakeManager(QObject):
         super().__init__()
         self.enqueued_jobs = []
         self.active_job = None
+        self.waiting_jobs = []
 
     def enqueue(self, job: DownloadJob):
         self.enqueued_jobs.append(job)
@@ -828,9 +829,168 @@ def test_cache_key_is_requested_url_even_when_info_url_differs(TabClass, monkeyp
     assert tab._current_info.title == "Different Canonical URL"
 
 
+@pytest.mark.parametrize("TabClass,module_name", [(VideoTab, "video_tab"), (AudioTab, "audio_tab")])
+def test_already_downloaded_dialog_flow(TabClass, module_name, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    tab, _ = _setup_tab_for_thumb_test(TabClass, module_name, monkeypatch, b"")
+    fake_mgr = FakeManager()
+    enqueued_calls = []
+
+    def tracking_enqueue(*args, **kwargs):
+        enqueued_calls.append((args, kwargs))
+
+    fake_mgr.enqueue = tracking_enqueue
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda kind=None: fake_mgr)
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Video",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000)],
+        filesize_approx=1000,
+    )
+
+    # 1. Normal download (no duplicate): calls enqueue(job) without force_overwrite
+    monkeypatch.setattr(f"app.ui.{module_name}.find_duplicate", lambda *a, **kw: None)
+    tab.start_download()
+    assert len(enqueued_calls) == 1
+    args, kwargs = enqueued_calls[0]
+    assert len(args) == 1
+    assert "force_overwrite" not in kwargs
+
+    # 2. Duplicate confirmed with "No" (Cancel): enqueues nothing
+    enqueued_calls.clear()
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+    tab._on_info_fetched(info)
+    fake_dup = MagicMock()
+    monkeypatch.setattr(f"app.ui.{module_name}.find_duplicate", lambda *a, **kw: fake_dup)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.StandardButton.Cancel)
+
+    tab.start_download()
+    assert len(enqueued_calls) == 0
+
+    # 3. Duplicate confirmed with "Yes": calls enqueue(job, force_overwrite=True)
+    enqueued_calls.clear()
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+    tab._on_info_fetched(info)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.StandardButton.Yes)
+
+    tab.start_download()
+    assert len(enqueued_calls) == 1
+    args, kwargs = enqueued_calls[0]
+    assert len(args) == 1
+    assert kwargs.get("force_overwrite") is True
 
 
+@pytest.mark.parametrize("TabClass,module_name,kind", [
+    (VideoTab, "video_tab", "video"),
+    (AudioTab, "audio_tab", "audio"),
+])
+def test_in_flight_duplicate_detection(TabClass, module_name, kind, monkeypatch):
+    tab, _ = _setup_tab_for_thumb_test(TabClass, module_name, monkeypatch, b"")
+    fake_mgr = FakeManager()
+    enqueued_calls = []
 
+    def tracking_enqueue(*args, **kwargs):
+        enqueued_calls.append((args, kwargs))
+
+    fake_mgr.enqueue = tracking_enqueue
+    monkeypatch.setattr(f"app.ui.{module_name}.get_download_manager", lambda k=None: fake_mgr)
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Test Video",
+        channel="Channel",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("1080p", 1000), ("720p", 720)],
+        filesize_approx=1000,
+    )
+
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+    tab._on_info_fetched(info)
+
+    job_to_test = tab._build_job()
+    assert job_to_test is not None
+    quality_label = job_to_test.quality_label
+
+    active_job = MagicMock()
+    active_job.video_id = "dQw4w9WgXcQ"
+    active_job.kind = kind
+    active_job.quality_label = quality_label
+
+    # 1. Same video and quality already active -> start_download and add_to_queue blocked
+    fake_mgr.active_job = active_job
+    fake_mgr.waiting_jobs = []
+
+    tab.start_download()
+    assert len(enqueued_calls) == 0
+    assert f"'{info.title}' ({quality_label}) is already downloading." in tab.inline_msg.text()
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert tab._current_info is not None
+
+    tab.inline_msg.clear()
+    tab.add_to_queue()
+    assert len(enqueued_calls) == 0
+    assert f"'{info.title}' ({quality_label}) is already downloading." in tab.inline_msg.text()
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert tab._current_info is not None
+
+    # 2. Same video and quality already waiting in queue -> start_download and add_to_queue blocked
+    fake_mgr.active_job = None
+    waiting_job = MagicMock()
+    waiting_job.video_id = "dQw4w9WgXcQ"
+    waiting_job.kind = kind
+    waiting_job.quality_label = quality_label
+    fake_mgr.waiting_jobs = [waiting_job]
+
+    tab.inline_msg.clear()
+    tab.start_download()
+    assert len(enqueued_calls) == 0
+    assert f"'{info.title}' ({quality_label}) is already in the queue." in tab.inline_msg.text()
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert tab._current_info is not None
+
+    tab.inline_msg.clear()
+    tab.add_to_queue()
+    assert len(enqueued_calls) == 0
+    assert f"'{info.title}' ({quality_label}) is already in the queue." in tab.inline_msg.text()
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert tab._current_info is not None
+
+    # 3. Different quality of the same video -> enqueue happens
+    diff_waiting = MagicMock()
+    diff_waiting.video_id = "dQw4w9WgXcQ"
+    diff_waiting.kind = kind
+    diff_waiting.quality_label = "Different Quality 360p"
+    fake_mgr.waiting_jobs = [diff_waiting]
+    fake_mgr.active_job = None
+
+    monkeypatch.setattr(f"app.ui.{module_name}.find_duplicate", lambda *a, **kw: None)
+    tab.start_download()
+    assert len(enqueued_calls) == 1
+
+    # 4. No duplicate -> normal enqueue happens
+    enqueued_calls.clear()
+    fake_mgr.waiting_jobs = []
+    fake_mgr.active_job = None
+    tab.url_input.blockSignals(True)
+    tab.url_input.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    tab.url_input.blockSignals(False)
+    tab._on_info_fetched(info)
+    tab.start_download()
+    assert len(enqueued_calls) == 1
 
 
 

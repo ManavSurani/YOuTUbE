@@ -127,6 +127,7 @@ def build_video_cmd(
     height: Optional[int] = None,
     out_dir: Path | str = DEFAULT_DOWNLOADS,
     job_id: Optional[str] = None,
+    force_overwrite: bool = False,
 ) -> List[str]:
     """Build yt-dlp command for video download (always MKV, no --print)."""
     path_file = TMP_DIR / f"{job_id or 'tmp'}.path"
@@ -140,7 +141,7 @@ def build_video_cmd(
         "-P", f"temp:{TMP_DIR}",
         "-P", str(out_dir),
         # Output template: include video id so we can search by it (B3 fix)
-        "-o", "%(title)s [%(id)s].%(ext)s",
+        "-o", "%(title).100s [%(id)s] [%(height)sp].%(ext)s",
         "--windows-filenames",
         "--trim-filenames", "150",
         # Real progress via our own marker (B1+B2 fix)
@@ -151,6 +152,9 @@ def build_video_cmd(
         "--merge-output-format", "mkv",
         "--embed-metadata",
     ]
+
+    if force_overwrite:
+        cmd.append("--force-overwrites")
 
     if height:
         cmd.extend(["-f", f"bv*[height<={height}]+ba/b[height<={height}]"])
@@ -170,6 +174,7 @@ def build_audio_cmd(
     fmt: str = "best",
     out_dir: Path | str = DEFAULT_DOWNLOADS,
     job_id: Optional[str] = None,
+    force_overwrite: bool = False,
 ) -> List[str]:
     """Build yt-dlp command for audio download (always embeds metadata + cover)."""
     path_file = TMP_DIR / f"{job_id or 'tmp'}.path"
@@ -189,6 +194,9 @@ def build_audio_cmd(
         "--print-to-file", "after_move:filepath", str(path_file),
         "--embed-metadata",
     ]
+
+    if force_overwrite:
+        cmd.append("--force-overwrites")
 
     fmt_lower = fmt.lower()
     if fmt_lower in ("best", "best original", "original"):

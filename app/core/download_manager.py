@@ -46,6 +46,9 @@ class DownloadManager(QObject):
         self._is_shutting_down = False
         self._paused_worker = None
         self._resume_attempts = 0
+        self._force_overwrite_job_ids: Set[str] = set()
+        self._running_forced_job_ids: Set[str] = set()
+        self._failed_forced_job_ids: Set[str] = set()
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
 
         self._load_persisted_queue()
@@ -83,7 +86,7 @@ class DownloadManager(QObject):
     def completed_jobs(self) -> List[Tuple[DownloadJob, str]]:
         return list(self._completed_jobs)
 
-    def enqueue(self, job: DownloadJob) -> None:
+    def enqueue(self, job: DownloadJob, force_overwrite: bool = False) -> None:
         """Add job to the queue and begin processing if idle."""
         if job.kind != self.kind:
             get_logger().warning(f"Rejected job {job.job_id}: kind mismatch ({job.kind} != {self.kind})")
@@ -94,6 +97,9 @@ class DownloadManager(QObject):
             return
         if any(j.job_id == job.job_id for j in self._waiting_queue):
             return
+
+        if force_overwrite:
+            self._force_overwrite_job_ids.add(job.job_id)
 
         self._is_shutting_down = False
         self._waiting_queue.append(job)
@@ -109,6 +115,9 @@ class DownloadManager(QObject):
         if self._active_job:
             get_logger().info(f"Cancelling active download: {self._active_job.title}")
             job = self._active_job
+            self._force_overwrite_job_ids.discard(job.job_id)
+            self._running_forced_job_ids.discard(job.job_id)
+            self._failed_forced_job_ids.discard(job.job_id)
             if self._worker:
                 self._worker.cancel()
                 self._worker = None
@@ -120,6 +129,9 @@ class DownloadManager(QObject):
 
     def cancel_job(self, job_id: str) -> None:
         """Cancel or remove a job by ID."""
+        self._force_overwrite_job_ids.discard(job_id)
+        self._running_forced_job_ids.discard(job_id)
+        self._failed_forced_job_ids.discard(job_id)
         if self._active_job and self._active_job.job_id == job_id:
             self.cancel_active()
             return
@@ -141,6 +153,9 @@ class DownloadManager(QObject):
     def shutdown(self) -> None:
         """Stop running worker without starting next waiting job; keep waiting jobs persisted."""
         self._is_shutting_down = True
+        self._force_overwrite_job_ids.clear()
+        self._running_forced_job_ids.clear()
+        self._failed_forced_job_ids.clear()
         if self._worker:
             try:
                 self._worker.cancel()
@@ -155,7 +170,9 @@ class DownloadManager(QObject):
         """Retry a previously failed job."""
         if job_id in self._failed_jobs:
             job, _ = self._failed_jobs.pop(job_id)
-            self.enqueue(job)
+            was_forced = job_id in self._failed_forced_job_ids
+            self._failed_forced_job_ids.discard(job_id)
+            self.enqueue(job, force_overwrite=was_forced)
 
     def clear_finished(self) -> None:
         """Clear list of completed jobs."""
@@ -233,12 +250,18 @@ class DownloadManager(QObject):
         settings = load_settings()
         out_dir = job.output_dir or settings.get("download_dir", str(DEFAULT_DOWNLOADS))
 
+        force = job.job_id in self._force_overwrite_job_ids
+        self._force_overwrite_job_ids.discard(job.job_id)
+        if force:
+            self._running_forced_job_ids.add(job.job_id)
+
         if job.kind == "audio":
             cmd = build_audio_cmd(
                 url=job.url,
                 fmt=job.audio_format or "best",
                 out_dir=out_dir,
                 job_id=job.job_id,
+                force_overwrite=force,
             )
             is_dual = False
         else:
@@ -247,6 +270,7 @@ class DownloadManager(QObject):
                 height=job.height,
                 out_dir=out_dir,
                 job_id=job.job_id,
+                force_overwrite=force,
             )
             is_dual = True
 
@@ -313,6 +337,9 @@ class DownloadManager(QObject):
             return
 
         get_logger().info(f"Download finished: {job.title} -> {final_path}")
+        self._force_overwrite_job_ids.discard(job.job_id)
+        self._running_forced_job_ids.discard(job.job_id)
+        self._failed_forced_job_ids.discard(job.job_id)
         self._worker = None
         self._active_job = None
         self._completed_jobs.append((job, final_path))
@@ -368,12 +395,20 @@ class DownloadManager(QObject):
                 self._worker = None
                 self._active_job = None
                 self.stage.emit(job, "Retrying after tool update…")
+                if job.job_id in self._running_forced_job_ids:
+                    self._force_overwrite_job_ids.add(job.job_id)
+                    self._running_forced_job_ids.discard(job.job_id)
                 self._waiting_queue.insert(0, job)
                 self._wake_all_lanes()
                 return
 
         friendly_reason = explain(raw_error)
         get_logger().warning(f"Download failed for '{job.title}': {friendly_reason}")
+        was_forced = job.job_id in self._running_forced_job_ids
+        self._running_forced_job_ids.discard(job.job_id)
+        self._force_overwrite_job_ids.discard(job.job_id)
+        if was_forced:
+            self._failed_forced_job_ids.add(job.job_id)
 
         self._worker = None
         self._active_job = None

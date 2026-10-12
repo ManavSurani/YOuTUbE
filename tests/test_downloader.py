@@ -89,8 +89,46 @@ class TestBuildVideoCmd:
         cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
         assert "--embed-metadata" in cmd
 
+    def test_video_output_template_has_height_and_capped_title(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        idx = cmd.index("-o")
+        template = cmd[idx + 1]
+        assert "%(title).100s" in template
+        assert "[%(id)s]" in template
+        assert "[%(height)sp]" in template
+        assert template.endswith(".%(ext)s")
+
+    def test_video_different_heights_use_different_formats(self):
+        cmd_144 = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", height=144, job_id="j144")
+        cmd_best = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", height=None, job_id="jbest")
+        idx_144 = cmd_144.index("-f")
+        idx_best = cmd_best.index("-f")
+        assert cmd_144[idx_144 + 1] != cmd_best[idx_best + 1]
+        assert "height<=144" in cmd_144[idx_144 + 1]
+        assert cmd_best[idx_best + 1] == "bv*+ba/b"
+
+    def test_video_normal_job_no_force_overwrite(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        assert "--force-overwrites" not in cmd
+
+    def test_video_force_overwrite_flag(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1", force_overwrite=True)
+        assert "--force-overwrites" in cmd
+
 
 class TestBuildAudioCmd:
+    def test_audio_normal_job_no_force_overwrite(self):
+        cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2")
+        assert "--force-overwrites" not in cmd
+
+    def test_audio_force_overwrite_flag(self):
+        cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2", force_overwrite=True)
+        assert "--force-overwrites" in cmd
+
+    def test_audio_output_template_unchanged(self):
+        cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2")
+        idx = cmd.index("-o")
+        assert cmd[idx + 1] == "%(title)s [%(id)s].%(ext)s"
     def test_best_original_uses_ba_x(self):
         cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", fmt="best", job_id="j2")
         idx = cmd.index("-f")
@@ -276,6 +314,15 @@ class TestResolvePathFile:
         target.write_bytes(b"fake")
         path_file = tmp_path / "job.path"
         path_file.write_text(str(target) + "\n", encoding="utf-8")
+
+        result = resolve_final_path(path_file, "abc123", tmp_path)
+        assert result == str(target)
+
+    def test_fallback_resolves_file_with_height_suffix(self, tmp_path):
+        """Chunk A.1: fallback resolves files formatted with [height] suffix."""
+        target = tmp_path / "My Video [abc123] [1080p].mkv"
+        target.write_bytes(b"fake")
+        path_file = tmp_path / "job.path"  # does not exist
 
         result = resolve_final_path(path_file, "abc123", tmp_path)
         assert result == str(target)

@@ -116,3 +116,193 @@ def test_download_manager_cancel_and_retry(tmp_path: Path, sample_jobs, monkeypa
     manager.retry_job(sample_jobs[0].job_id)
     assert manager.active_job is not None
     assert len(manager.failed_jobs) == 0
+
+
+def test_force_overwrite_lifecycle(tmp_path: Path, sample_jobs, monkeypatch):
+    manager = DownloadManager(kind="video")
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._failed_jobs.clear()
+    manager._queue_file = tmp_path / "queue_video.json"
+
+    captured_cmds = []
+
+    def mock_worker_factory(**kwargs):
+        mock = MagicMock()
+        mock.cmd = kwargs.get("cmd", [])
+        mock.isRunning.return_value = False
+        captured_cmds.append(mock.cmd)
+        return mock
+
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", mock_worker_factory)
+
+    job = sample_jobs[0]
+
+    # 1. First start with force_overwrite=True receives --force-overwrites
+    manager.enqueue(job, force_overwrite=True)
+    assert len(captured_cmds) == 1
+    assert "--force-overwrites" in captured_cmds[0]
+    # Set must be consumed immediately on start
+    assert job.job_id not in manager._force_overwrite_job_ids
+
+    # 2. Offline pause and resume does NOT pass --force-overwrites
+    manager._paused_worker = manager._worker
+    manager._resume_active_job()
+    assert len(captured_cmds) == 2
+    assert "--force-overwrites" not in captured_cmds[1]
+
+    # 3. Cleanup on finish
+    manager._on_worker_finished(job, str(tmp_path / "finished.mkv"))
+    assert job.job_id not in manager._force_overwrite_job_ids
+
+
+def test_force_overwrite_cleanup_on_cancel_and_retry(tmp_path: Path, sample_jobs, monkeypatch):
+    manager = DownloadManager(kind="video")
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._queue_file = tmp_path / "queue_video.json"
+
+    captured_cmds = []
+    monkeypatch.setattr(
+        "app.core.download_manager.DownloadWorker",
+        lambda **kwargs: captured_cmds.append(kwargs.get("cmd", [])) or MagicMock(),
+    )
+
+    job1 = sample_jobs[0]
+    job2 = sample_jobs[1]
+
+    # Start job1 normal, queue job2 with force_overwrite
+    manager.enqueue(job1, force_overwrite=False)
+    manager.enqueue(job2, force_overwrite=True)
+    assert job2.job_id in manager._force_overwrite_job_ids
+
+    # Cancel job2 while in queue -> set is cleaned
+    manager.cancel_job(job2.job_id)
+    assert job2.job_id not in manager._force_overwrite_job_ids
+
+    # Simulate job1 failure and retry -> retry must NOT have force_overwrite
+    manager._on_worker_failed(job1, "Network error")
+    assert job1.job_id not in manager._force_overwrite_job_ids
+    manager.retry_job(job1.job_id)
+    assert "--force-overwrites" not in captured_cmds[-1]
+
+
+def test_audio_force_overwrite_first_start(tmp_path: Path, sample_jobs, monkeypatch):
+    manager = DownloadManager(kind="audio")
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._queue_file = tmp_path / "queue_audio.json"
+
+    captured_cmds = []
+    monkeypatch.setattr(
+        "app.core.download_manager.DownloadWorker",
+        lambda **kwargs: captured_cmds.append(kwargs.get("cmd", [])) or MagicMock(),
+    )
+
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=queuevid9999",
+        title="Queued Audio Job",
+        channel="Channel",
+        duration=120,
+        duration_str="2:00",
+        thumbnail_url="",
+        qualities=[],
+        filesize_approx=1000000,
+    )
+    audio_job = DownloadJob.create(
+        info,
+        kind="audio",
+        quality_label="MP3",
+        audio_format="mp3",
+    )
+
+    manager.enqueue(audio_job, force_overwrite=True)
+    assert len(captured_cmds) == 1
+    assert "--force-overwrites" in captured_cmds[0]
+    assert audio_job.job_id not in manager._force_overwrite_job_ids
+
+
+def test_forced_job_failure_retry_and_set_cleanup(tmp_path: Path, sample_jobs, monkeypatch):
+    manager = DownloadManager(kind="video")
+    manager._waiting_queue.clear()
+    manager._active_job = None
+    manager._failed_jobs.clear()
+    manager._queue_file = tmp_path / "queue_video.json"
+
+    captured_cmds = []
+
+    def mock_worker_factory(**kwargs):
+        mock = MagicMock()
+        mock.cmd = kwargs.get("cmd", [])
+        mock.isRunning.return_value = False
+        captured_cmds.append(mock.cmd)
+        return mock
+
+    monkeypatch.setattr("app.core.download_manager.DownloadWorker", mock_worker_factory)
+
+    job_forced = sample_jobs[0]
+    job_normal = sample_jobs[1]
+
+    # 1. Forced job starts -> has flag, consumed from _force_overwrite_job_ids, added to _running_forced_job_ids
+    manager.enqueue(job_forced, force_overwrite=True)
+    assert len(captured_cmds) == 1
+    assert "--force-overwrites" in captured_cmds[0]
+    assert job_forced.job_id not in manager._force_overwrite_job_ids
+    assert job_forced.job_id in manager._running_forced_job_ids
+
+    # 2. Forced job fails -> moved to _failed_forced_job_ids, discarded from _running_forced_job_ids
+    manager._on_worker_failed(job_forced, "Network error")
+    assert job_forced.job_id not in manager._running_forced_job_ids
+    assert job_forced.job_id in manager._failed_forced_job_ids
+
+    # 3. Retry of forced job passes the flag once
+    manager.retry_job(job_forced.job_id)
+    assert len(captured_cmds) == 2
+    assert "--force-overwrites" in captured_cmds[1]
+    assert job_forced.job_id not in manager._failed_forced_job_ids
+    assert job_forced.job_id not in manager._force_overwrite_job_ids
+    assert job_forced.job_id in manager._running_forced_job_ids
+
+    # Finish the forced job -> cleans all sets
+    manager._on_worker_finished(job_forced, str(tmp_path / "finished.mkv"))
+    assert job_forced.job_id not in manager._running_forced_job_ids
+    assert job_forced.job_id not in manager._failed_forced_job_ids
+
+    # 4. Normal job fails -> retry has NO flag
+    manager.enqueue(job_normal, force_overwrite=False)
+    assert len(captured_cmds) == 3
+    assert "--force-overwrites" not in captured_cmds[2]
+    assert job_normal.job_id not in manager._running_forced_job_ids
+
+    manager._on_worker_failed(job_normal, "Network error")
+    assert job_normal.job_id not in manager._failed_forced_job_ids
+
+    manager.retry_job(job_normal.job_id)
+    assert len(captured_cmds) == 4
+    assert "--force-overwrites" not in captured_cmds[3]
+    manager._on_worker_finished(job_normal, str(tmp_path / "normal.mkv"))
+
+    # 5. Cancel clears the sets
+    manager.enqueue(job_forced, force_overwrite=True)
+    assert job_forced.job_id in manager._running_forced_job_ids
+    manager.cancel_active()
+    assert job_forced.job_id not in manager._force_overwrite_job_ids
+    assert job_forced.job_id not in manager._running_forced_job_ids
+    assert job_forced.job_id not in manager._failed_forced_job_ids
+
+    # Cancel a failed job also clears _failed_forced_job_ids
+    manager.enqueue(job_forced, force_overwrite=True)
+    manager._on_worker_failed(job_forced, "Network error")
+    assert job_forced.job_id in manager._failed_forced_job_ids
+    manager.cancel_job(job_forced.job_id)
+    assert job_forced.job_id not in manager._failed_forced_job_ids
+
+    # 6. Shutdown clears the sets
+    manager.enqueue(job_forced, force_overwrite=True)
+    assert job_forced.job_id in manager._running_forced_job_ids
+    manager.shutdown()
+    assert len(manager._force_overwrite_job_ids) == 0
+    assert len(manager._running_forced_job_ids) == 0
+    assert len(manager._failed_forced_job_ids) == 0
+
+

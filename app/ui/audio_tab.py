@@ -42,6 +42,7 @@ from app.ui.recent_list import RecentList
 from app.ui.video_tab import (
     _FETCH_CACHE,
     AnimatedComboBox,
+    AnimatedLineEdit,
     MediaInfoCard,
     TabState,
 )
@@ -100,7 +101,7 @@ class AudioTab(QWidget):
         input_row = QHBoxLayout()
         input_row.setSpacing(8)
 
-        self.url_input = QLineEdit(container)
+        self.url_input = AnimatedLineEdit(container)
         self.url_input.setPlaceholderText("Paste a YouTube link for audio extraction")
         self.url_input.setFixedHeight(36)
         self.url_input.textChanged.connect(self._on_url_text_changed)
@@ -463,23 +464,38 @@ class AudioTab(QWidget):
         if not job:
             return
 
+        manager = get_download_manager("audio")
+        active = manager.active_job
+        if active and (active.video_id, active.kind, active.quality_label) == (job.video_id, job.kind, job.quality_label):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already downloading.")
+            return
+
+        waiting = manager.waiting_jobs or []
+        if any((w.video_id, w.kind, w.quality_label) == (job.video_id, job.kind, job.quality_label) for w in waiting):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already in the queue.")
+            return
+
         dup = find_duplicate(job.video_id, job.kind, job.quality_label)
+        force_overwrite = False
         if dup:
             reply = QMessageBox.question(
                 self,
                 "Already Downloaded",
-                f"'{job.title}' ({job.quality_label}) has already been downloaded.\nDownload again?",
+                f"'{job.title}' ({job.quality_label}) has already been downloaded.\nDownload again and replace the existing file?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
+            force_overwrite = True
 
         if job.thumbnail_bytes:
             save_thumbnail(job.video_id, job.thumbnail_bytes)
 
-        manager = get_download_manager("audio")
-        manager.enqueue(job)
+        if force_overwrite:
+            manager.enqueue(job, force_overwrite=True)
+        else:
+            manager.enqueue(job)
 
         self._clear_inputs()
 
@@ -493,10 +509,20 @@ class AudioTab(QWidget):
         if not job:
             return
 
+        manager = get_download_manager("audio")
+        active = manager.active_job
+        if active and (active.video_id, active.kind, active.quality_label) == (job.video_id, job.kind, job.quality_label):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already downloading.")
+            return
+
+        waiting = manager.waiting_jobs or []
+        if any((w.video_id, w.kind, w.quality_label) == (job.video_id, job.kind, job.quality_label) for w in waiting):
+            self.inline_msg.show_info(f"'{job.title}' ({job.quality_label}) is already in the queue.")
+            return
+
         if job.thumbnail_bytes:
             save_thumbnail(job.video_id, job.thumbnail_bytes)
 
-        manager = get_download_manager("audio")
         manager.enqueue(job)
 
         self._clear_inputs()

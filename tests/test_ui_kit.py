@@ -524,6 +524,14 @@ def test_animated_checkbox_focus_ring_unclipped_dark_and_light():
         assert cb.hasFocus() is True
         img = cb.grab().toImage()
 
+        scale = img.height() / 24.0
+        # Theoretical ring bounds from drawing code:
+        # box_rect = QRectF(3, 3, 18, 18), adjusted(-2, -2, 2, 2) -> (1, 1) to (23, 23)
+        expected_min_x = round(1.0 * scale)
+        expected_min_y = round(1.0 * scale)
+        expected_max_x = round(23.0 * scale)
+        expected_max_y = round(23.0 * scale)
+
         # Collect blue ring pixels around the checkbox
         ring_pixels = [
             (x, y) for x in range(img.width()) for y in range(img.height())
@@ -534,25 +542,23 @@ def test_animated_checkbox_focus_ring_unclipped_dark_and_light():
             f"Theme {theme_name}: expected #3EA6FF in focus ring"
         )
 
-        # Focus ring box pixels (bounding the checkbox indicator before text label)
-        box_ring = [p for p in ring_pixels if p[0] <= 35]
+        # Isolate indicator box ring pixels (bounding box before text label)
+        box_ring = [p for p in ring_pixels if p[0] <= expected_max_x + 3]
         min_x = min(p[0] for p in box_ring)
         max_x = max(p[0] for p in box_ring)
         min_y = min(p[1] for p in box_ring)
         max_y = max(p[1] for p in box_ring)
 
-        # 1. Left edge: unclipped at x >= 0, present in columns 0..2
-        assert min_x <= 2, f"Theme {theme_name}: left edge must start in columns 0..2, got {min_x}"
-        # 2. Right edge: drawn on the right side of the 18px box
-        assert max_x >= 20, f"Theme {theme_name}: right edge must reach >= 20, got {max_x}"
-        # 3. Top edge: drawn near the top of the box
-        assert min_y <= 3, f"Theme {theme_name}: top edge must be near top (<= 3), got {min_y}"
-        # 4. Bottom edge: drawn near the bottom of the box
-        assert max_y >= 20, f"Theme {theme_name}: bottom edge must reach >= 20, got {max_y}"
+        # Exact bounds matching ring rect (1,1) to (23,23) with +-1 px tolerance
+        assert abs(min_x - expected_min_x) <= 1, f"Theme {theme_name}: min_x {min_x} != expected {expected_min_x}"
+        assert abs(min_y - expected_min_y) <= 1, f"Theme {theme_name}: min_y {min_y} != expected {expected_min_y}"
+        assert abs(max_x - expected_max_x) <= 1, f"Theme {theme_name}: max_x {max_x} != expected {expected_max_x}"
+        assert abs(max_y - expected_max_y) <= 1, f"Theme {theme_name}: max_y {max_y} != expected {expected_max_y}"
 
-        # Column 1 contains the vertical line segment
-        col1_blue_y = [p[1] for p in box_ring if p[0] == 1]
-        assert len(col1_blue_y) >= 10, f"Theme {theme_name}: expected >= 10 ring pixels in col 1, got {len(col1_blue_y)}"
+        # Left column contains the vertical line segment
+        left_col = expected_min_x
+        col_blue_y = [p[1] for p in box_ring if p[0] == left_col]
+        assert len(col_blue_y) >= 10, f"Theme {theme_name}: expected >= 10 ring pixels in col {left_col}, got {len(col_blue_y)}"
 
         win.close()
         app.processEvents()

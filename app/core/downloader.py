@@ -247,8 +247,8 @@ def parse_line(line: str) -> ParsedOutput:
             elif status == "finished":
                 total_used = dl if dl > 0 else est
                 is_exact = True
-            elif est > dl and est >= MIN_ESTIMATE_BYTES:
-                total_used = est
+            elif est >= MIN_ESTIMATE_BYTES:
+                total_used = max(est, dl)
                 is_exact = False
             else:
                 total_used = 0
@@ -386,6 +386,7 @@ class DownloadWorker(QThread):
         job_id: Optional[str] = None,
         video_id: str = "",
         is_dual_stream: bool = True,
+        duration_seconds: int = 0,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -394,6 +395,7 @@ class DownloadWorker(QThread):
         self.job_id        = job_id or str(uuid.uuid4())
         self.video_id      = video_id
         self.is_dual_stream = is_dual_stream
+        self.duration_seconds = max(0, int(duration_seconds or 0))
         self._proc         = None
         self._is_cancelled = False
         self._is_paused    = False
@@ -414,10 +416,11 @@ class DownloadWorker(QThread):
             self.failed.emit(str(exc))
             return
 
-        # Track stream type from latest progress line for stage naming
-        _last_stream_stage = "Downloading"
+        # Track stream type and whole-job totals
+        _finished_bytes: int = 0
         _last_total_used: int = 0
-        _current_stream_stage: str = ""
+        overall_done: int = 0
+        overall_total: int = 0
 
         for line in self._proc.stdout:
             line_str = line.rstrip("\n\r")
@@ -434,58 +437,71 @@ class DownloadWorker(QThread):
 
             if parsed.kind == "progress" and parsed.progress:
                 p = parsed.progress
-                _last_stream_stage = p.stage
 
-                # Reset per-stream latch state when stream changes (rule c)
-                if p.stage != _current_stream_stage:
-                    _current_stream_stage = p.stage
-                    _last_total_used = 0
+                # Update finished_bytes when video finishes
+                if p.status == "finished" and p.stage == "Downloading video" and self.is_dual_stream:
+                    _finished_bytes = max(_finished_bytes, p.done_bytes or p.total_bytes)
 
-                # Weighted scaling: 85% video stream, 10% audio stream, 5% post
+                # Remaining estimate for audio while video stream is running (~13,000 B/s guess)
+                if self.is_dual_stream and p.stage == "Downloading video":
+                    remaining_estimate = int(self.duration_seconds * 13000) if self.duration_seconds > 0 else 0
+                else:
+                    remaining_estimate = 0
+
+                # Calculate whole-job done and total
                 if self.is_dual_stream:
-                    if p.stage == "Downloading video":
-                        floor = 0.0
-                        scaled = p.percent * 0.85
-                    elif p.stage == "Downloading audio":
-                        floor = 85.0
-                        scaled = 85.0 + p.percent * 0.10
+                    if p.stage == "Downloading audio":
+                        overall_done = _finished_bytes + p.done_bytes
+                        overall_total = _finished_bytes + (p.total_bytes if p.total_bytes > 0 else p.done_bytes)
                     else:
-                        floor = 0.0
-                        scaled = p.percent
+                        overall_done = p.done_bytes
+                        overall_total = (p.total_bytes + remaining_estimate) if p.total_bytes > 0 else 0
                 else:
-                    floor = 0.0
-                    scaled = p.percent * 0.95   # leave room for post-processing
+                    overall_done = p.done_bytes
+                    overall_total = p.total_bytes
 
-                # Monotonic vs. self-correcting latch
-                if p.is_exact or p.status == "finished":
-                    overall = max(self._max_percent, scaled)
-                    if p.total_bytes > 0:
-                        _last_total_used = p.total_bytes
+                # Never total < done
+                if overall_total > 0 and overall_total < overall_done:
+                    overall_total = overall_done
+
+                # Calculate percent
+                # A dual-stream job cannot reach 99.9 until the audio stream finishes
+                stream_cap = 95.0 if (self.is_dual_stream and p.stage == "Downloading video") else 99.9
+                if overall_total > 0:
+                    pct = (overall_done / overall_total * 100.0)
+                    pct = min(stream_cap, pct)
                 else:
-                    if p.total_bytes > 0:
+                    pct = 0.0
+
+                # Latch rule (25% rule)
+                if p.is_exact or p.status == "finished":
+                    overall = max(self._max_percent, pct)
+                    if overall_total > 0:
+                        _last_total_used = overall_total
+                else:
+                    if overall_total > 0:
                         if _last_total_used > 0:
-                            ratio = abs(p.total_bytes - _last_total_used) / _last_total_used
+                            ratio = abs(overall_total - _last_total_used) / _last_total_used
                             if ratio > 0.25:
-                                # Estimate shifted >25% in either direction: allow correction down/up
-                                overall = max(floor, scaled)
+                                overall = pct
                             else:
-                                overall = max(self._max_percent, scaled)
+                                overall = max(self._max_percent, pct)
                         else:
-                            overall = max(floor, max(self._max_percent, scaled))
-                        _last_total_used = p.total_bytes
+                            overall = max(self._max_percent, pct)
+                        _last_total_used = overall_total
                     else:
                         overall = self._max_percent
 
-                overall = max(floor, overall)
+                overall = min(stream_cap, max(0.0, overall))
                 self._max_percent = overall
                 self.stage.emit(p.stage)
-                self.progress.emit(overall, p.speed, p.eta, p.done_bytes, p.total_bytes)
+                self.progress.emit(overall, p.speed, p.eta, overall_done, overall_total)
 
             elif parsed.kind == "stage" and parsed.stage:
                 self.stage.emit(parsed.stage)
                 if parsed.stage == "Merging":
-                    self._max_percent = max(self._max_percent, 95.0)
-                    self.progress.emit(self._max_percent, "", "", 0, 0)
+                    self._max_percent = min(99.9, max(self._max_percent, 95.0))
+                    self.progress.emit(self._max_percent, "", "", overall_done, overall_total)
 
         self._proc.wait()
         returncode = self._proc.returncode
@@ -501,7 +517,7 @@ class DownloadWorker(QThread):
 
         if returncode == 0:
             self._max_percent = 100.0
-            self.progress.emit(100.0, "", "", 0, 0)
+            self.progress.emit(100.0, "", "", overall_done, overall_total)
             self.stage.emit("Done")
 
             final_path = resolve_final_path(self._path_file, self.video_id, self.out_dir)

@@ -280,6 +280,7 @@ class DownloadManager(QObject):
             job_id=job.job_id,
             video_id=job.video_id,
             is_dual_stream=is_dual,
+            duration_seconds=job.duration_seconds,
             parent=self,
         )
         self._worker.job_id = job.job_id

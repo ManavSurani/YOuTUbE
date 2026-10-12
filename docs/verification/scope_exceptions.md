@@ -8,6 +8,8 @@
 | tools/check_scope.py | bdd80ac | Allowed app/core/downloader.py in scope check script | n/a | pending owner approval |
 | app/core/downloader.py | 7da469f | Quality in filenames and retry overwrite flags | test_downloader.py | pending owner approval |
 | app/core/download_manager.py | 7da469f | Duplicate handling and retry overwrite forwarding | test_download_manager.py | pending owner approval |
+| app/ui/kit/checkbox.py | 826624f | Fix checkbox focus ring clipping on left edge with RING=3.0 | test_animated_checkbox_focus_ring_unclipped_dark_and_light | pending owner approval |
+| app/ui/history_tab.py | pending Chunk 5 | Styled right-click menu with 150 ms fade on search input | test_styled_context_menu_in_history_tab | pending owner approval |
 
 ## Evidence and Verification
 

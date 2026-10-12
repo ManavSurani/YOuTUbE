@@ -103,6 +103,41 @@ def build_combo_popup_qss(tokens: dict[str, str]) -> str:
     )
 
 
+def build_menu_popup_qss(tokens: dict[str, str]) -> str:
+    return (
+        f"QMenu {{\n"
+        f"    background-color: {tokens['surface']};\n"
+        f"    border: 1px solid {tokens['border']};\n"
+        f"    border-radius: 8px;\n"
+        f"    padding: 4px;\n"
+        f"}}\n"
+        f"QMenu::item {{\n"
+        f"    min-height: 32px;\n"
+        f"    padding: 6px 12px;\n"
+        f"    border-radius: 4px;\n"
+        f"    color: {tokens['text']};\n"
+        f"    background-color: transparent;\n"
+        f"}}\n"
+        f"QMenu::item:hover {{\n"
+        f"    background-color: {tokens['surface_hover']};\n"
+        f"    color: {tokens['text']};\n"
+        f"}}\n"
+        f"QMenu::item:selected {{\n"
+        f"    background-color: {tokens['surface_hover']};\n"
+        f"    color: {tokens['text']};\n"
+        f"}}\n"
+        f"QMenu::item:disabled {{\n"
+        f"    color: {tokens['text_muted']};\n"
+        f"    background-color: transparent;\n"
+        f"}}\n"
+        f"QMenu::separator {{\n"
+        f"    height: 1px;\n"
+        f"    background-color: {tokens['border']};\n"
+        f"    margin: 4px 6px;\n"
+        f"}}\n"
+    )
+
+
 class _PopupContainerFilter(QObject):
     def __init__(self, combo: "AnimatedComboBox") -> None:
         super().__init__(combo)
@@ -201,6 +236,15 @@ class AnimatedLineEdit(QLineEdit):
                 self._current_menu.close()
             except Exception:
                 pass
+
+        menu.setWindowFlags(
+            menu.windowFlags()
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        tokens = get_current_theme_tokens()
+        menu.setStyleSheet(build_menu_popup_qss(tokens))
 
         self._current_menu = menu
         self._anim.stop()

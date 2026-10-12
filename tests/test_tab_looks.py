@@ -551,47 +551,56 @@ def test_animated_line_edit_keyboard_and_effects_restored(qapp, monkeypatch):
     line = AnimatedLineEdit()
     line.show()
 
-    # Menu key opens menu
-    QTest.keyClick(line, Qt.Key.Key_Menu)
-    assert line._current_menu is not None
-    assert line._current_menu.isVisible()
-    line._current_menu.close()
-    qapp.processEvents()
-    assert line._current_menu is None
-
-    # Shift+F10 opens menu
-    QTest.keyClick(line, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
-    assert line._current_menu is not None
-    assert line._current_menu.isVisible()
-    line._current_menu.close()
-    qapp.processEvents()
-    assert line._current_menu is None
-
-    # Effects restored after normal open
-    assert qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
-    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
-
-    # Effects restored when popup raises an exception
-    class ErrorLineEdit(AnimatedLineEdit):
-        def createStandardContextMenu(self):
-            m = super().createStandardContextMenu()
-            if m is not None:
-                m.popup = MagicMock(side_effect=RuntimeError("simulated popup error"))
-            return m
-
-    from unittest.mock import MagicMock
-    err_line = ErrorLineEdit()
-    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5), err_line.mapToGlobal(QPoint(5, 5)))
+    orig_fade = qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu)
+    orig_anim = qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu)
+    qapp.setEffectEnabled(Qt.UIEffect.UI_FadeMenu, True)
+    qapp.setEffectEnabled(Qt.UIEffect.UI_AnimateMenu, True)
 
     try:
-        err_line.contextMenuEvent(ev)
-    except RuntimeError:
-        pass
+        # Menu key opens menu
+        QTest.keyClick(line, Qt.Key.Key_Menu)
+        assert line._current_menu is not None
+        assert line._current_menu.isVisible()
+        line._current_menu.close()
+        qapp.processEvents()
+        assert line._current_menu is None
 
-    assert qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
-    assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
-    line.close()
-    err_line.close()
+        # Shift+F10 opens menu
+        QTest.keyClick(line, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
+        assert line._current_menu is not None
+        assert line._current_menu.isVisible()
+        line._current_menu.close()
+        qapp.processEvents()
+        assert line._current_menu is None
+
+        # Effects restored after normal open
+        assert qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
+        assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
+
+        # Effects restored when popup raises an exception
+        class ErrorLineEdit(AnimatedLineEdit):
+            def createStandardContextMenu(self):
+                m = super().createStandardContextMenu()
+                if m is not None:
+                    m.popup = MagicMock(side_effect=RuntimeError("simulated popup error"))
+                return m
+
+        from unittest.mock import MagicMock
+        err_line = ErrorLineEdit()
+        ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5), err_line.mapToGlobal(QPoint(5, 5)))
+
+        try:
+            err_line.contextMenuEvent(ev)
+        except RuntimeError:
+            pass
+
+        assert qapp.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
+        assert qapp.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
+    finally:
+        qapp.setEffectEnabled(Qt.UIEffect.UI_FadeMenu, orig_fade)
+        qapp.setEffectEnabled(Qt.UIEffect.UI_AnimateMenu, orig_anim)
+        line.close()
+        err_line.close()
 
 
 def test_animated_line_edit_20_cycles_no_leaks(qapp):
@@ -633,8 +642,13 @@ def test_animated_line_edit_plain_inputs_in_settings_and_history():
 
     assert isinstance(v.url_input, AnimatedLineEdit)
     assert isinstance(a.url_input, AnimatedLineEdit)
-    assert type(h.search_input) is QLineEdit
+    assert isinstance(h.search_input, AnimatedLineEdit)
     assert type(s.folder_input) is QLineEdit
+    assert not isinstance(s.folder_input, AnimatedLineEdit)
+    v.close()
+    a.close()
+    h.close()
+    s.close()
 
 
 def test_clear_history_dialog_opens_unchecked_with_cancel_focused():

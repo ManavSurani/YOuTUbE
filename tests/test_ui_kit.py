@@ -582,6 +582,344 @@ def test_animated_checkbox_clicking_text_toggles():
     assert not cb.isChecked()
 
 
+def test_menu_stylesheet_contains_dropdown_tokens_dark_and_light():
+    from app.ui.video_tab import build_menu_popup_qss
+    from app.ui.theme import DARK_TOKENS, LIGHT_TOKENS
+
+    for name, tokens in [("dark", DARK_TOKENS), ("light", LIGHT_TOKENS)]:
+        qss = build_menu_popup_qss(tokens)
+        assert "border-radius: 8px;" in qss
+        assert "padding: 4px;" in qss
+        assert "min-height: 32px;" in qss
+        assert "padding: 6px 12px;" in qss
+        assert "border-radius: 4px;" in qss
+        assert tokens["surface"] in qss
+        assert tokens["border"] in qss
+        assert tokens["text"] in qss
+        assert tokens["surface_hover"] in qss
+        assert tokens["text_muted"] in qss
+
+
+def test_animated_line_edit_context_menu_actions_and_states():
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QLineEdit, QApplication
+
+    app = QApplication.instance() or QApplication([])
+    std = QLineEdit()
+    anim = AnimatedLineEdit()
+
+    for text, select in [("", False), ("Hello world", True), ("Hello world", False)]:
+        std.setText(text)
+        anim.setText(text)
+        if select:
+            std.selectAll()
+            anim.selectAll()
+        else:
+            std.deselect()
+            anim.deselect()
+
+        std_menu = std.createStandardContextMenu()
+        anim_menu = anim.createStandardContextMenu()
+
+        std_actions = {a.text(): a.isEnabled() for a in std_menu.actions() if a.text()}
+        anim_actions = {a.text(): a.isEnabled() for a in anim_menu.actions() if a.text()}
+
+        assert std_actions == anim_actions
+        std_menu.deleteLater()
+        anim_menu.deleteLater()
+
+
+def test_animated_line_edit_context_menu_action_triggers():
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    line = AnimatedLineEdit()
+    line.show()
+    line.activateWindow()
+    line.insert("sample text")
+    line.selectAll()
+    app.processEvents()
+
+    def get_actions(menu):
+        return {a.text().replace("&", "").split("\t")[0]: a for a in menu.actions() if a.text()}
+
+    menu = line.createStandardContextMenu()
+    actions = get_actions(menu)
+    assert "Select All" in actions
+    actions["Select All"].trigger()
+    assert line.selectedText() == "sample text"
+
+    assert "Copy" in actions
+    actions["Copy"].trigger()
+    assert QApplication.clipboard().text() == "sample text"
+
+    assert "Delete" in actions
+    actions["Delete"].trigger()
+    assert line.text() == ""
+
+    assert "Undo" in actions
+    actions["Undo"].trigger()
+    assert line.text() == "sample text"
+
+    menu_redo = line.createStandardContextMenu()
+    actions_redo = get_actions(menu_redo)
+    assert "Redo" in actions_redo and actions_redo["Redo"].isEnabled()
+    actions_redo["Redo"].trigger()
+    assert line.text() == ""
+    menu_redo.deleteLater()
+
+    line.undo()
+    assert line.text() == "sample text"
+
+    line.selectAll()
+    menu_cut = line.createStandardContextMenu()
+    actions_cut = get_actions(menu_cut)
+    assert "Cut" in actions_cut
+    actions_cut["Cut"].trigger()
+    assert line.text() == ""
+    assert QApplication.clipboard().text() == "sample text"
+    menu_cut.deleteLater()
+
+    menu_paste = line.createStandardContextMenu()
+    actions_paste = get_actions(menu_paste)
+    assert "Paste" in actions_paste
+    actions_paste["Paste"].trigger()
+    assert line.text() == "sample text"
+    menu_paste.deleteLater()
+
+    menu.deleteLater()
+    line.close()
+
+
+def test_animated_line_edit_paste_triggers_fetch():
+    from app.ui.video_tab import VideoTab
+    from app.ui.audio_tab import AudioTab
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+    v_tab = VideoTab()
+    v_tab.resize(800, 600)
+    v_fetched = False
+
+    def spy_v_fetch():
+        nonlocal v_fetched
+        v_fetched = True
+
+    v_tab.fetch_url = spy_v_fetch
+
+    QApplication.clipboard().setText(url)
+    menu = v_tab.url_input.createStandardContextMenu()
+    paste_action = next(a for a in menu.actions() if "Paste" in a.text())
+    paste_action.trigger()
+    assert v_tab.url_input.text() == url
+    assert v_fetched is True
+    menu.deleteLater()
+    v_tab.close()
+
+    a_tab = AudioTab()
+    a_tab.resize(800, 600)
+    a_fetched = False
+
+    def spy_a_fetch():
+        nonlocal a_fetched
+        a_fetched = True
+
+    a_tab.fetch_url = spy_a_fetch
+
+    QApplication.clipboard().setText(url)
+    menu_a = a_tab.url_input.createStandardContextMenu()
+    paste_action_a = next(a for a in menu_a.actions() if "Paste" in a.text())
+    paste_action_a.trigger()
+    assert a_tab.url_input.text() == url
+    assert a_fetched is True
+    menu_a.deleteLater()
+    a_tab.close()
+
+
+def test_animated_line_edit_menu_key_and_shift_f10():
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtCore import Qt
+
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    parent.show()
+    line = AnimatedLineEdit(parent)
+    line.show()
+    app.processEvents()
+
+    ev_menu = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Menu, Qt.KeyboardModifier.NoModifier)
+    line.keyPressEvent(ev_menu)
+    assert line._current_menu is not None
+    m1 = line._current_menu
+    assert m1.isVisible()
+
+    ev_f10 = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
+    line.keyPressEvent(ev_f10)
+    assert line._current_menu is not None
+    assert line._current_menu is not m1
+    assert line._current_menu.isVisible()
+
+    line._current_menu.close()
+    parent.close()
+    app.processEvents()
+
+
+def test_animated_line_edit_effect_flags_restored_on_exception():
+    import pytest
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtCore import Qt, QPoint
+
+    app = QApplication.instance() or QApplication([])
+    was_fade = app.isEffectEnabled(Qt.UIEffect.UI_FadeMenu)
+    was_anim = app.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu)
+
+    app.setEffectEnabled(Qt.UIEffect.UI_FadeMenu, True)
+    app.setEffectEnabled(Qt.UIEffect.UI_AnimateMenu, True)
+
+    parent = QWidget()
+    parent.show()
+    line = AnimatedLineEdit(parent)
+    line.show()
+    app.processEvents()
+
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(10, 10), line.mapToGlobal(QPoint(10, 10)))
+
+    original_create = line.createStandardContextMenu
+
+    def broken_create():
+        m = original_create()
+
+        def broken_popup(pos):
+            raise RuntimeError("simulated popup crash")
+
+        m.popup = broken_popup
+        return m
+
+    line.createStandardContextMenu = broken_create
+
+    try:
+        with pytest.raises(RuntimeError, match="simulated popup crash"):
+            line.contextMenuEvent(ev)
+    finally:
+        assert app.isEffectEnabled(Qt.UIEffect.UI_FadeMenu) is True
+        assert app.isEffectEnabled(Qt.UIEffect.UI_AnimateMenu) is True
+        app.setEffectEnabled(Qt.UIEffect.UI_FadeMenu, was_fade)
+        app.setEffectEnabled(Qt.UIEffect.UI_AnimateMenu, was_anim)
+        parent.close()
+        app.processEvents()
+
+
+def test_animated_line_edit_multiple_open_close_cycles():
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtCore import Qt, QPoint
+
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    parent.show()
+    line = AnimatedLineEdit(parent)
+    line.resize(200, 36)
+    line.show()
+    app.processEvents()
+
+    for _ in range(20):
+        ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(10, 10), line.mapToGlobal(QPoint(10, 10)))
+        line.contextMenuEvent(ev)
+        assert line._current_menu is not None
+        assert line._current_menu.isVisible()
+        line._current_menu.close()
+        app.processEvents()
+        assert line._current_menu is None
+
+    top_menus = [w for w in app.topLevelWidgets() if isinstance(w, type(line.createStandardContextMenu())) and w.isVisible()]
+    assert len(top_menus) == 0
+    parent.close()
+    app.processEvents()
+
+
+def test_settings_folder_box_is_plain_qlineedit():
+    from app.ui.settings_dialog import SettingsDialog
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QLineEdit, QApplication
+
+    app = QApplication.instance() or QApplication([])
+    dlg = SettingsDialog()
+    assert isinstance(dlg.folder_input, QLineEdit)
+    assert not isinstance(dlg.folder_input, AnimatedLineEdit)
+    dlg.close()
+
+
+def test_animated_line_edit_context_menu_applies_flags_and_style():
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtCore import Qt, QPoint
+
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    parent.show()
+    line = AnimatedLineEdit(parent)
+    line.show()
+    app.processEvents()
+
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(10, 10), line.mapToGlobal(QPoint(10, 10)))
+    line.contextMenuEvent(ev)
+    assert line._current_menu is not None
+    menu = line._current_menu
+    assert menu.isVisible()
+
+    flags = menu.windowFlags()
+    assert bool(flags & Qt.WindowType.FramelessWindowHint)
+    assert bool(flags & Qt.WindowType.NoDropShadowWindowHint)
+    assert menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    assert "border-radius: 8px;" in menu.styleSheet()
+    assert "min-height: 32px;" in menu.styleSheet()
+
+    menu.close()
+    parent.close()
+    app.processEvents()
+
+
+def test_history_tab_search_input_is_animated_line_edit():
+    from app.ui.history_tab import HistoryTab
+    from app.ui.video_tab import AnimatedLineEdit
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtCore import Qt, QPoint
+
+    app = QApplication.instance() or QApplication([])
+    tab = HistoryTab()
+    tab.resize(800, 600)
+
+    assert isinstance(tab.search_input, AnimatedLineEdit)
+    assert tab.search_input.placeholderText() == "Search history…"
+    assert tab.search_input.height() == 36
+    assert tab.search_input.focusPolicy() == Qt.FocusPolicy.ClickFocus
+
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(10, 10), tab.search_input.mapToGlobal(QPoint(10, 10)))
+    tab.search_input.contextMenuEvent(ev)
+    assert tab.search_input._current_menu is not None
+    assert tab.search_input._current_menu.isVisible()
+
+    flags = tab.search_input._current_menu.windowFlags()
+    assert bool(flags & Qt.WindowType.FramelessWindowHint)
+    assert bool(flags & Qt.WindowType.NoDropShadowWindowHint)
+    assert tab.search_input._current_menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    assert "border-radius: 8px;" in tab.search_input._current_menu.styleSheet()
+
+    tab.search_input._current_menu.close()
+    tab.close()
+
+
+
 
 
 

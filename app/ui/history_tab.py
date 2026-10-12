@@ -51,6 +51,7 @@ from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.checkbox import AnimatedCheckBox
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.kit.toast import Toast
+from app.ui.video_tab import AnimatedLineEdit
 
 
 def format_size(size_bytes: int) -> str:
@@ -609,7 +610,7 @@ class HistoryTab(QWidget):
         top_row.addSpacing(8)
 
         # Search bar (ClickFocus ensures it does NOT steal focus on tab switch - B12 fix)
-        self.search_input = QLineEdit(self)
+        self.search_input = AnimatedLineEdit(self)
         self.search_input.setPlaceholderText("Search history…")
         self.search_input.setFixedHeight(36)
         self.search_input.setFocusPolicy(Qt.FocusPolicy.ClickFocus)

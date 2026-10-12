@@ -72,6 +72,10 @@ ERROR: unable to download video data: HTTP Error 403: Forbidden
 | First Lines of Download Session | `downloading` | `downloading` | `downloading` | - | Small chunk (e.g. 1024 B), speed/eta `NA` |
 | Finished Stream Lines | `finished` | `finished` | `finished` | - | Final stream byte total, `eta=NA` or `0` |
 
+### Note on Test-Generated Log Lines vs. Live Downloads
+- **Test-Generated Lines (`app.log.1` lines 1951–1954):** Lines with codec `vp09.00.40.08` were recorded by an automated test run of `test_download_worker_fluctuating_estimates_sequence` logging mock output through `DownloadWorker`. Numbers such as `1048576` B (exactly 1 MiB) and `1107872` B are synthetic test fixture values, not live downloads from YouTube.
+- **Authentic Live Downloads (`app.log.2` lines 468–471):** Authentic live downloads from YouTube in `app.log.2` correspond to an AV1 stream (`av01.0.13M.08`) with exact total `6,497,425,295` bytes and downloaded byte progression `196832322`, `198929474`, `203123778`, `204771326`.
+
 ---
 
 ## 5. Investigation of Problem P4 (144p HTTP 403 Forbidden)

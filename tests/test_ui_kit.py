@@ -920,6 +920,44 @@ def test_history_tab_search_input_is_animated_line_edit():
     tab.close()
 
 
+def test_animated_line_edit_context_menu_corner_transparency():
+    """Verify grab() on QMenu has corner pixel alpha == 0 and center pixel == surface color."""
+    from app.ui.video_tab import AnimatedLineEdit, get_current_theme_tokens
+    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtGui import QContextMenuEvent, QColor
+    from PySide6.QtCore import Qt, QPoint
+
+    app = QApplication.instance() or QApplication([])
+    parent = QWidget()
+    parent.show()
+    line = AnimatedLineEdit(parent)
+    line.show()
+    app.processEvents()
+
+    ev = QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(10, 10), line.mapToGlobal(QPoint(10, 10)))
+    line.contextMenuEvent(ev)
+    menu = line._current_menu
+    assert menu is not None
+    assert menu.isVisible()
+
+    menu.setWindowOpacity(1.0)
+    app.processEvents()
+    img = menu.grab().toImage()
+
+    corner = img.pixelColor(0, 0)
+    center = img.pixelColor(img.width() // 2, img.height() // 2)
+    tokens = get_current_theme_tokens()
+    surface_color = QColor(tokens["surface"])
+
+    menu.close()
+    parent.close()
+    app.processEvents()
+
+    assert corner.alpha() == 0, f"Corner pixel alpha {corner.alpha()} != 0"
+    assert center == surface_color, f"Center pixel {center.name()} != surface {surface_color.name()}"
+
+
+
 
 
 

@@ -501,6 +501,7 @@ def test_animated_checkbox_size_hint_reserves_ring_margin():
 
 
 def test_animated_checkbox_focus_ring_unclipped_dark_and_light():
+    """Exact focus ring bounds: ring rect = box_rect.adjusted(-2,-2,2,2) with RING=3, box 18px, height 24 -> ring 1,1 to 23,23, pen 1.5."""
     from PySide6.QtWidgets import QDialog, QVBoxLayout, QApplication
     from app.ui.theme import build_qss
 

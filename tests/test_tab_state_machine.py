@@ -724,4 +724,199 @@ def test_no_download_running_pasting_link_transitions_fetching_to_ready(monkeypa
     assert tab.cancel_btn.isHidden()
 
 
+# --- Phase 6 Tests: Stuck State and Queue Management (Audio Tab) ---
+
+def test_audio_tab_new_link_fetched_during_download_enables_add_to_queue(monkeypatch):
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DummyWorker)
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="audio", job_id="a1"))
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=AUDIOTAB001")
+    assert tab._state == TabState.FETCHING
+    tab._on_info_fetched(make_info("AUDIOTAB001"))
+    assert tab._state == TabState.DOWNLOADING  # fails before fix
+    assert tab.url_input.isEnabled()  # fails before fix
+    assert tab.queue_btn.isEnabled()  # fails before fix
+    assert tab.cancel_btn.isVisibleTo(tab) and not tab.download_btn.isVisibleTo(tab)
+    enqueued = []
+    monkeypatch.setattr(mgr, "enqueue", lambda job, **k: enqueued.append(job))
+    tab.queue_btn.click()
+    assert len(enqueued) == 1  # fails before fix
+
+
+def test_audio_tab_fetch_fails_during_running_download_returns_to_downloading(monkeypatch):
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DummyWorker)
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="audio", job_id="a1"))
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=FAILAUD1234")
+    assert tab._state == TabState.FETCHING
+    tab._on_info_failed("Video unavailable")
+    assert tab._state == TabState.DOWNLOADING  # fails before fix
+    assert tab.url_input.isEnabled()  # fails before fix
+    assert not tab.inline_msg.isHidden()
+    assert "Video unavailable" in tab.inline_msg.text()
+    assert not tab.queue_btn.isEnabled()
+    assert tab.cancel_btn.isVisibleTo(tab) and not tab.download_btn.isVisibleTo(tab)
+
+
+def test_audio_tab_fetch_result_stops_fetch_button_spinner(monkeypatch):
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DummyWorker)
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="audio", job_id="a1"))
+    tab.set_state(TabState.DOWNLOADING)
+
+    # 1. Fetch finishes while download is running
+    tab.url_input.setText("https://www.youtube.com/watch?v=SPINNERAUD1")
+    assert tab.fetch_btn._is_loading is True
+    tab._on_info_fetched(make_info("SPINNERAUD1"))
+    assert tab.fetch_btn._is_loading is False  # fails before fix
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+    # 2. Fetch fails while download is running
+    tab.url_input.setText("https://www.youtube.com/watch?v=SPINNERAUD2")
+    assert tab.fetch_btn._is_loading is True
+    tab._on_info_failed("Fetch error")
+    assert tab.fetch_btn._is_loading is False  # fails before fix
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+
+def test_audio_tab_cached_link_during_download_goes_to_downloading_with_queue_enabled(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="audio", job_id="a1"))
+    tab.set_state(TabState.DOWNLOADING)
+
+    cached_url = "https://www.youtube.com/watch?v=CACHEDAUD01"
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE[cached_url] = make_info("CACHEDAUD01")
+
+    tab.url_input.setText(cached_url)
+    assert tab._state == TabState.DOWNLOADING
+    assert tab.url_input.isEnabled()
+    assert tab.queue_btn.isEnabled()
+    assert tab.cancel_btn.isVisibleTo(tab)
+
+
+def test_audio_tab_pending_link_survives_running_download_finished(monkeypatch):
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DummyWorker)
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+    active_job = MagicMock(kind="audio", job_id="a1", output_dir="C:/Downloads", title="first")
+    monkeypatch.setattr(mgr, "_active_job", active_job)
+    tab.set_state(TabState.DOWNLOADING)
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=AUDIOTAB005")
+    tab._on_info_fetched(make_info("AUDIOTAB005"))
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    monkeypatch.setattr(mgr, "_waiting_queue", [])
+    tab._on_manager_finished(active_job, "C:/Downloads/first.mp3")
+
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=AUDIOTAB005"  # fails before fix
+    assert tab._current_info is not None  # fails before fix
+    assert tab.info_card.isVisibleTo(tab)  # fails before fix
+    assert tab._state == TabState.READY  # fails before fix
+
+
+def test_audio_tab_pending_link_survives_running_download_failed_and_cancelled(monkeypatch):
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DummyWorker)
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+
+    # Case A: FAILED
+    active_job = MagicMock(kind="audio", job_id="a1", output_dir="C:/Downloads", title="first")
+    monkeypatch.setattr(mgr, "_active_job", active_job)
+    monkeypatch.setattr(mgr, "_waiting_queue", [])
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=AUDIOTAB006")
+    tab._on_info_fetched(make_info("AUDIOTAB006"))
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    tab._on_manager_failed(active_job, "Download error")
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=AUDIOTAB006"  # fails before fix
+    assert tab._current_info is not None  # fails before fix
+    assert tab.info_card.isVisibleTo(tab)  # fails before fix
+    assert tab._state == TabState.READY  # fails before fix
+
+    # Case B: CANCELLED with info
+    active_job2 = MagicMock(kind="audio", job_id="a2", output_dir="C:/Downloads", title="second")
+    monkeypatch.setattr(mgr, "_active_job", active_job2)
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=AUDIOTAB06B")
+    tab._on_info_fetched(make_info("AUDIOTAB06B"))
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    tab._on_manager_cancelled(active_job2)
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=AUDIOTAB06B"
+    assert tab._current_info is not None
+    assert tab.info_card.isVisibleTo(tab)
+    assert tab._state == TabState.READY
+
+    # Case C: CANCELLED with typed text but info not fetched yet
+    active_job3 = MagicMock(kind="audio", job_id="a3", output_dir="C:/Downloads", title="third")
+    monkeypatch.setattr(mgr, "_active_job", active_job3)
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=TYPEDAUD011")
+    tab._current_info = None
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    tab._on_manager_cancelled(active_job3)
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=TYPEDAUD011"  # fails before fix
+
+
+def test_audio_tab_two_queued_jobs_never_show_idle_between_finish_and_next_start(monkeypatch):
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+
+    job1 = MagicMock(kind="audio", job_id="a1", output_dir="C:/Downloads", title="job1")
+    job2 = MagicMock(kind="audio", job_id="a2", output_dir="C:/Downloads", title="job2")
+
+    monkeypatch.setattr(mgr, "_active_job", job1)
+    monkeypatch.setattr(mgr, "_waiting_queue", [job2])
+    tab.set_state(TabState.DOWNLOADING)
+
+    observed_states = []
+    original_set_state = tab.set_state
+
+    def spy_set_state(state):
+        observed_states.append(state)
+        original_set_state(state)
+
+    monkeypatch.setattr(tab, "set_state", spy_set_state)
+
+    tab._on_manager_finished(job1, "C:/Downloads/job1.mp3")
+
+    assert TabState.IDLE not in observed_states  # fails before fix
+    assert tab._state == TabState.DOWNLOADING  # fails before fix
+
+
+def test_audio_tab_no_download_running_pasting_link_transitions_fetching_to_ready(monkeypatch):
+    monkeypatch.setattr("app.ui.audio_tab.InfoFetchWorker", DummyWorker)
+    tab = AudioTab()
+    tab.show()
+    mgr = get_download_manager("audio")
+    monkeypatch.setattr(mgr, "_active_job", None)
+
+    assert tab._state == TabState.IDLE
+    tab.url_input.setText("https://www.youtube.com/watch?v=FRESHAUD012")
+    assert tab._state == TabState.FETCHING
+    tab._on_info_fetched(make_info("FRESHAUD012"))
+    assert tab._state == TabState.READY
+    assert tab.download_btn.isVisibleTo(tab)
+    assert tab.download_btn.isEnabled()
+    assert tab.cancel_btn.isHidden()
+
+
+
 

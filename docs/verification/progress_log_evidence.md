@@ -92,3 +92,10 @@ ERROR: unable to download video data: HTTP Error 403: Forbidden
 3. **Start Type:** First start of the queued job, not a manual retry.
 4. **Diagnosis:** Likely, unproven: YouTube rate-limiting / player API token expiration during rapid sequential format extraction for the same video ID.
 5. **Fallback:** `app/core/errors.py` line 109 fell through to `"Something went wrong. Copy the details and try again."`
+
+### Summary of Findings for Phase 3
+- **Occurrence:** The HTTP Error 403: Forbidden appeared exactly **once** for video `6F5RWSiSxcI` across all application logs.
+- **Trigger Type:** Occurred on the **first start** of the queued 144p job (`3c911825-1044-401b-938b-7a91e55e4988`) 5 seconds after the 2160p download finished, not on a retry.
+- **Verdict:** **Likely, unproven**. The logs show yt-dlp receiving `HTTP Error 403: Forbidden` from YouTube during video data extraction, consistent with rate-limiting or player token invalidation during rapid sequential format requests for the same video, but lack deeper CDN trace headers to prove it beyond doubt.
+- **Engine File Protection:** Zero edits were made to `app/core/errors.py` in accordance with Rule R1.
+

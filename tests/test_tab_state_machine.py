@@ -1,6 +1,7 @@
 """Tests for VideoTab and AudioTab state machines, widget enablement, and RecentList."""
 
 from unittest.mock import MagicMock
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication
 import pytest
 
@@ -491,5 +492,236 @@ def test_audio_tab_cancel_download_restores_correct_state(monkeypatch):
     tab._current_info = None
     tab.cancel_download()
     assert tab._state == TabState.IDLE
+
+
+# --- Phase 4 Tests: Stuck State and Queue Management (Video Tab) ---
+
+class DummyWorker(QObject):
+    fetched = Signal(object)
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, url, parent=None):
+        super().__init__(parent)
+
+    def start(self):
+        pass
+
+
+def make_info(vid):
+    return VideoInfo(
+        url=f"https://www.youtube.com/watch?v={vid}",
+        title="second",
+        channel="c",
+        duration=100,
+        duration_str="1:40",
+        thumbnail_url="",
+        qualities=[("Best available", 0)],
+        filesize_approx=0,
+    )
+
+
+# T1
+def test_new_link_fetched_during_download_enables_add_to_queue(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DummyWorker)
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="video", job_id="j1"))
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=BBBBBBBBBBB")
+    assert tab._state == TabState.FETCHING  # the real sequence
+    tab._on_info_fetched(make_info("BBBBBBBBBBB"))
+    assert tab._state == TabState.DOWNLOADING  # fails today: stays FETCHING
+    assert tab.url_input.isEnabled()  # fails today
+    assert tab.queue_btn.isEnabled()  # fails today
+    assert tab.cancel_btn.isVisibleTo(tab) and not tab.download_btn.isVisibleTo(tab)
+    enqueued = []
+    monkeypatch.setattr(mgr, "enqueue", lambda job, **k: enqueued.append(job))
+    tab.queue_btn.click()
+    assert len(enqueued) == 1  # fails today: 0
+
+
+# T2
+def test_fetch_fails_during_running_download_returns_to_downloading(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DummyWorker)
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="video", job_id="j1"))
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=FAILVID1234")
+    assert tab._state == TabState.FETCHING
+    tab._on_info_failed("Video unavailable")
+    assert tab._state == TabState.DOWNLOADING  # fails today: stays FETCHING
+    assert tab.url_input.isEnabled()  # fails today
+    assert not tab.inline_msg.isHidden()
+    assert "Video unavailable" in tab.inline_msg.text()
+    assert not tab.queue_btn.isEnabled()
+    assert tab.cancel_btn.isVisibleTo(tab) and not tab.download_btn.isVisibleTo(tab)
+
+
+# T3
+def test_fetch_result_stops_fetch_button_spinner(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DummyWorker)
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="video", job_id="j1"))
+    tab.set_state(TabState.DOWNLOADING)
+
+    # 1. Fetch finishes while download is running
+    tab.url_input.setText("https://www.youtube.com/watch?v=SPINNERVID1")
+    assert tab.fetch_btn._is_loading is True
+    tab._on_info_fetched(make_info("SPINNERVID1"))
+    assert tab.fetch_btn._is_loading is False  # fails today: stays FETCHING
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+    # 2. Fetch fails while download is running
+    tab.url_input.setText("https://www.youtube.com/watch?v=SPINNERVID2")
+    assert tab.fetch_btn._is_loading is True
+    tab._on_info_failed("Fetch error")
+    assert tab.fetch_btn._is_loading is False  # fails today: stays FETCHING
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+
+# T4 (guard)
+def test_cached_link_during_download_goes_to_downloading_with_queue_enabled(monkeypatch):
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+    monkeypatch.setattr(mgr, "_active_job", MagicMock(kind="video", job_id="j1"))
+    tab.set_state(TabState.DOWNLOADING)
+
+    cached_url = "https://www.youtube.com/watch?v=CACHEDLINK1"
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE[cached_url] = make_info("CACHEDLINK1")
+
+    tab.url_input.setText(cached_url)
+    assert tab._state == TabState.DOWNLOADING
+    assert tab.url_input.isEnabled()
+    assert tab.queue_btn.isEnabled()
+    assert tab.cancel_btn.isVisibleTo(tab)
+
+
+# T5
+def test_pending_link_survives_running_download_finished(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DummyWorker)
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+    active_job = MagicMock(kind="video", job_id="j1", output_dir="C:/Downloads", title="first")
+    monkeypatch.setattr(mgr, "_active_job", active_job)
+    tab.set_state(TabState.DOWNLOADING)
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=BBBBBBBBBBB")
+    tab._on_info_fetched(make_info("BBBBBBBBBBB"))
+
+    # Now running download finishes, no waiting jobs
+    monkeypatch.setattr(mgr, "_active_job", None)
+    monkeypatch.setattr(mgr, "_waiting_queue", [])
+    tab._on_manager_finished(active_job, "C:/Downloads/first.mp4")
+
+    # Link B and its info card must survive
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=BBBBBBBBBBB"  # fails today: cleared
+    assert tab._current_info is not None  # fails today: None
+    assert tab.info_card.isVisibleTo(tab)  # fails today: hidden
+    assert tab._state == TabState.READY  # fails today: IDLE
+
+
+# T6
+def test_pending_link_survives_running_download_failed_and_cancelled(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DummyWorker)
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+
+    # Case A: FAILED
+    active_job = MagicMock(kind="video", job_id="j1", output_dir="C:/Downloads", title="first")
+    monkeypatch.setattr(mgr, "_active_job", active_job)
+    monkeypatch.setattr(mgr, "_waiting_queue", [])
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=BBBBBBBBBBB")
+    tab._on_info_fetched(make_info("BBBBBBBBBBB"))
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    tab._on_manager_failed(active_job, "Download error")
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=BBBBBBBBBBB"  # fails today: cleared
+    assert tab._current_info is not None  # fails today: None
+    assert tab.info_card.isVisibleTo(tab)  # fails today: hidden
+    assert tab._state == TabState.READY  # fails today: IDLE
+
+    # Case B: CANCELLED with info
+    active_job2 = MagicMock(kind="video", job_id="j2", output_dir="C:/Downloads", title="second")
+    monkeypatch.setattr(mgr, "_active_job", active_job2)
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=CCCCCCCCCCC")
+    tab._on_info_fetched(make_info("CCCCCCCCCCC"))
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    tab._on_manager_cancelled(active_job2)
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=CCCCCCCCCCC"
+    assert tab._current_info is not None
+    assert tab.info_card.isVisibleTo(tab)
+    assert tab._state == TabState.READY
+
+    # Case C: CANCELLED with typed text but info not fetched yet
+    active_job3 = MagicMock(kind="video", job_id="j3", output_dir="C:/Downloads", title="third")
+    monkeypatch.setattr(mgr, "_active_job", active_job3)
+    tab.set_state(TabState.DOWNLOADING)
+    tab.url_input.setText("https://www.youtube.com/watch?v=TYPEDTEXT11")
+    tab._current_info = None  # simulate fetch pending or failed
+
+    monkeypatch.setattr(mgr, "_active_job", None)
+    tab._on_manager_cancelled(active_job3)
+    assert tab.url_input.text() == "https://www.youtube.com/watch?v=TYPEDTEXT11"  # fails today: wiped by _clear_inputs()
+
+
+# T7
+def test_two_queued_jobs_never_show_idle_between_finish_and_next_start(monkeypatch):
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+
+    job1 = MagicMock(kind="video", job_id="j1", output_dir="C:/Downloads", title="job1")
+    job2 = MagicMock(kind="video", job_id="j2", output_dir="C:/Downloads", title="job2")
+
+    monkeypatch.setattr(mgr, "_active_job", job1)
+    monkeypatch.setattr(mgr, "_waiting_queue", [job2])
+    tab.set_state(TabState.DOWNLOADING)
+
+    observed_states = []
+    original_set_state = tab.set_state
+
+    def spy_set_state(state):
+        observed_states.append(state)
+        original_set_state(state)
+
+    monkeypatch.setattr(tab, "set_state", spy_set_state)
+
+    tab._on_manager_finished(job1, "C:/Downloads/job1.mp4")
+
+    # Should not have transitioned to IDLE because job2 is waiting
+    assert TabState.IDLE not in observed_states  # fails today: [TabState.IDLE]
+    assert tab._state == TabState.DOWNLOADING  # fails today: TabState.IDLE
+
+
+# T8 (guard)
+def test_no_download_running_pasting_link_transitions_fetching_to_ready(monkeypatch):
+    monkeypatch.setattr("app.ui.video_tab.InfoFetchWorker", DummyWorker)
+    tab = VideoTab()
+    tab.show()
+    mgr = get_download_manager("video")
+    monkeypatch.setattr(mgr, "_active_job", None)
+
+    assert tab._state == TabState.IDLE
+    tab.url_input.setText("https://www.youtube.com/watch?v=FRESHLINK12")
+    assert tab._state == TabState.FETCHING
+    tab._on_info_fetched(make_info("FRESHLINK12"))
+    assert tab._state == TabState.READY
+    assert tab.download_btn.isVisibleTo(tab)
+    assert tab.download_btn.isEnabled()
+    assert tab.cancel_btn.isHidden()
+
 
 

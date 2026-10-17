@@ -652,6 +652,7 @@ class VideoTab(QWidget):
 
         elif state == TabState.OFFLINE:
             self.url_input.setEnabled(False)
+            self.fetch_btn.set_loading(False)
             self.fetch_btn.setEnabled(False)
             self.quality_combo.setEnabled(False)
             self.download_btn.setEnabled(False)
@@ -693,6 +694,18 @@ class VideoTab(QWidget):
 
     def _clear_inputs(self) -> None:
         """Clear URL input and info card without firing textChanged state resets."""
+        self._fetch_seq += 1
+        self.fetch_btn.set_loading(False)
+        if self._fetch_worker is not None:
+            try:
+                self._fetch_worker.fetched.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                self._fetch_worker.failed.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+
         blocked = self.url_input.blockSignals(True)
         try:
             self.url_input.clear()
@@ -710,6 +723,8 @@ class VideoTab(QWidget):
         if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
             self.fetch_url()
         elif not clean:
+            self._fetch_seq += 1
+            self.fetch_btn.set_loading(False)
             self.info_card.clear()
             self._current_info = None
             if self._job_running() or self._state == TabState.DOWNLOADING:

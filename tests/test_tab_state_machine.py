@@ -918,5 +918,140 @@ def test_audio_tab_no_download_running_pasting_link_transitions_fetching_to_read
     assert tab.cancel_btn.isHidden()
 
 
+# --- Phase 7 Tests: Fetch Flow Robustness ---
+
+@pytest.mark.parametrize("TabClass,tab_mod", [
+    (VideoTab, "app.ui.video_tab"),
+    (AudioTab, "app.ui.audio_tab"),
+])
+def test_newer_paste_while_fetch_runs_discards_old_and_finishes_cleanly(TabClass, tab_mod, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+    created_workers = []
+
+    class RecordingWorker(QObject):
+        fetched = Signal(object)
+        failed = Signal(str)
+        finished = Signal()
+
+        def __init__(self, url, parent=None):
+            super().__init__(parent)
+            self.url = url
+            created_workers.append(self)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(f"{tab_mod}.InfoFetchWorker", RecordingWorker)
+    tab = TabClass()
+    tab.show()
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=SEQONE11111")
+    assert len(created_workers) == 1
+    w1 = created_workers[0]
+    assert tab.fetch_btn._is_loading is True
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=SEQTWO22222")
+    assert len(created_workers) == 2
+    w2 = created_workers[1]
+    assert tab.fetch_btn._is_loading is True
+
+    # Older worker finishes late
+    w1.fetched.emit(make_info("SEQONE11111"))
+    assert tab._current_info is None
+
+    # Newer worker finishes
+    w2.fetched.emit(make_info("SEQTWO22222"))
+    assert tab._current_info is not None
+    assert "SEQTWO22222" in tab._current_info.url
+    assert tab.fetch_btn._is_loading is False
+    assert not tab.fetch_btn._spinner_timer.isActive()
+    assert tab.url_input.isEnabled() is True
+    assert tab._state == TabState.READY
+
+
+@pytest.mark.parametrize("TabClass,tab_mod", [
+    (VideoTab, "app.ui.video_tab"),
+    (AudioTab, "app.ui.audio_tab"),
+])
+def test_fetch_finish_after_tab_reset_no_stale_card_and_no_crash(TabClass, tab_mod, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+    created_workers = []
+
+    class RecordingWorker(QObject):
+        fetched = Signal(object)
+        failed = Signal(str)
+        finished = Signal()
+
+        def __init__(self, url, parent=None):
+            super().__init__(parent)
+            self.url = url
+            created_workers.append(self)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(f"{tab_mod}.InfoFetchWorker", RecordingWorker)
+    tab = TabClass()
+    tab.show()
+
+    tab.url_input.setText("https://www.youtube.com/watch?v=RESETVID111")
+    assert len(created_workers) == 1
+    w = created_workers[0]
+    assert tab._state == TabState.FETCHING
+
+    # Tab is reset / cleared
+    tab._clear_inputs()
+    assert tab._current_info is None
+    assert not tab.info_card.isVisibleTo(tab)
+
+    # In-flight worker finishes after reset
+    w.fetched.emit(make_info("RESETVID111"))
+
+    # Must NOT resurrect the old card or current info
+    assert tab._current_info is None
+    assert not tab.info_card.isVisibleTo(tab)
+    assert tab.fetch_btn._is_loading is False
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+
+@pytest.mark.parametrize("TabClass,tab_mod", [
+    (VideoTab, "app.ui.video_tab"),
+    (AudioTab, "app.ui.audio_tab"),
+])
+def test_spinner_off_across_all_states_including_offline(TabClass, tab_mod, monkeypatch):
+    from app.ui.video_tab import _FETCH_CACHE
+    _FETCH_CACHE.clear()
+    monkeypatch.setattr(f"{tab_mod}.InfoFetchWorker", DummyWorker)
+    tab = TabClass()
+    tab.show()
+
+    # IDLE
+    tab.set_state(TabState.IDLE)
+    assert tab.fetch_btn._is_loading is False
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+    # READY
+    tab.set_state(TabState.READY)
+    assert tab.fetch_btn._is_loading is False
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+    # DOWNLOADING
+    tab.set_state(TabState.DOWNLOADING)
+    assert tab.fetch_btn._is_loading is False
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+    # OFFLINE transition from FETCHING
+    tab.url_input.setText("https://www.youtube.com/watch?v=OFFLINESPN1")
+    assert tab._state == TabState.FETCHING
+    assert tab.fetch_btn._is_loading is True
+
+    tab.set_online(False)
+    assert tab._state == TabState.OFFLINE
+    assert tab.fetch_btn._is_loading is False
+    assert not tab.fetch_btn._spinner_timer.isActive()
+
+
 
 

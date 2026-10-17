@@ -553,6 +553,9 @@ class VideoTab(QWidget):
         job = get_download_manager("video").active_job
         return job is not None and getattr(job, "kind", "") == "video"
 
+    def _has_waiting_job(self) -> bool:
+        return bool(get_download_manager("video").waiting_jobs)
+
     def _apply_state_visibility(self, state: TabState) -> None:
         """Apply visibility and enablement according to the screen contract."""
         running = self._job_running()
@@ -643,8 +646,9 @@ class VideoTab(QWidget):
             self.info_card.setVisible(has_new_link)
             self.quality_combo.setVisible(has_new_link)
             self.quality_combo.setEnabled(has_new_link)
+            has_bad_link = bool(self.url_input.text().strip()) and not has_new_link
             self.queue_btn.setVisible(True)
-            self.queue_btn.setEnabled(True if running else has_new_link)
+            self.queue_btn.setEnabled(False if has_bad_link else (True if running else has_new_link))
 
         elif state == TabState.OFFLINE:
             self.url_input.setEnabled(False)
@@ -798,8 +802,8 @@ class VideoTab(QWidget):
                     break
             self._preselected_quality = None
 
-        if self._job_running() or self._state == TabState.DOWNLOADING:
-            self._apply_state_visibility(self._state)
+        if self._job_running():
+            self.set_state(TabState.DOWNLOADING)
         else:
             self.set_state(TabState.READY)
 
@@ -807,8 +811,8 @@ class VideoTab(QWidget):
         self.inline_msg.show_error(error_msg)
         self.info_card.clear()
         self._current_info = None
-        if self._job_running() or self._state == TabState.DOWNLOADING:
-            self._apply_state_visibility(self._state)
+        if self._job_running():
+            self.set_state(TabState.DOWNLOADING)
         else:
             self.set_state(TabState.IDLE)
 
@@ -954,29 +958,63 @@ class VideoTab(QWidget):
         if job.kind == "video":
             self.progress_card.set_stage(stage_name)
 
+    def _is_job_link(self, job: DownloadJob) -> bool:
+        job_url = getattr(job, "url", None)
+        if not isinstance(job_url, str) or not job_url.strip():
+            return False
+        cleaned_job = clean_url(job_url) or job_url.strip()
+        current_input = clean_url(self.url_input.text().strip()) or self.url_input.text().strip()
+        if current_input and current_input == cleaned_job:
+            return True
+        if self._current_info:
+            current_info_url = clean_url(self._current_info.url) or self._current_info.url.strip()
+            if current_info_url and current_info_url == cleaned_job:
+                return True
+        return False
+
     def _on_manager_finished(self, job: DownloadJob, final_path: str) -> None:
         if job.kind == "video":
             self.progress_card.show_done(out_dir=job.output_dir)
             self.recent_list.refresh()
             self.download_completed.emit(job.title)
-            # Reset tab state and clear inputs
-            self._clear_inputs()
-            self.set_state(TabState.IDLE)
+            same_link = self._is_job_link(job)
+            keep_link = (not same_link) and (self._current_info is not None or bool(self.url_input.text().strip()))
+            if not keep_link:
+                self._clear_inputs()
+            if self._job_running() or self._has_waiting_job():
+                self.set_state(TabState.DOWNLOADING)
+            elif self._current_info is not None:
+                self.set_state(TabState.READY)
+            else:
+                self.set_state(TabState.IDLE)
 
     def _on_manager_failed(self, job: DownloadJob, error_reason: str) -> None:
         if job.kind == "video":
             self.inline_msg.show_error(f"Download failed: {error_reason}")
             self.progress_card.reset()
-            self._clear_inputs()
-            self.set_state(TabState.IDLE)
+            same_link = self._is_job_link(job)
+            keep_link = (not same_link) and (self._current_info is not None or bool(self.url_input.text().strip()))
+            if not keep_link:
+                self._clear_inputs()
+            if self._job_running() or self._has_waiting_job():
+                self.set_state(TabState.DOWNLOADING)
+            elif self._current_info is not None:
+                self.set_state(TabState.READY)
+            else:
+                self.set_state(TabState.IDLE)
 
     def _on_manager_cancelled(self, job: DownloadJob) -> None:
         if job.kind == "video":
             self.progress_card.reset()
-            if self._current_info is not None:
+            same_link = self._is_job_link(job)
+            keep_link = (not same_link) and (self._current_info is not None or bool(self.url_input.text().strip()))
+            if not keep_link:
+                self._clear_inputs()
+            if self._job_running() or self._has_waiting_job():
+                self.set_state(TabState.DOWNLOADING)
+            elif self._current_info is not None:
                 self.set_state(TabState.READY)
             else:
-                self._clear_inputs()
                 self.set_state(TabState.IDLE)
 
     def changeEvent(self, event: QEvent) -> None:

@@ -2,8 +2,8 @@
 
 | ID | Requirement Description | Status | Evidence | Fixed in Commit |
 |---|---|---|---|---|
-| **B1** | Video and audio of the same link run at the same time (test + experiment) | NOT STARTED | Pending Phase 1 | Pending |
-| **B2** | Cancelling or finishing one job never deletes the other job's files; purge handles job folders | NOT STARTED | Pending Phase 1 | Pending |
+| **B1** | Video and audio of the same link run at the same time (test + experiment) | PASS | Real parallel download experiment with `jNQXAC9IVRw` confirmed both workers running simultaneously, both finished without error; unit tests `test_same_video_id_parallel_execution` passed | `9b50b37` |
+| **B2** | Cancelling or finishing one job never deletes the other job's files; purge handles job folders | PASS | Per-job temp directories (`job_tmp_dir`) isolate cleanup via `shutil.rmtree(target_dir)` without scanning root TMP_DIR. Cancelling video in scratch experiment preserved audio. `purge_stale_tmp` deletes old folders and preserves queued jobs | `65e80c1`, `806f706` |
 | **A1** | Total size within 5% of the real file at 5%, 50% and 95% | NOT STARTED | Pending Phase 4 | Pending |
 | **A2** | Bar never goes backwards and never freezes in the audio stage | NOT STARTED | Pending Phase 4 | Pending |
 | **A3** | Single combined format is not capped at 95% | NOT STARTED | Pending Phase 4 | Pending |

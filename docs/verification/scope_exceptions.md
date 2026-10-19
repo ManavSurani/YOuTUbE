@@ -9,3 +9,4 @@ This log records every approved file modification permitted during the autonomou
 | `app/core/paths.py` | Phase 1 (Chunk 1.2) | Update `purge_stale_tmp` to remove stale dirs and preserve queued jobs | Approved in prompt Section 1.1 & Section 5 Chunk 1.2 |
 | `app/core/download_manager.py` | Phase 1 (Chunk 1.3) | Remove `_deferred_job_ids`, `deferred_job_ids()`, and same-video cross-lane deferral logic | Approved in prompt Section 1.1 & Section 5 Chunk 1.3 |
 | `app/ui/queue_widget.py` | Phase 1 (Chunk 1.3) | Remove 'Waiting for the same video to finish' status handling and text | Approved in prompt Section 1.1 & Section 5 Chunk 1.3 |
+| `app/core/download_manager.py` | Phase 2 (Chunk 2.1) | Add `_atomic_write_json` helper and replace direct `write_text` calls | Approved in prompt Section 1.1 & Section 5 Chunk 2.1 |

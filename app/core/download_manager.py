@@ -5,9 +5,11 @@ Maintains queue state, retries, and coordinates with HistoryService.
 """
 
 import json
+import os
 from pathlib import Path
 import threading
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+import uuid
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -18,6 +20,34 @@ from app.core.jobs import DownloadJob
 from app.core.logger import get_logger
 from app.core.paths import APP_DATA, DEFAULT_DOWNLOADS
 from app.core.settings import load_settings
+
+
+_atomic_write_lock = threading.Lock()
+
+
+def _atomic_write_json(path: Path, data: Any, lock: Optional[threading.Lock] = None) -> None:
+    """Write data to path as JSON atomically using a temporary file and os.replace.
+
+    Flushes and fsyncs before replacement. Thread-safe under lock.
+    """
+    effective_lock = lock if lock is not None else _atomic_write_lock
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f"{path.name}.tmp.{uuid.uuid4().hex[:8]}")
+
+    with effective_lock:
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, path)
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
 
 class DownloadManager(QObject):
@@ -50,6 +80,7 @@ class DownloadManager(QObject):
         self._failed_forced_job_ids: Set[str] = set()
         self._active_job_last_pct: float = 0.0
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
+        self._lane_lock = threading.Lock()
 
         self._load_persisted_queue()
 
@@ -430,7 +461,7 @@ class DownloadManager(QObject):
                 }
                 for j in self._waiting_queue
             ]
-            self._queue_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            _atomic_write_json(self._queue_file, data, lock=self._lane_lock)
         except Exception as exc:
             get_logger().debug(f"Failed to persist queue: {exc}")
 
@@ -505,9 +536,9 @@ def migrate_legacy_queue_if_needed(app_data_dir: Optional[Path] = None) -> None:
             audio_file = target_dir / "queue_audio.json"
 
             if not video_file.exists():
-                video_file.write_text(json.dumps(video_items, indent=2), encoding="utf-8")
+                _atomic_write_json(video_file, video_items, lock=_migration_lock)
             if not audio_file.exists():
-                audio_file.write_text(json.dumps(audio_items, indent=2), encoding="utf-8")
+                _atomic_write_json(audio_file, audio_items, lock=_migration_lock)
 
             legacy_file.rename(target_dir / "queue.json.bak")
             get_logger().info("Migrated legacy queue.json into queue_video.json and queue_audio.json (backed up as queue.json.bak)")

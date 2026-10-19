@@ -372,4 +372,68 @@ def test_first_start_and_retry_have_floor_zero(tmp_path: Path, sample_jobs, monk
     assert captured_floors[-1] == 0.0
 
 
+def test_atomic_write_json_clean_replace(tmp_path):
+    from app.core.download_manager import _atomic_write_json
+    import json
 
+    target = tmp_path / "queue.json"
+    data = [{"job_id": "j1", "title": "Job 1"}]
+    _atomic_write_json(target, data)
+    assert target.exists()
+    assert json.loads(target.read_text(encoding="utf-8")) == data
+    # Assert no leftover temp files
+    temp_files = list(tmp_path.glob("*.tmp.*"))
+    assert len(temp_files) == 0
+
+
+def test_atomic_write_json_concurrent_threads(tmp_path):
+    import json
+    import threading
+    from app.core.download_manager import _atomic_write_json
+
+    target = tmp_path / "queue.json"
+    errors = []
+
+    def writer(i):
+        try:
+            for j in range(10):
+                payload = [{"job_id": f"job_{i}_{j}", "iter": j}]
+                _atomic_write_json(target, payload)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    assert target.exists()
+    loaded = json.loads(target.read_text(encoding="utf-8"))
+    assert isinstance(loaded, list)
+    assert len(loaded) == 1
+
+
+def test_atomic_write_json_failure_preserves_original(tmp_path, monkeypatch):
+    import json
+    import os
+    from app.core.download_manager import _atomic_write_json
+
+    target = tmp_path / "queue.json"
+    original = [{"job_id": "orig"}]
+    _atomic_write_json(target, original)
+
+    def faulty_replace(src, dst):
+        raise OSError("Disk write error")
+
+    monkeypatch.setattr(os, "replace", faulty_replace)
+
+    with pytest.raises(OSError):
+        _atomic_write_json(target, [{"job_id": "corrupt_attempt"}])
+
+    # Original file must be completely untouched
+    assert json.loads(target.read_text(encoding="utf-8")) == original
+    # Temp files must be cleaned up
+    temp_files = list(tmp_path.glob("*.tmp.*"))
+    assert len(temp_files) == 0

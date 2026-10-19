@@ -9,8 +9,8 @@
 | **A3** | Single combined format is not capped at 95% | NOT STARTED | Pending Phase 4 | Pending |
 | **A4** | Resume keeps the finished video bytes; ETA is whole-job | NOT STARTED | Pending Phase 4 | Pending |
 | **C1** | Speed decision documented with alternating measurements; code matches the decision | NOT STARTED | Pending Phase 5 | Pending |
-| **S1** | Queue files are written atomically; corrupt files are handled | NOT STARTED | Pending Phase 2 | Pending |
-| **S2** | Active job survives quit, crash and kill; restart limit works; user Cancel removes it | NOT STARTED | Pending Phase 2 | Pending |
+| **S1** | Queue files are written atomically; corrupt files are handled | PASS | Implemented `_atomic_write_json` using temporary file, `flush`, `fsync`, and atomic `os.replace` under lock. Unit tests in `test_download_manager.py` verify concurrent safety, atomic replace, and preserving originals on disk write errors | `9df1d9a` |
+| **S2** | Active job survives quit, crash and kill; restart limit works; user Cancel removes it | PASS | Upgraded persistence to `{"active_job": ..., "waiting_queue": [...]}`. On startup, interrupted active jobs are restored to head of queue with restart count tracked up to 3 restarts (exceeding moves to failed). Cancel clears active_job. Clean exit preserves active_job. Unit tests in `test_download_manager.py` pass | `e8fe549` |
 | **S3** | Rapid online/offline toggling never leaves a stuck or double worker | NOT STARTED | Pending Phase 3 | Pending |
 | **S4** | Stall watchdog restarts a silent download and never during merging | NOT STARTED | Pending Phase 3 | Pending |
 | **E1** | The 14 error samples map to the texts in Phase 6 | NOT STARTED | Pending Phase 6 | Pending |

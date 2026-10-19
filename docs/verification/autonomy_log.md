@@ -22,3 +22,21 @@
   - Requirements matrix: Rows B1 and B2 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+
+## Phase 2: Atomic Queue Persistence and Active-Job Crash Recovery
+- **Date:** 2026-10-20
+- **Plan:** `plan/12_PHASE_2_queue_safety_and_recovery.md` (committed as `46eb91f`)
+- **Commits:**
+  - `fixLOOP.2.1: atomic write helper for queue persistence` (`9df1d9a`)
+  - `fixLOOP.2.2: active job crash recovery and restart limit` (`e8fe549`)
+- **Verification:**
+  - Verified `_atomic_write_json` concurrent thread safety, atomic replacement via temp file with fsync, and corruption resilience in `tests/test_download_manager.py`.
+  - Resolved re-entrant deadlock with `threading.RLock()` across manager locks.
+  - Verified active job persistence in `queue_<kind>.json` (`{"active_job": ..., "waiting_queue": [...]}`), startup recovery to queue head, 3-restart limit enforcement moving repeated crashes to failed state, cancellation clearing active job, and shutdown preserving active job.
+  - Verified `purge_stale_tmp` protects both active and waiting jobs from dict-format queue files.
+  - Scope check: `python tools/check_scope.py --baseline cdfed4e --final` passed (0 protected files touched).
+  - All Phase 2 tests passed (53/53 passed).
+  - Requirements matrix: Rows S1 and S2 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 1 (re-entrant lock deadlock resolved with `threading.RLock`).
+

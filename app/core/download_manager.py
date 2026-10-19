@@ -212,6 +212,9 @@ class DownloadManager(QObject):
 
     def set_online(self, online: bool) -> None:
         """Pause or resume downloads based on network connectivity."""
+        if online == (not self._is_offline):
+            return  # Already in this state; avoid redundant triggers and flapping
+
         was_offline = self._is_offline
         self._is_offline = not online
         if not online:
@@ -235,14 +238,26 @@ class DownloadManager(QObject):
         old, job = self._paused_worker, self._active_job
         if old is None or job is None or self._is_offline or self._is_shutting_down:
             return
+
         is_running = old.isRunning() if hasattr(old, "isRunning") else False
+        if not is_running and self._worker and self._worker is not old and hasattr(self._worker, "isRunning"):
+            is_running = self._worker.isRunning()
+
         if is_running is True:
             self._resume_attempts += 1
-            if self._resume_attempts <= 20:          # about 2 seconds, never blocks the UI
-                QTimer.singleShot(100, self._resume_active_job)
+            if self._resume_attempts <= 20:          # up to 10s (20 x 500ms), non-blocking
+                QTimer.singleShot(500, self._resume_active_job)
             else:
                 get_logger().warning("Old %s worker did not stop; resume skipped", self.kind)
+                self._paused_worker = None
+                if hasattr(old, "cancel"):
+                    try:
+                        old.cancel()
+                    except Exception:
+                        pass
+                self._on_worker_failed(job, "Download stalled and could not resume.")
             return
+
         self._resume_attempts = 0
         floor = self._active_job_last_pct
         self._paused_worker = None

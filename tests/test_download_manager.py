@@ -570,3 +570,74 @@ def test_normal_shutdown_preserves_active_job(tmp_path, sample_jobs, monkeypatch
     assert len(mgr2.waiting_jobs) == 1
     assert mgr2.waiting_jobs[0].job_id == job.job_id
 
+
+def test_flapping_network_does_not_spawn_multiple_workers(tmp_path, sample_jobs, monkeypatch):
+    """Rapid online/offline toggling must never start multiple workers simultaneously."""
+    from unittest.mock import MagicMock
+
+    mgr = DownloadManager(kind="video")
+    mgr._waiting_queue.clear()
+    mgr._active_job = None
+    mgr._queue_file = tmp_path / "queue_video.json"
+
+    started = []
+
+    def mock_start(job, floor_percent=0.0):
+        worker = MagicMock()
+        worker.isRunning.return_value = True
+        started.append((job, worker))
+        mgr._worker = worker
+
+    monkeypatch.setattr(mgr, "_start_worker", mock_start)
+
+    job = sample_jobs[0]
+    mgr.enqueue(job)
+    assert len(started) == 1
+
+    # Simulate flapping network
+    for _ in range(5):
+        mgr.set_online(False)
+        mgr.set_online(True)
+
+    # Since the worker is still marked as isRunning() == True, no second worker should be started
+    assert len(started) == 1, f"Expected 1 worker, but started {len(started)}"
+
+
+def test_resume_waits_for_old_worker_to_exit(tmp_path, sample_jobs, monkeypatch):
+    """When network returns, resume waits until old worker stops running before starting a new worker."""
+    from unittest.mock import MagicMock
+    from PySide6.QtCore import QTimer
+
+    mgr = DownloadManager(kind="video")
+    mgr._waiting_queue.clear()
+    mgr._active_job = None
+    mgr._queue_file = tmp_path / "queue_video.json"
+
+    callbacks = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
+
+    old_worker = MagicMock()
+    old_worker.isRunning.return_value = True
+
+    started = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, floor_percent=0.0: started.append(j))
+
+    job = sample_jobs[0]
+    mgr._active_job = job
+    mgr._worker = old_worker
+    mgr._is_offline = False
+
+    mgr.set_online(False)
+    assert old_worker.pause.called
+
+    mgr.set_online(True)
+    # Old worker is still running -> must NOT start new worker immediately
+    assert started == []
+    assert len(callbacks) == 1
+
+    # Once old worker reports isRunning() == False, running the callback resumes the job
+    old_worker.isRunning.return_value = False
+    callbacks[0]()
+    assert started == [job]
+
+

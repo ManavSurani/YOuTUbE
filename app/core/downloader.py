@@ -7,6 +7,8 @@ Phase 1 rewrite — fixes:
   B4: cleanup_temp_files() scanned user Downloads; now only cleans app-owned TMP_DIR.
 """
 
+import shutil
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +17,7 @@ from typing import List, Optional, Sequence
 from PySide6.QtCore import QThread, Signal
 
 from app.core.logger import get_logger
-from app.core.paths import BIN_DIR, DEFAULT_DOWNLOADS, TMP_DIR
+from app.core.paths import BIN_DIR, DEFAULT_DOWNLOADS, TMP_DIR, job_tmp_dir
 from app.core.proc import kill_tree, start_hidden
 
 # ---------------------------------------------------------------------------
@@ -131,14 +133,15 @@ def build_video_cmd(
 ) -> List[str]:
     """Build yt-dlp command for video download (always MKV, no --print)."""
     path_file = TMP_DIR / f"{job_id or 'tmp'}.path"
+    temp_dir = job_tmp_dir(job_id or "tmp")
     cmd = [
         get_ytdlp_path(),
         "--no-playlist",
         "--continue",
         "--newline",
         "--ffmpeg-location", str(BIN_DIR),
-        # App-owned temp folder for .part files (B4 fix)
-        "-P", f"temp:{TMP_DIR}",
+        # App-owned temp folder for .part files (Chunk 1.1: per-job subfolder)
+        "-P", f"temp:{temp_dir}",
         "-P", str(out_dir),
         # Output template: include video id so we can search by it (B3 fix)
         "-o", "%(title).100s [%(id)s] [%(height)sp].%(ext)s",
@@ -178,13 +181,14 @@ def build_audio_cmd(
 ) -> List[str]:
     """Build yt-dlp command for audio download (always embeds metadata + cover)."""
     path_file = TMP_DIR / f"{job_id or 'tmp'}.path"
+    temp_dir = job_tmp_dir(job_id or "tmp")
     cmd = [
         get_ytdlp_path(),
         "--no-playlist",
         "--continue",
         "--newline",
         "--ffmpeg-location", str(BIN_DIR),
-        "-P", f"temp:{TMP_DIR}",
+        "-P", f"temp:{temp_dir}",
         "-P", str(out_dir),
         "-o", "%(title)s [%(id)s].%(ext)s",
         "--windows-filenames",
@@ -524,14 +528,10 @@ class DownloadWorker(QThread):
             self.stage.emit("Done")
 
             final_path = resolve_final_path(self._path_file, self.video_id, self.out_dir)
-            # Clean up the .path file itself
-            try:
-                self._path_file.unlink(missing_ok=True)
-            except Exception as exc:
-                logger.debug(f"Could not unlink path file {self._path_file}: {exc}")
-
+            self._cleanup_job_tmp()
             self.finished.emit(final_path)
         else:
+            self._cleanup_job_tmp()
             raw_err = "\n".join(self._raw_lines[-20:])
             logger.error(f"yt-dlp exited {returncode}: {raw_err[-500:]}")
             self.failed.emit(raw_err)
@@ -551,21 +551,23 @@ class DownloadWorker(QThread):
         self._cleanup_job_tmp()
 
     def _cleanup_job_tmp(self) -> None:
-        """Remove only files in TMP_DIR that belong to this job (B4 fix).
+        """Remove only the job-specific temp folder and path file.
 
-        Never touches the user's Downloads folder.
+        Never scans or deletes files directly in root TMP_DIR.
         """
         logger = get_logger()
+        target_dir = job_tmp_dir(self.job_id)
+        if target_dir.exists() and target_dir.is_dir():
+            try:
+                shutil.rmtree(target_dir)
+            except Exception as exc:
+                try:
+                    time.sleep(0.5)
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                except Exception:
+                    logger.warning(f"Could not remove job temp folder {target_dir}: {exc}")
+
         try:
-            for f in TMP_DIR.iterdir():
-                if f.is_file() and (
-                    self.job_id in f.name
-                    or (self.video_id and self.video_id in f.name)
-                    or f.suffix in (".part", ".ytdl", ".tmp")
-                ):
-                    try:
-                        f.unlink(missing_ok=True)
-                    except Exception as exc:
-                        logger.warning(f"Could not delete tmp file {f}: {exc}")
+            self._path_file.unlink(missing_ok=True)
         except Exception as exc:
-            logger.warning(f"Temp cleanup failed: {exc}")
+            logger.debug(f"Could not unlink path file {self._path_file}: {exc}")

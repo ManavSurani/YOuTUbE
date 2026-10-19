@@ -21,6 +21,12 @@ APP_LOG_FILE  = LOG_FILE
 DEFAULT_DOWNLOADS = Path.home() / "Downloads"
 
 
+def job_tmp_dir(job_id: str) -> Path:
+    """Return a dedicated subfolder in TMP_DIR for this job."""
+    short = (job_id or "tmp").replace("-", "")[:12]
+    return TMP_DIR / short
+
+
 def ensure_dirs() -> None:
     """Ensure all required application directories exist."""
     APP_DATA.mkdir(parents=True, exist_ok=True)

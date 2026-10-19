@@ -23,7 +23,7 @@ from app.core.downloader import (
     parse_line,
     resolve_final_path,
 )
-from app.core.paths import BIN_DIR, TMP_DIR
+from app.core.paths import BIN_DIR, TMP_DIR, job_tmp_dir
 
 
 # ---------------------------------------------------------------------------
@@ -59,10 +59,12 @@ class TestBuildVideoCmd:
         assert "--print-to-file" in cmd
 
     def test_uses_tmp_dir(self):
-        """B4 fix: temp dir must be app-owned TMP_DIR, not user Downloads."""
+        """Chunk 1.1: temp dir must be job-specific subfolder, never the bare TMP_DIR."""
         cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
-        tmp_flag = f"temp:{TMP_DIR}"
-        assert any(tmp_flag in arg for arg in cmd)
+        expected = f"temp:{job_tmp_dir('j1')}"
+        bare = f"temp:{TMP_DIR}"
+        assert any(expected in arg for arg in cmd)
+        assert not any(arg == bare for arg in cmd)
 
     def test_has_progress_template_with_marker(self):
         """B2 fix: template must contain YTPROG marker, not bare 'download:'."""
@@ -169,6 +171,14 @@ class TestBuildAudioCmd:
         for fmt in ("best", "mp3", "opus", "flac", "m4a"):
             cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", fmt=fmt, job_id="j2")
             assert "--embed-metadata" in cmd, f"--embed-metadata missing for fmt={fmt}"
+
+    def test_audio_uses_job_tmp_dir(self):
+        """Chunk 1.1: audio temp dir must be job-specific subfolder, never the bare TMP_DIR."""
+        cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2")
+        expected = f"temp:{job_tmp_dir('j2')}"
+        bare = f"temp:{TMP_DIR}"
+        assert any(expected in arg for arg in cmd)
+        assert not any(arg == bare for arg in cmd)
 
 
 # ---------------------------------------------------------------------------
@@ -343,9 +353,11 @@ class TestSafeCancel:
         monkeypatch.setattr(paths_mod, "TMP_DIR", fake_tmp)
         monkeypatch.setattr(dl_mod, "TMP_DIR", fake_tmp)
 
-        # Simulate a .part file in the app tmp
+        # Simulate a .part file in the job-specific app tmp
         job_id = "test-job-001"
-        app_part = fake_tmp / f"{job_id}_clip.mkv.part"
+        job_dir = paths_mod.job_tmp_dir(job_id)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        app_part = job_dir / f"{job_id}_clip.mkv.part"
         app_part.write_text("partial")
 
         # Simulate an unrelated .part file in user Downloads (different tmp_path subfolder)
@@ -361,10 +373,71 @@ class TestSafeCancel:
         )
         worker._cleanup_job_tmp()
 
-        # App tmp file should be gone
+        # Job temp folder and file should be gone
         assert not app_part.exists()
+        assert not job_dir.exists()
         # User downloads file must be untouched
         assert user_part.exists(), "B4: cancel must NOT delete files outside TMP_DIR"
+
+    def test_job_tmp_dir_deterministic_and_unique(self):
+        """Chunk 1.1: job_tmp_dir returns unique subfolder per job and deterministic for same job."""
+        d1 = job_tmp_dir("job-alpha-001")
+        d2 = job_tmp_dir("job-beta-002")
+        d3 = job_tmp_dir("job-alpha-001")
+        assert d1 != d2
+        assert d1 == d3
+        assert d1.parent == TMP_DIR
+        assert len(d1.name) <= 12
+
+    def test_cleanup_job_tmp_removes_only_own_dir_and_never_scans_root(self, tmp_path, monkeypatch):
+        """Chunk 1.1: cleanup removes only its own folder and .path file without touching another job's folder or scanning root."""
+        import app.core.paths as paths_mod
+        import app.core.downloader as dl_mod
+
+        fake_tmp = tmp_path / "app_tmp"
+        fake_tmp.mkdir()
+        monkeypatch.setattr(paths_mod, "TMP_DIR", fake_tmp)
+        monkeypatch.setattr(dl_mod, "TMP_DIR", fake_tmp)
+
+        # Job 1 setup
+        dir1 = paths_mod.job_tmp_dir("job-1")
+        dir1.mkdir(parents=True, exist_ok=True)
+        part1 = dir1 / "vid.mp4.part"
+        part1.write_text("job1 data")
+        path1 = fake_tmp / "job-1.path"
+        path1.write_text("final_path_1")
+
+        # Job 2 setup
+        dir2 = paths_mod.job_tmp_dir("job-2")
+        dir2.mkdir(parents=True, exist_ok=True)
+        part2 = dir2 / "aud.webm.part"
+        part2.write_text("job2 data")
+        path2 = fake_tmp / "job-2.path"
+        path2.write_text("final_path_2")
+
+        # Guard: monkeypatch iterdir on root TMP_DIR so scanning root causes an error
+        orig_iterdir = Path.iterdir
+        def guarded_iterdir(self_path):
+            if self_path.resolve() == fake_tmp.resolve():
+                raise AssertionError("Root TMP_DIR must NOT be scanned by _cleanup_job_tmp!")
+            return orig_iterdir(self_path)
+        monkeypatch.setattr(Path, "iterdir", guarded_iterdir)
+
+        worker = DownloadWorker(
+            cmd=["echo", "test"],
+            out_dir=tmp_path / "Downloads",
+            job_id="job-1",
+        )
+        worker._cleanup_job_tmp()
+
+        # Job 1 folder and path file must be deleted
+        assert not dir1.exists()
+        assert not path1.exists()
+
+        # Job 2 folder and part file must be completely untouched
+        assert dir2.exists()
+        assert part2.exists()
+        assert path2.exists()
 
 
 # ---------------------------------------------------------------------------

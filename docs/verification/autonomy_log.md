@@ -40,3 +40,22 @@
 - **Result:** PASS
 - **Repair Rounds:** 1 (re-entrant lock deadlock resolved with `threading.RLock`).
 
+## Phase 3: Network Flapping and Download Stall Watchdog
+- **Date:** 2026-10-20
+- **Plan:** `plan/13_PHASE_3_network_and_watchdog.md` (committed as `0d562a2`)
+- **Commits:**
+  - `fixLOOP.3.1: network flapping debounce and worker collision guard` (`6743b4a`)
+  - `fixLOOP.3.2: download stall watchdog with retry limit` (`ca8a302`)
+- **Verification:**
+  - Verified `set_online(online)` debouncing prevents redundant triggers on flapping networks in `tests/test_download_manager.py`.
+  - Verified worker collision guard waits for old worker to exit and avoids double-spawning.
+  - Verified background watchdog thread detects silence > timeout, triggers process termination and restarts download via `--continue`.
+  - Verified watchdog suppresses triggers during `"Merging"` and `"Merging formats"` stages.
+  - Verified watchdog enforces 3-stall retry limit with friendly error emission.
+  - Scope check: `python tools/check_scope.py --baseline cdfed4e --final` passed (0 protected files touched).
+  - All Phase 3 tests passed (113/113 passed across manager, downloader, and lanes).
+  - Requirements matrix: Rows S3 and S4 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0
+
+

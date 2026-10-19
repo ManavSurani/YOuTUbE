@@ -8,6 +8,7 @@ Phase 1 rewrite — fixes:
 """
 
 import shutil
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -392,6 +393,7 @@ class DownloadWorker(QThread):
         is_dual_stream: bool = True,
         duration_seconds: int = 0,
         floor_percent: float = 0.0,
+        stall_timeout_seconds: float = 60.0,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -402,6 +404,9 @@ class DownloadWorker(QThread):
         self.is_dual_stream = is_dual_stream
         self.duration_seconds = max(0, int(duration_seconds or 0))
         self.floor_percent = max(0.0, min(99.9, float(floor_percent or 0.0)))
+        self.stall_timeout_seconds = max(0.05, float(stall_timeout_seconds or 60.0))
+        self._current_stage = ""
+        self._stalled      = False
         self._proc         = None
         self._is_cancelled = False
         self._is_paused    = False
@@ -414,127 +419,179 @@ class DownloadWorker(QThread):
         logger = get_logger()
         logger.info(f"Starting download [{self.job_id}]: {' '.join(self.cmd[:4])}...")
         self.stage.emit("Starting…")
+        self._current_stage = "Starting…"
 
-        try:
-            self._proc = start_hidden(self.cmd)
-        except Exception as exc:
-            logger.error(f"Failed to launch yt-dlp: {exc}")
-            self.failed.emit(str(exc))
-            return
-
-        # Track stream type and whole-job totals
+        # Track stream type and whole-job totals across potential stall restarts
         _finished_bytes: int = 0
         _last_total_used: int = 0
         overall_done: int = 0
         overall_total: int = 0
+        stall_count: int = 0
 
-        for line in self._proc.stdout:
-            line_str = line.rstrip("\n\r")
-            if not line_str.strip():
-                continue
+        while not self._is_cancelled and not self._is_paused:
+            try:
+                self._proc = start_hidden(self.cmd)
+            except Exception as exc:
+                logger.error(f"Failed to launch yt-dlp: {exc}")
+                self.failed.emit(str(exc))
+                return
 
-            logger.info(line_str)
-            self._raw_lines.append(line_str)
+            last_output_time = [time.time()]
+            watchdog_stop = threading.Event()
+            self._stalled = False
 
-            if self._is_cancelled or self._is_paused:
-                break
+            def _watchdog_loop() -> None:
+                while not watchdog_stop.is_set():
+                    if watchdog_stop.wait(0.05):
+                        break
+                    if self._is_cancelled or self._is_paused:
+                        break
+                    is_merging = "merg" in self._current_stage.lower()
+                    if is_merging:
+                        continue
+                    elapsed = time.time() - last_output_time[0]
+                    if elapsed > self.stall_timeout_seconds:
+                        logger.warning(
+                            f"Download stall detected ({elapsed:.1f}s without output) in stage '{self._current_stage}'"
+                        )
+                        self._stalled = True
+                        if self._proc:
+                            try:
+                                kill_tree(self._proc)
+                            except Exception as kill_err:
+                                logger.debug(f"Watchdog kill_tree error: {kill_err}")
+                        break
 
-            parsed = parse_line(line_str)
+            watchdog_thread = threading.Thread(target=_watchdog_loop, daemon=True)
+            watchdog_thread.start()
 
-            if parsed.kind == "progress" and parsed.progress:
-                p = parsed.progress
+            for line in self._proc.stdout:
+                last_output_time[0] = time.time()
+                line_str = line.rstrip("\n\r")
+                if not line_str.strip():
+                    continue
 
-                # Update finished_bytes when video finishes
-                if p.status == "finished" and p.stage == "Downloading video" and self.is_dual_stream:
-                    _finished_bytes = max(_finished_bytes, p.done_bytes or p.total_bytes)
+                logger.info(line_str)
+                self._raw_lines.append(line_str)
 
-                # Remaining estimate for audio while video stream is running (~13,000 B/s guess)
-                if self.is_dual_stream and p.stage == "Downloading video":
-                    remaining_estimate = int(self.duration_seconds * 13000) if self.duration_seconds > 0 else 0
-                else:
-                    remaining_estimate = 0
+                if self._is_cancelled or self._is_paused:
+                    break
 
-                # Calculate whole-job done and total
-                if self.is_dual_stream:
-                    if p.stage == "Downloading audio":
-                        overall_done = _finished_bytes + p.done_bytes
-                        overall_total = _finished_bytes + (p.total_bytes if p.total_bytes > 0 else p.done_bytes)
+                parsed = parse_line(line_str)
+
+                if parsed.kind == "progress" and parsed.progress:
+                    p = parsed.progress
+                    self._current_stage = p.stage
+
+                    # Update finished_bytes when video finishes
+                    if p.status == "finished" and p.stage == "Downloading video" and self.is_dual_stream:
+                        _finished_bytes = max(_finished_bytes, p.done_bytes or p.total_bytes)
+
+                    # Remaining estimate for audio while video stream is running (~13,000 B/s guess)
+                    if self.is_dual_stream and p.stage == "Downloading video":
+                        remaining_estimate = int(self.duration_seconds * 13000) if self.duration_seconds > 0 else 0
+                    else:
+                        remaining_estimate = 0
+
+                    # Calculate whole-job done and total
+                    if self.is_dual_stream:
+                        if p.stage == "Downloading audio":
+                            overall_done = _finished_bytes + p.done_bytes
+                            overall_total = _finished_bytes + (p.total_bytes if p.total_bytes > 0 else p.done_bytes)
+                        else:
+                            overall_done = p.done_bytes
+                            overall_total = (p.total_bytes + remaining_estimate) if p.total_bytes > 0 else 0
                     else:
                         overall_done = p.done_bytes
-                        overall_total = (p.total_bytes + remaining_estimate) if p.total_bytes > 0 else 0
-                else:
-                    overall_done = p.done_bytes
-                    overall_total = p.total_bytes
+                        overall_total = p.total_bytes
 
-                # Never total < done
-                if overall_total > 0 and overall_total < overall_done:
-                    overall_total = overall_done
+                    # Never total < done
+                    if overall_total > 0 and overall_total < overall_done:
+                        overall_total = overall_done
 
-                # Calculate percent
-                # A dual-stream job cannot reach 99.9 until the audio stream finishes
-                stream_cap = 95.0 if (self.is_dual_stream and p.stage == "Downloading video") else 99.9
-                if overall_total > 0:
-                    pct = (overall_done / overall_total * 100.0)
-                    pct = min(stream_cap, pct)
-                else:
-                    pct = 0.0
-
-                # Latch rule (25% rule)
-                if p.is_exact or p.status == "finished":
-                    overall = max(self._max_percent, pct)
+                    # Calculate percent
+                    stream_cap = 95.0 if (self.is_dual_stream and p.stage == "Downloading video") else 99.9
                     if overall_total > 0:
-                        _last_total_used = overall_total
-                else:
-                    if overall_total > 0:
-                        if _last_total_used > 0:
-                            ratio = abs(overall_total - _last_total_used) / _last_total_used
-                            if ratio > 0.25:
-                                overall = pct
+                        pct = (overall_done / overall_total * 100.0)
+                        pct = min(stream_cap, pct)
+                    else:
+                        pct = 0.0
+
+                    # Latch rule (25% rule)
+                    if p.is_exact or p.status == "finished":
+                        overall = max(self._max_percent, pct)
+                        if overall_total > 0:
+                            _last_total_used = overall_total
+                    else:
+                        if overall_total > 0:
+                            if _last_total_used > 0:
+                                ratio = abs(overall_total - _last_total_used) / _last_total_used
+                                if ratio > 0.25:
+                                    overall = pct
+                                else:
+                                    overall = max(self._max_percent, pct)
                             else:
                                 overall = max(self._max_percent, pct)
+                            _last_total_used = overall_total
                         else:
-                            overall = max(self._max_percent, pct)
-                        _last_total_used = overall_total
-                    else:
-                        overall = self._max_percent
+                            overall = self._max_percent
 
-                overall = max(self.floor_percent, overall)
-                overall = min(stream_cap, max(0.0, overall))
-                self._max_percent = overall
-                self.stage.emit(p.stage)
-                self.progress.emit(overall, p.speed, p.eta, overall_done, overall_total)
+                    overall = max(self.floor_percent, overall)
+                    overall = min(stream_cap, max(0.0, overall))
+                    self._max_percent = overall
+                    self.stage.emit(p.stage)
+                    self.progress.emit(overall, p.speed, p.eta, overall_done, overall_total)
 
-            elif parsed.kind == "stage" and parsed.stage:
-                self.stage.emit(parsed.stage)
-                if parsed.stage == "Merging":
-                    self._max_percent = min(99.9, max(self._max_percent, 95.0))
-                    self.progress.emit(self._max_percent, "", "", overall_done, overall_total)
+                elif parsed.kind == "stage" and parsed.stage:
+                    self._current_stage = parsed.stage
+                    self.stage.emit(parsed.stage)
+                    if parsed.stage == "Merging":
+                        self._max_percent = min(99.9, max(self._max_percent, 95.0))
+                        self.progress.emit(self._max_percent, "", "", overall_done, overall_total)
 
-        self._proc.wait()
-        returncode = self._proc.returncode
+            watchdog_stop.set()
+            watchdog_thread.join(timeout=1.0)
 
-        if self._is_cancelled:
-            self._cleanup_job_tmp()
-            return
+            self._proc.wait()
+            returncode = self._proc.returncode
 
-        if self._is_paused:
-            self.stage.emit("Waiting for internet…")
-            self.paused.emit()
-            return
+            if self._is_cancelled:
+                self._cleanup_job_tmp()
+                return
 
-        if returncode == 0:
-            self._max_percent = 100.0
-            self.progress.emit(100.0, "", "", overall_done, overall_total)
-            self.stage.emit("Done")
+            if self._is_paused:
+                self.stage.emit("Waiting for internet…")
+                self.paused.emit()
+                return
 
-            final_path = resolve_final_path(self._path_file, self.video_id, self.out_dir)
-            self._cleanup_job_tmp()
-            self.finished.emit(final_path)
-        else:
-            self._cleanup_job_tmp()
-            raw_err = "\n".join(self._raw_lines[-20:])
-            logger.error(f"yt-dlp exited {returncode}: {raw_err[-500:]}")
-            self.failed.emit(raw_err)
+            if self._stalled:
+                stall_count += 1
+                if stall_count >= 3:
+                    self._cleanup_job_tmp()
+                    err_msg = "Download stalled repeatedly. Please check your internet connection."
+                    logger.error(err_msg)
+                    self.failed.emit(err_msg)
+                    return
+                self.stage.emit("Download stalled. Reconnecting…")
+                logger.info(f"Stall #{stall_count}/3: restarting download via --continue...")
+                time.sleep(0.1)
+                continue
+
+            if returncode == 0:
+                self._max_percent = 100.0
+                self.progress.emit(100.0, "", "", overall_done, overall_total)
+                self.stage.emit("Done")
+
+                final_path = resolve_final_path(self._path_file, self.video_id, self.out_dir)
+                self._cleanup_job_tmp()
+                self.finished.emit(final_path)
+                return
+            else:
+                self._cleanup_job_tmp()
+                raw_err = "\n".join(self._raw_lines[-20:])
+                logger.error(f"yt-dlp exited {returncode}: {raw_err[-500:]}")
+                self.failed.emit(raw_err)
+                return
 
     def pause(self) -> None:
         """Pause download by terminating the process WITHOUT deleting .part files."""

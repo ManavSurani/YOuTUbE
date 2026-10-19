@@ -902,6 +902,141 @@ def test_mid_video_resume_progresses_smoothly_above_floor(monkeypatch):
     assert emitted[1] == 50.0
 
 
+def test_stall_watchdog_triggers_after_timeout(monkeypatch, tmp_path):
+    """Watchdog terminates a process that outputs nothing for stall_timeout_seconds and restarts."""
+    import time
+
+    class StallingProc:
+        def __init__(self, should_stall: bool):
+            self.should_stall = should_stall
+            self.killed = False
+            self.returncode = -9 if should_stall else 0
+
+        @property
+        def stdout(self):
+            if self.should_stall:
+                yield "[download] YTPROG|downloading|1000|10000|NA|1000|10|av01|none\n"
+                # Stall: wait until killed or 1s
+                for _ in range(20):
+                    if self.killed:
+                        break
+                    time.sleep(0.05)
+            else:
+                yield "[download] YTPROG|finished|10000|10000|NA|1000|0|av01|none\n"
+
+        def wait(self):
+            return self.returncode
+
+    attempts = []
+
+    def mock_start(cmd):
+        proc = StallingProc(should_stall=(len(attempts) == 0))
+        attempts.append(proc)
+        return proc
+
+    def mock_kill(proc):
+        proc.killed = True
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", mock_start)
+    monkeypatch.setattr("app.core.downloader.kill_tree", mock_kill)
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "final.mkv"))
+
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, stall_timeout_seconds=0.15)
+    stages = []
+    worker.stage.connect(lambda s: stages.append(s))
+    finished = []
+    worker.finished.connect(lambda p: finished.append(p))
+
+    worker.run()
+
+    assert len(attempts) == 2, "Expected initial attempt to stall and second attempt to run"
+    assert attempts[0].killed is True, "First stalling attempt should have been killed by watchdog"
+    assert any("stall" in s.lower() for s in stages), f"Expected stall stage notification, got {stages}"
+    assert len(finished) == 1
+
+
+def test_stall_watchdog_does_not_trigger_during_merging(monkeypatch, tmp_path):
+    """Watchdog must NEVER trigger during the Merging / Merging formats stage."""
+    import time
+
+    class MergingProc:
+        def __init__(self):
+            self.killed = False
+            self.returncode = 0
+
+        @property
+        def stdout(self):
+            yield "[Merger] Merging formats into 'out.mkv'\n"
+            # Simulate long ffmpeg merge without output (longer than stall_timeout_seconds)
+            time.sleep(0.3)
+            yield "[download] Done\n"
+
+        def wait(self):
+            return self.returncode
+
+    proc = MergingProc()
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: proc)
+    monkeypatch.setattr("app.core.downloader.kill_tree", lambda p: setattr(p, "killed", True))
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "final.mkv"))
+
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, stall_timeout_seconds=0.1)
+    stages = []
+    worker.stage.connect(lambda s: stages.append(s))
+    finished = []
+    worker.finished.connect(lambda p: finished.append(p))
+
+    worker.run()
+
+    assert proc.killed is False, "Process must not be killed during merging"
+    assert not any("stall" in s.lower() for s in stages)
+    assert len(finished) == 1
+
+
+def test_stall_watchdog_max_retries(monkeypatch, tmp_path):
+    """When a download stalls repeatedly (3 times), worker fails with connection error."""
+    import time
+
+    class EndlessStallProc:
+        def __init__(self):
+            self.killed = False
+            self.returncode = -9
+
+        @property
+        def stdout(self):
+            yield "[download] YTPROG|downloading|1000|10000|NA|1000|10|av01|none\n"
+            for _ in range(25):
+                if self.killed:
+                    break
+                time.sleep(0.02)
+
+        def wait(self):
+            return self.returncode
+
+    procs = []
+
+    def mock_start(cmd):
+        p = EndlessStallProc()
+        procs.append(p)
+        return p
+
+    def mock_kill(proc):
+        proc.killed = True
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", mock_start)
+    monkeypatch.setattr("app.core.downloader.kill_tree", mock_kill)
+
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, stall_timeout_seconds=0.08)
+    failed_reasons = []
+    worker.failed.connect(lambda err: failed_reasons.append(err))
+
+    worker.run()
+
+    assert len(procs) == 3, f"Expected 3 stalled attempts before failing, got {len(procs)}"
+    assert len(failed_reasons) == 1
+    assert "stalled repeatedly" in failed_reasons[0].lower()
+
+
+
 
 
 

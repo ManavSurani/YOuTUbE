@@ -14,5 +14,7 @@ This log records every approved file modification permitted during the autonomou
 | `app/core/paths.py` | Phase 2 (Chunk 2.2) | Update `purge_stale_tmp` to inspect dict-format queue files (`active_job` + `waiting_queue`) | Approved in prompt Section 1.1 & Section 5 Chunk 2.2 |
 | `app/core/download_manager.py` | Phase 3 (Chunk 3.1) | Flapping network debouncer, worker collision guard on resume, and active job zombie prevention | Approved in prompt Section 1.1 & Section 5 Chunk 3.1 |
 | `app/core/downloader.py` | Phase 3 (Chunk 3.2) | Download stall watchdog detecting 60s silence, skipping merge, restarting via --continue with 3-retry limit | Approved in prompt Section 1.1 & Section 5 Chunk 3.2 |
+| `app/core/downloader.py` | Phase 4 (Chunk 4.1) | Dynamic detection of combined single stream formats, uncap from 95%, and upgrade audio estimate to 17000 B/s | Approved in prompt Section 1.1 & Section 5 Chunk 4.1 |
+
 
 

@@ -15,3 +15,5 @@ This log records every test that was replaced or updated during the autonomous f
 | `test_restored_same_video_id_pair_starts_one_and_defers_other` | `test_restored_same_video_id_pair_starts_both_in_parallel` | Phase 1 (Chunk 1.3) | Prompt Phase 1 Chunk 1.3: restored same-video jobs run in parallel across lanes |
 | `test_queue_row_deferred_status_text` | `test_queue_row_waiting_status_text` | Phase 1 (Chunk 1.3) | Prompt Phase 1 Chunk 1.3: 'Waiting for the same video to finish' status text removed |
 | `test_queue.py` (`_deferred_job_ids.clear()`) | `test_queue.py` (without `_deferred_job_ids`) | Phase 1 (Chunk 1.3) | Prompt Phase 1 Chunk 1.3: `_deferred_job_ids` attribute removed |
+| `test_audio_guess_replaced_by_real_total_within_25_percent_rule` (expected ~83.2% with 13000 B/s) | `test_audio_guess_replaced_by_real_total_within_25_percent_rule` (expected ~79.1% with 17000 B/s) | Phase 4 (Chunk 4.1) | Prompt Section 5 Phase 4 Chunk 4.1 requirement: audio estimate upgraded from 13000 to 17000 B/s (~136 kbps) to match YouTube Opus streams |
+

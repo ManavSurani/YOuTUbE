@@ -736,9 +736,9 @@ def test_audio_guess_replaced_by_real_total_within_25_percent_rule(monkeypatch):
     worker.progress.connect(lambda pct, spd, eta, done, tot: emitted.append((pct, done, tot)))
     worker.run()
 
-    # 1. Video finished: ~83.2% (500 MB / 600.8 MB)
+    # 1. Video finished: ~79.1% (500 MB / 631.85 MB with 17,000 B/s Opus estimate)
     p1, d1, t1 = emitted[0]
-    assert 82.0 <= p1 <= 84.0
+    assert 78.0 <= p1 <= 80.5
     assert d1 == 500000000
 
     # 2. Audio arrives: overall_done = 501 MB, overall_total = 597.37 MB -> ~83.8%
@@ -1034,6 +1034,44 @@ def test_stall_watchdog_max_retries(monkeypatch, tmp_path):
     assert len(procs) == 3, f"Expected 3 stalled attempts before failing, got {len(procs)}"
     assert len(failed_reasons) == 1
     assert "stalled repeatedly" in failed_reasons[0].lower()
+
+
+def test_single_format_not_capped_at_95(monkeypatch, tmp_path):
+    """When a single combined format (both vcodec and acodec) downloads, progress is not capped at 95%."""
+    # Line contains both vcodec (avc1) and acodec (mp4a)
+    lines = [
+        "[download] YTPROG|downloading|980000|1000000|NA|100000|5|avc1.4d401e|mp4a.40.2\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, out):
+            self.stdout = out
+            self.returncode = 0
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "comb.mp4"))
+
+    # Started with is_dual_stream=True (as DownloadManager does for all video jobs)
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, is_dual_stream=True, duration_seconds=120)
+    percents = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: percents.append(pct))
+
+    worker.run()
+
+    assert worker.is_dual_stream is False, "Combined format should automatically switch is_dual_stream to False"
+    assert percents[0] == 98.0, f"Expected 98.0%, but got capped at {percents[0]}%"
+    assert percents[-1] == 100.0
+
+
+def test_audio_estimate_closer_to_real_audio_size():
+    """Audio estimate uses 17000 B/s (~136 kbps) matching standard YouTube Opus audio."""
+    worker = DownloadWorker(["dummy"], duration_seconds=600, is_dual_stream=True)
+    # 600s * 17000 B/s = 10,200,000 bytes (~9.7 MB)
+    est = int(worker.duration_seconds * 17000)
+    assert est == 10_200_000
+
 
 
 

@@ -62,6 +62,8 @@ class ProgressInfo:
     stage: str           # "Downloading video" | "Downloading audio" | "Merging" | ...
     is_exact: bool = False
     status: str = "downloading"
+    vcodec: str = ""
+    acodec: str = ""
 
 
 @dataclass
@@ -270,9 +272,13 @@ def parse_line(line: str) -> ParsedOutput:
 
             vcodec = parts[6].strip() if len(parts) > 6 else ""
             acodec = parts[7].strip() if len(parts) > 7 else ""
-            if vcodec and vcodec.lower() not in ("none", "na", ""):
+            has_v = bool(vcodec and vcodec.lower() not in ("none", "na", ""))
+            has_a = bool(acodec and acodec.lower() not in ("none", "na", ""))
+            if has_v and has_a:
+                stage = "Downloading"
+            elif has_v:
                 stage = "Downloading video"
-            elif acodec and acodec.lower() not in ("none", "na", ""):
+            elif has_a:
                 stage = "Downloading audio"
             else:
                 stage = "Downloading"
@@ -288,6 +294,8 @@ def parse_line(line: str) -> ParsedOutput:
                     stage=stage,
                     is_exact=is_exact,
                     status=status,
+                    vcodec=vcodec,
+                    acodec=acodec,
                 ),
             )
 
@@ -483,13 +491,19 @@ class DownloadWorker(QThread):
                     p = parsed.progress
                     self._current_stage = p.stage
 
+                    # Chunk 4.1: Dynamic detection of single combined stream vs dual stream
+                    has_v = bool(p.vcodec and p.vcodec.lower() not in ("none", "na", ""))
+                    has_a = bool(p.acodec and p.acodec.lower() not in ("none", "na", ""))
+                    if has_v and has_a:
+                        self.is_dual_stream = False
+
                     # Update finished_bytes when video finishes
                     if p.status == "finished" and p.stage == "Downloading video" and self.is_dual_stream:
                         _finished_bytes = max(_finished_bytes, p.done_bytes or p.total_bytes)
 
-                    # Remaining estimate for audio while video stream is running (~13,000 B/s guess)
+                    # Remaining estimate for audio while video stream is running (17,000 B/s Opus estimate)
                     if self.is_dual_stream and p.stage == "Downloading video":
-                        remaining_estimate = int(self.duration_seconds * 13000) if self.duration_seconds > 0 else 0
+                        remaining_estimate = int(self.duration_seconds * 17000) if self.duration_seconds > 0 else 0
                     else:
                         remaining_estimate = 0
 

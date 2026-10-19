@@ -1,0 +1,25 @@
+# Autonomous Requirement Matrix
+
+| ID | Requirement Description | Status | Evidence | Fixed in Commit |
+|---|---|---|---|---|
+| **B1** | Video and audio of the same link run at the same time (test + experiment) | NOT STARTED | Pending Phase 1 | Pending |
+| **B2** | Cancelling or finishing one job never deletes the other job's files; purge handles job folders | NOT STARTED | Pending Phase 1 | Pending |
+| **A1** | Total size within 5% of the real file at 5%, 50% and 95% | NOT STARTED | Pending Phase 4 | Pending |
+| **A2** | Bar never goes backwards and never freezes in the audio stage | NOT STARTED | Pending Phase 4 | Pending |
+| **A3** | Single combined format is not capped at 95% | NOT STARTED | Pending Phase 4 | Pending |
+| **A4** | Resume keeps the finished video bytes; ETA is whole-job | NOT STARTED | Pending Phase 4 | Pending |
+| **C1** | Speed decision documented with alternating measurements; code matches the decision | NOT STARTED | Pending Phase 5 | Pending |
+| **S1** | Queue files are written atomically; corrupt files are handled | NOT STARTED | Pending Phase 2 | Pending |
+| **S2** | Active job survives quit, crash and kill; restart limit works; user Cancel removes it | NOT STARTED | Pending Phase 2 | Pending |
+| **S3** | Rapid online/offline toggling never leaves a stuck or double worker | NOT STARTED | Pending Phase 3 | Pending |
+| **S4** | Stall watchdog restarts a silent download and never during merging | NOT STARTED | Pending Phase 3 | Pending |
+| **E1** | The 14 error samples map to the texts in Phase 6 | NOT STARTED | Pending Phase 6 | Pending |
+| **U1** | Labels that show web data are plain text | NOT STARTED | Pending Phase 7 | Pending |
+| **T1** | Tool downloads are verified or rejected (fail closed where a checksum source exists) | NOT STARTED | Pending Phase 8 | Pending |
+| **T2** | Installer no longer runs unverified downloads (may be UNTESTED) | NOT STARTED | Pending Phase 8 | Pending |
+| **T3** | Requirements are pinned | NOT STARTED | Pending Phase 8 | Pending |
+| **T4** | Thumbnail download is capped at 5 MB | NOT STARTED | Pending Phase 8 | Pending |
+| **G1** | Full suite passes with no --ignore (only the known pre-existing failure allowed) | NOT STARTED | Baseline 429 passing | Pending |
+| **G2** | Scope proof clean; files in 1.2 untouched | NOT STARTED | Scope check | Pending |
+| **G3** | No print( and no shell=True in app/ | NOT STARTED | Grep check | Pending |
+| **G4** | No colour, theme or layout changes | NOT STARTED | Review check | Pending |

@@ -437,3 +437,136 @@ def test_atomic_write_json_failure_preserves_original(tmp_path, monkeypatch):
     # Temp files must be cleaned up
     temp_files = list(tmp_path.glob("*.tmp.*"))
     assert len(temp_files) == 0
+
+
+def test_active_job_persisted_and_restored_on_crash_or_exit(tmp_path, sample_jobs, monkeypatch):
+    import json
+    qfile = tmp_path / "queue_video.json"
+
+    mgr = DownloadManager(kind="video")
+    mgr._waiting_queue.clear()
+    mgr._active_job = None
+    mgr._queue_file = qfile
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: None)
+
+    job = sample_jobs[0]
+    mgr.enqueue(job)
+    assert mgr.active_job is not None
+    assert mgr.active_job.job_id == job.job_id
+
+    # Check that queue_video.json persisted active_job
+    raw = json.loads(qfile.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    assert raw["active_job"] is not None
+    assert raw["active_job"]["job_id"] == job.job_id
+
+    # Simulate app crash/restart by instantiating new manager from same file
+    mgr2 = DownloadManager(kind="video")
+    mgr2._waiting_queue.clear()
+    mgr2._active_job = None
+    mgr2._queue_file = qfile
+    monkeypatch.setattr(mgr2, "_start_worker", lambda j: None)
+
+    mgr2._load_persisted_queue()
+    # Active job restored to waiting queue at index 0
+    assert len(mgr2.waiting_jobs) == 1
+    assert mgr2.waiting_jobs[0].job_id == job.job_id
+    assert mgr2._restart_counts.get(job.job_id) == 1
+
+    # start_restored_jobs resumes it
+    mgr2.set_online(True)
+    mgr2.start_restored_jobs()
+    assert mgr2.active_job is not None
+    assert mgr2.active_job.job_id == job.job_id
+
+
+def test_active_job_restart_limit_moves_to_failed(tmp_path, sample_jobs, monkeypatch):
+    import json
+    qfile = tmp_path / "queue_video.json"
+
+    job = sample_jobs[0]
+    job_dict = {
+        "job_id": job.job_id,
+        "url": job.url,
+        "video_id": job.video_id,
+        "title": job.title,
+        "kind": "video",
+        "restart_count": 3,
+    }
+    qfile.write_text(json.dumps({"active_job": job_dict, "waiting_queue": []}), encoding="utf-8")
+
+    mgr = DownloadManager(kind="video")
+    mgr._waiting_queue.clear()
+    mgr._active_job = None
+    mgr._queue_file = qfile
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: None)
+
+    mgr._load_persisted_queue()
+    assert len(mgr.waiting_jobs) == 0
+    assert job.job_id in mgr._failed_jobs
+    failed_job, reason = mgr._failed_jobs[job.job_id]
+    assert "interrupted repeatedly" in reason.lower()
+
+
+def test_user_cancel_active_job_cleared_from_persistence(tmp_path, sample_jobs, monkeypatch):
+    import json
+    qfile = tmp_path / "queue_video.json"
+
+    mgr = DownloadManager(kind="video")
+    mgr._waiting_queue.clear()
+    mgr._active_job = None
+    mgr._queue_file = qfile
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: None)
+
+    job = sample_jobs[0]
+    mgr.enqueue(job)
+    assert mgr.active_job is not None
+
+    mgr.cancel_active()
+    assert mgr.active_job is None
+
+    raw = json.loads(qfile.read_text(encoding="utf-8"))
+    assert raw["active_job"] is None
+
+    # Restart app
+    mgr2 = DownloadManager(kind="video")
+    mgr2._waiting_queue.clear()
+    mgr2._active_job = None
+    mgr2._queue_file = qfile
+    mgr2._load_persisted_queue()
+
+    assert mgr2.active_job is None
+    assert len(mgr2.waiting_jobs) == 0
+
+
+def test_normal_shutdown_preserves_active_job(tmp_path, sample_jobs, monkeypatch):
+    import json
+    qfile = tmp_path / "queue_video.json"
+
+    mgr = DownloadManager(kind="video")
+    mgr._waiting_queue.clear()
+    mgr._active_job = None
+    mgr._queue_file = qfile
+    monkeypatch.setattr(mgr, "_start_worker", lambda j: None)
+
+    job = sample_jobs[0]
+    mgr.enqueue(job)
+    assert mgr.active_job is not None
+
+    mgr.shutdown()
+
+    raw = json.loads(qfile.read_text(encoding="utf-8"))
+    assert raw["active_job"] is not None
+    assert raw["active_job"]["job_id"] == job.job_id
+
+    # Restart
+    mgr2 = DownloadManager(kind="video")
+    mgr2._waiting_queue.clear()
+    mgr2._active_job = None
+    mgr2._queue_file = qfile
+    monkeypatch.setattr(mgr2, "_start_worker", lambda j: None)
+
+    mgr2._load_persisted_queue()
+    assert len(mgr2.waiting_jobs) == 1
+    assert mgr2.waiting_jobs[0].job_id == job.job_id
+

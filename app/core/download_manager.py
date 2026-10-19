@@ -22,10 +22,10 @@ from app.core.paths import APP_DATA, DEFAULT_DOWNLOADS
 from app.core.settings import load_settings
 
 
-_atomic_write_lock = threading.Lock()
+_atomic_write_lock = threading.RLock()
 
 
-def _atomic_write_json(path: Path, data: Any, lock: Optional[threading.Lock] = None) -> None:
+def _atomic_write_json(path: Path, data: Any, lock: Optional[threading.RLock] = None) -> None:
     """Write data to path as JSON atomically using a temporary file and os.replace.
 
     Flushes and fsyncs before replacement. Thread-safe under lock.
@@ -80,7 +80,8 @@ class DownloadManager(QObject):
         self._failed_forced_job_ids: Set[str] = set()
         self._active_job_last_pct: float = 0.0
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
-        self._lane_lock = threading.Lock()
+        self._lane_lock = threading.RLock()
+        self._restart_counts: Dict[str, int] = {}
 
         self._load_persisted_queue()
 
@@ -150,6 +151,7 @@ class DownloadManager(QObject):
                 self._worker = None
             self._active_job_last_pct = 0.0
             self._active_job = None
+            self._save_persisted_queue()
             self.job_cancelled.emit(job)
             self.queue_changed.emit()
             # Start next item after cancel and wake other lane
@@ -178,7 +180,7 @@ class DownloadManager(QObject):
             self.queue_changed.emit()
 
     def shutdown(self) -> None:
-        """Stop running worker without starting next waiting job; keep waiting jobs persisted."""
+        """Stop running worker without starting next waiting job; keep active and waiting jobs persisted."""
         self._is_shutting_down = True
         self._force_overwrite_job_ids.clear()
         self._running_forced_job_ids.clear()
@@ -188,9 +190,6 @@ class DownloadManager(QObject):
                 self._worker.cancel()
             except Exception as exc:
                 get_logger().debug(f"Worker cancel error during shutdown: {exc}")
-        if self._active_job:
-            self._active_job = None
-            self.queue_changed.emit()
         self._save_persisted_queue()
 
     def retry_job(self, job_id: str) -> None:
@@ -255,8 +254,8 @@ class DownloadManager(QObject):
             return
 
         job = self._waiting_queue.pop(0)
-        self._save_persisted_queue()
         self._active_job = job
+        self._save_persisted_queue()
         self.job_started.emit(job)
         self.queue_changed.emit()
         self._start_worker(job)
@@ -361,6 +360,7 @@ class DownloadManager(QObject):
         self._active_job_last_pct = 0.0
         self._worker = None
         self._active_job = None
+        self._save_persisted_queue()
         self._completed_jobs.append((job, final_path))
 
         # Save to history automatically via HistoryService (Phase 2)
@@ -432,6 +432,7 @@ class DownloadManager(QObject):
         self._active_job_last_pct = 0.0
         self._worker = None
         self._active_job = None
+        self._save_persisted_queue()
         self._failed_jobs[job.job_id] = (job, friendly_reason)
 
         self.job_failed.emit(job, friendly_reason)
@@ -440,71 +441,117 @@ class DownloadManager(QObject):
         # Multi-path wake up both lanes
         self._wake_all_lanes()
 
-    def _save_persisted_queue(self) -> None:
-        """Persist waiting jobs to queue.json."""
+    def _serialize_job(self, j: Optional[DownloadJob]) -> Optional[Dict[str, Any]]:
+        if not j:
+            return None
+        return {
+            "job_id": j.job_id,
+            "url": j.url,
+            "video_id": j.video_id,
+            "title": j.title,
+            "channel": j.channel,
+            "duration_seconds": j.duration_seconds,
+            "thumbnail_url": j.thumbnail_url,
+            "kind": j.kind,
+            "quality_label": j.quality_label,
+            "height": j.height,
+            "audio_format": j.audio_format,
+            "output_dir": j.output_dir,
+            "created_at": j.created_at,
+            "restart_count": self._restart_counts.get(j.job_id, 0),
+        }
+
+    def _deserialize_job(self, item: Dict[str, Any]) -> Optional[DownloadJob]:
+        if not isinstance(item, dict):
+            return None
+        item_kind = item.get("kind", "video")
+        if item_kind != self.kind:
+            get_logger().debug(f"Skipping item {item.get('job_id')} with kind {item_kind} in {self.kind} lane")
+            return None
         try:
-            data = [
-                {
-                    "job_id": j.job_id,
-                    "url": j.url,
-                    "video_id": j.video_id,
-                    "title": j.title,
-                    "channel": j.channel,
-                    "duration_seconds": j.duration_seconds,
-                    "thumbnail_url": j.thumbnail_url,
-                    "kind": j.kind,
-                    "quality_label": j.quality_label,
-                    "height": j.height,
-                    "audio_format": j.audio_format,
-                    "output_dir": j.output_dir,
-                    "created_at": j.created_at,
-                }
-                for j in self._waiting_queue
-            ]
+            return DownloadJob(
+                job_id=item["job_id"],
+                url=item["url"],
+                video_id=item["video_id"],
+                title=item["title"],
+                channel=item.get("channel", ""),
+                duration_seconds=int(item.get("duration_seconds", 0)),
+                thumbnail_url=item.get("thumbnail_url", ""),
+                thumbnail_bytes=None,
+                kind=item_kind,
+                quality_label=item.get("quality_label", "Best"),
+                height=item.get("height"),
+                audio_format=item.get("audio_format"),
+                output_dir=item.get("output_dir", ""),
+                created_at=item.get("created_at", ""),
+            )
+        except Exception as exc:
+            get_logger().warning(f"Failed to deserialize job {item}: {exc}")
+            return None
+
+    def _save_persisted_queue(self) -> None:
+        """Persist active and waiting jobs to queue_<kind>.json."""
+        try:
+            data = {
+                "active_job": self._serialize_job(self._active_job),
+                "waiting_queue": [self._serialize_job(j) for j in self._waiting_queue if j],
+            }
             _atomic_write_json(self._queue_file, data, lock=self._lane_lock)
         except Exception as exc:
             get_logger().debug(f"Failed to persist queue: {exc}")
 
     def _load_persisted_queue(self) -> None:
-        """Restore waiting jobs from queue_<kind>.json."""
+        """Restore waiting jobs and any interrupted active job from queue_<kind>.json."""
         if not self._queue_file.is_file():
             return
         try:
             raw = self._queue_file.read_text(encoding="utf-8")
             data = json.loads(raw)
-            for item in data:
-                item_kind = item.get("kind", "video")
-                if item_kind != self.kind:
-                    get_logger().debug(f"Skipping item {item.get('job_id')} with kind {item_kind} in {self.kind} lane")
-                    continue
-                job = DownloadJob(
-                    job_id=item["job_id"],
-                    url=item["url"],
-                    video_id=item["video_id"],
-                    title=item["title"],
-                    channel=item.get("channel", ""),
-                    duration_seconds=int(item.get("duration_seconds", 0)),
-                    thumbnail_url=item.get("thumbnail_url", ""),
-                    thumbnail_bytes=None,
-                    kind=item_kind,
-                    quality_label=item.get("quality_label", "Best"),
-                    height=item.get("height"),
-                    audio_format=item.get("audio_format"),
-                    output_dir=item.get("output_dir", ""),
-                    created_at=item.get("created_at", ""),
-                )
-                self._waiting_queue.append(job)
+
+            active_dict = None
+            waiting_list = []
+
+            if isinstance(data, dict):
+                active_dict = data.get("active_job")
+                waiting_list = data.get("waiting_queue", [])
+            elif isinstance(data, list):
+                waiting_list = data
+
+            if active_dict and isinstance(active_dict, dict):
+                active_job = self._deserialize_job(active_dict)
+                if active_job:
+                    restart_count = int(active_dict.get("restart_count", 0))
+                    if restart_count < 3:
+                        self._restart_counts[active_job.job_id] = restart_count + 1
+                        self._waiting_queue.append(active_job)
+                        get_logger().info(
+                            f"Restored interrupted active job '{active_job.title}' to head of queue (restart {restart_count + 1}/3)"
+                        )
+                    else:
+                        reason = "Download interrupted repeatedly; cancelled"
+                        self._failed_jobs[active_job.job_id] = (active_job, reason)
+                        get_logger().warning(
+                            f"Job '{active_job.title}' exceeded restart limit ({restart_count}); moved to failed"
+                        )
+
+            for item in waiting_list:
+                job = self._deserialize_job(item)
+                if job:
+                    self._restart_counts[job.job_id] = int(item.get("restart_count", 0))
+                    self._waiting_queue.append(job)
+
+            self._save_persisted_queue()
             get_logger().info(f"Restored {len(self._waiting_queue)} queued downloads from queue_{self.kind}.json.")
         except Exception as exc:
             get_logger().debug(f"Failed to load persisted queue: {exc}")
 
 
 _managers: Dict[str, DownloadManager] = {}
-_migration_lock = threading.Lock()
+_migration_lock = threading.RLock()
 
 
 def migrate_legacy_queue_if_needed(app_data_dir: Optional[Path] = None) -> None:
-    """Migrate legacy queue.json to queue_video.json and queue_audio.json safely under threading.Lock."""
+    """Migrate legacy queue.json to queue_video.json and queue_audio.json safely under threading.RLock."""
     with _migration_lock:
         target_dir = app_data_dir if app_data_dir is not None else APP_DATA
         legacy_file = target_dir / "queue.json"

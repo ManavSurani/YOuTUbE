@@ -55,13 +55,20 @@ def purge_stale_tmp(max_age_days: int = 7) -> None:
                 raw = q_file.read_text(encoding="utf-8").strip()
                 if raw:
                     items = json.loads(raw)
-                    if isinstance(items, list):
-                        for item in items:
-                            if isinstance(item, dict):
-                                jid = item.get("job_id") or item.get("id") or ""
-                                if jid:
-                                    protected_names.add(jid)
-                                    protected_names.add(jid.replace("-", "")[:12])
+                    job_list = []
+                    if isinstance(items, dict):
+                        if items.get("active_job"):
+                            job_list.append(items["active_job"])
+                        job_list.extend(items.get("waiting_queue", []))
+                    elif isinstance(items, list):
+                        job_list = items
+
+                    for item in job_list:
+                        if isinstance(item, dict):
+                            jid = item.get("job_id") or item.get("id") or ""
+                            if jid:
+                                protected_names.add(jid)
+                                protected_names.add(jid.replace("-", "")[:12])
             except Exception as exc:
                 from app.core.logger import get_logger
                 get_logger().debug(f"Could not read {q_file} during purge: {exc}")

@@ -28,7 +28,6 @@ def reset_lanes():
         mgr._waiting_queue.clear()
         mgr._failed_jobs.clear()
         mgr._active_job = None
-        mgr._deferred_job_ids.clear()
     yield
     for k in ("video", "audio"):
         mgr = get_download_manager(k)
@@ -37,7 +36,6 @@ def reset_lanes():
         mgr._waiting_queue.clear()
         mgr._failed_jobs.clear()
         mgr._active_job = None
-        mgr._deferred_job_ids.clear()
 
 
 def test_video_queue_sequential_and_remove(tmp_path, monkeypatch):

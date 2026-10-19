@@ -236,8 +236,6 @@ def _setup_lanes(tmp_path, monkeypatch):
     a_mgr._waiting_queue.clear()
     v_mgr._active_job = None
     a_mgr._active_job = None
-    v_mgr._deferred_job_ids.clear()
-    a_mgr._deferred_job_ids.clear()
     v_mgr._queue_file = tmp_path / "queue_video.json"
     a_mgr._queue_file = tmp_path / "queue_audio.json"
     monkeypatch.setattr(v_mgr, "_start_worker", lambda j: None)
@@ -245,8 +243,8 @@ def _setup_lanes(tmp_path, monkeypatch):
     return v_mgr, a_mgr
 
 
-def test_same_video_id_deferral(tmp_path, monkeypatch):
-    """Enqueueing video X and audio X simultaneously defers audio X and keeps video X active."""
+def test_same_video_id_parallel_execution(tmp_path, monkeypatch):
+    """Enqueueing video X and audio X with same video_id runs both in parallel simultaneously."""
     v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
 
     job_v = _make_job("v1", "video", "same_vid")
@@ -257,13 +255,14 @@ def test_same_video_id_deferral(tmp_path, monkeypatch):
 
     assert v_mgr.active_job is not None
     assert v_mgr.active_job.job_id == "v1"
-    assert a_mgr.active_job is None
-    assert "a1" in a_mgr.deferred_job_ids()
-    assert len(a_mgr.waiting_jobs) == 1
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a1"
+    assert len(v_mgr.waiting_jobs) == 0
+    assert len(a_mgr.waiting_jobs) == 0
 
 
-def test_strict_fifo_preserved_when_deferred(tmp_path, monkeypatch):
-    """Later jobs in the same lane must not jump ahead of a deferred job."""
+def test_parallel_lanes_with_internal_fifo(tmp_path, monkeypatch):
+    """Both lanes run active jobs in parallel while waiting jobs follow strict FIFO in their own lane."""
     v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
 
     job_v = _make_job("v1", "video", "same_vid")
@@ -274,15 +273,14 @@ def test_strict_fifo_preserved_when_deferred(tmp_path, monkeypatch):
     a_mgr.enqueue(job_a1)
     a_mgr.enqueue(job_a2)
 
-    assert a_mgr.active_job is None
-    assert "a1" in a_mgr.deferred_job_ids()
-    assert len(a_mgr.waiting_jobs) == 2
-    assert a_mgr.waiting_jobs[0].job_id == "a1"
-    assert a_mgr.waiting_jobs[1].job_id == "a2"
+    assert v_mgr.active_job is not None and v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
+    assert len(a_mgr.waiting_jobs) == 1
+    assert a_mgr.waiting_jobs[0].job_id == "a2"
 
 
-def test_wake_both_lanes_on_finish(tmp_path, monkeypatch):
-    """When video X finishes, deferred audio X wakes up and starts immediately."""
+def test_parallel_lanes_independent_finish(tmp_path, monkeypatch):
+    """Finishing a job in one lane does not affect the active job in the other lane."""
     v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
 
     job_v = _make_job("v1", "video", "same_vid")
@@ -290,19 +288,19 @@ def test_wake_both_lanes_on_finish(tmp_path, monkeypatch):
     v_mgr.enqueue(job_v)
     a_mgr.enqueue(job_a)
 
-    assert a_mgr.active_job is None
+    assert v_mgr.active_job is not None and v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
+
     file_v = tmp_path / "v1.mkv"
     file_v.write_bytes(b"content")
     v_mgr._on_worker_finished(job_v, str(file_v))
 
     assert v_mgr.active_job is None
-    assert a_mgr.active_job is not None
-    assert a_mgr.active_job.job_id == "a1"
-    assert "a1" not in a_mgr.deferred_job_ids()
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
 
 
-def test_wake_both_lanes_on_cancel_active(tmp_path, monkeypatch):
-    """Cancelling active video X immediately wakes up deferred audio X."""
+def test_parallel_lanes_independent_cancel(tmp_path, monkeypatch):
+    """Cancelling active video X does not disturb parallel audio X."""
     v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
 
     job_v = _make_job("v1", "video", "same_vid")
@@ -310,17 +308,17 @@ def test_wake_both_lanes_on_cancel_active(tmp_path, monkeypatch):
     v_mgr.enqueue(job_v)
     a_mgr.enqueue(job_a)
 
-    assert a_mgr.active_job is None
+    assert v_mgr.active_job is not None and v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
+
     v_mgr.cancel_active()
 
     assert v_mgr.active_job is None
-    assert a_mgr.active_job is not None
-    assert a_mgr.active_job.job_id == "a1"
-    assert "a1" not in a_mgr.deferred_job_ids()
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
 
 
-def test_wake_both_lanes_on_fail(tmp_path, monkeypatch):
-    """Failing active video X immediately wakes up deferred audio X."""
+def test_parallel_lanes_independent_fail(tmp_path, monkeypatch):
+    """Failing active video X does not disturb parallel audio X."""
     v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
 
     job_v = _make_job("v1", "video", "same_vid")
@@ -328,17 +326,17 @@ def test_wake_both_lanes_on_fail(tmp_path, monkeypatch):
     v_mgr.enqueue(job_v)
     a_mgr.enqueue(job_a)
 
-    assert a_mgr.active_job is None
+    assert v_mgr.active_job is not None and v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
+
     v_mgr._on_worker_failed(job_v, "ERROR: Private video")
 
     assert v_mgr.active_job is None
-    assert a_mgr.active_job is not None
-    assert a_mgr.active_job.job_id == "a1"
-    assert "a1" not in a_mgr.deferred_job_ids()
+    assert a_mgr.active_job is not None and a_mgr.active_job.job_id == "a1"
 
 
-def test_wake_both_lanes_on_deferred_removal(tmp_path, monkeypatch):
-    """Removing deferred job allows next waiting job in the lane to start."""
+def test_parallel_lanes_queue_removal(tmp_path, monkeypatch):
+    """Cancelling a waiting job in audio lane while both lanes are actively running."""
     v_mgr, a_mgr = _setup_lanes(tmp_path, monkeypatch)
 
     job_v = _make_job("v1", "video", "same_vid")
@@ -348,11 +346,14 @@ def test_wake_both_lanes_on_deferred_removal(tmp_path, monkeypatch):
     a_mgr.enqueue(job_a1)
     a_mgr.enqueue(job_a2)
 
-    assert a_mgr.active_job is None
-    a_mgr.cancel_job("a1")
+    assert v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job.job_id == "a1"
+    assert len(a_mgr.waiting_jobs) == 1
 
-    assert a_mgr.active_job is not None
-    assert a_mgr.active_job.job_id == "a2"
+    a_mgr.cancel_job("a2")
+    assert len(a_mgr.waiting_jobs) == 0
+    assert v_mgr.active_job.job_id == "v1"
+    assert a_mgr.active_job.job_id == "a1"
 
 
 def test_two_thread_simultaneous_history_save(tmp_path, monkeypatch):
@@ -532,8 +533,8 @@ def test_restored_waiting_items_do_not_start_when_offline_until_reconnect(tmp_pa
     assert a_started == ["a_restored"]
 
 
-def test_restored_same_video_id_pair_starts_one_and_defers_other(tmp_path, monkeypatch):
-    """A restored same-video-id pair starts one and defers the other."""
+def test_restored_same_video_id_pair_starts_both_in_parallel(tmp_path, monkeypatch):
+    """A restored same-video-id pair starts both lanes in parallel simultaneously."""
     from dataclasses import asdict
     import json
     import app.core.download_manager as dm_mod
@@ -557,11 +558,11 @@ def test_restored_same_video_id_pair_starts_one_and_defers_other(tmp_path, monke
     v_mgr.start_restored_jobs()
     a_mgr.start_restored_jobs()
 
-    # Video started first, audio was deferred
+    # Both video and audio start simultaneously in parallel
     assert v_mgr.active_job is not None
     assert v_mgr.active_job.job_id == "v_shared"
-    assert a_mgr.active_job is None
-    assert "a_shared" in a_mgr.deferred_job_ids()
+    assert a_mgr.active_job is not None
+    assert a_mgr.active_job.job_id == "a_shared"
 
 
 def test_set_online_true_when_already_online_does_not_duplicate_worker(tmp_path, monkeypatch):

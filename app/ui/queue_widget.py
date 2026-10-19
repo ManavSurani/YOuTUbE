@@ -49,27 +49,15 @@ class QueueRow(QWidget):
         target_job = self.job
         manager = get_download_manager(target_job.kind)
 
-        deferred_ids = set()
-        if hasattr(manager, "deferred_job_ids"):
-            try:
-                deferred_ids = manager.deferred_job_ids()
-            except Exception:
-                deferred_ids = set()
-
         if can_retry or failure_reason is not None:
             cleaned_reason = failure_reason.strip() if (failure_reason and isinstance(failure_reason, str)) else ""
             display_reason = cleaned_reason if cleaned_reason else "Something went wrong"
             status_text = f"Failed: {display_reason}"
             status_color = status_color or "#FF4E45"
         elif status_text is None:
-            if target_job.job_id in deferred_ids:
-                status_text = "Waiting for the same video to finish"
-            else:
-                status_text = "Waiting"
+            status_text = "Waiting"
             status_color = status_color or "#AAAAAA"
         else:
-            if status_text == "Waiting" and target_job.job_id in deferred_ids:
-                status_text = "Waiting for the same video to finish"
             status_color = status_color or ("#FF4E45" if "Failed" in status_text else "#AAAAAA")
 
         self.setFixedHeight(58)

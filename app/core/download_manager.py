@@ -41,7 +41,6 @@ class DownloadManager(QObject):
         self._failed_jobs: Dict[str, Tuple[DownloadJob, str]] = {}
         self._completed_jobs: List[Tuple[DownloadJob, str]] = []
         self._repaired_jobs: set = set()
-        self._deferred_job_ids: Set[str] = set()
         self._is_offline = False
         self._is_shutting_down = False
         self._paused_worker = None
@@ -53,10 +52,6 @@ class DownloadManager(QObject):
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
 
         self._load_persisted_queue()
-
-    def deferred_job_ids(self) -> Set[str]:
-        """Return the set of job IDs that are currently deferred due to cross-lane same video_id conflict."""
-        return set(self._deferred_job_ids)
 
     def _get_other_manager(self) -> Optional["DownloadManager"]:
         """Lazy lookup for the other lane manager without construction recursion."""
@@ -141,7 +136,6 @@ class DownloadManager(QObject):
         for i, job in enumerate(self._waiting_queue):
             if job.job_id == job_id:
                 removed = self._waiting_queue.pop(i)
-                self._deferred_job_ids.discard(job_id)
                 self._save_persisted_queue()
                 self.job_cancelled.emit(removed)
                 self.queue_changed.emit()
@@ -225,23 +219,9 @@ class DownloadManager(QObject):
         self._start_worker(job, floor_percent=floor)
 
     def _process_next(self) -> None:
-        """Start the next waiting job if one is available and not deferred."""
+        """Start the next waiting job if one is available."""
         if self._is_shutting_down or self._active_job or not self._waiting_queue or self._is_offline:
             return
-
-        head = self._waiting_queue[0]
-        other_mgr = self._get_other_manager()
-        other_active = other_mgr.active_job if other_mgr else None
-
-        if other_active and other_active.video_id and other_active.video_id == head.video_id:
-            if head.job_id not in self._deferred_job_ids:
-                self._deferred_job_ids.add(head.job_id)
-                self.queue_changed.emit()
-            return
-
-        if head.job_id in self._deferred_job_ids:
-            self._deferred_job_ids.discard(head.job_id)
-            self.queue_changed.emit()
 
         job = self._waiting_queue.pop(0)
         self._save_persisted_queue()

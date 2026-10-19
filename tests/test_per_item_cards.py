@@ -51,12 +51,10 @@ def test_queue_row_has_progress_bar(qapp):
     assert row.progress_bar.height() == 6
 
 
-def test_queue_row_deferred_status_text(qapp, monkeypatch):
-    job = make_test_job(job_id="job_def_1", title="Deferred Video")
-    manager = get_download_manager("video")
-    monkeypatch.setattr(manager, "deferred_job_ids", lambda: {"job_def_1"})
+def test_queue_row_waiting_status_text(qapp):
+    job = make_test_job(job_id="job_def_1", title="Waiting Video")
     row = QueueRow(job=job)
-    assert "Waiting for the same video to finish" in row.status_lbl.text()
+    assert row.status_lbl.text() == "Waiting"
 
 
 def test_queue_row_failed_state(qapp):

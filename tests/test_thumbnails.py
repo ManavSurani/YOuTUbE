@@ -1,4 +1,6 @@
 from pathlib import Path
+import io
+import urllib.request
 from PySide6.QtGui import QGuiApplication, QPixmap
 import pytest
 
@@ -6,6 +8,7 @@ from app.core.history_db import HistoryItem, add_item, init_db
 from app.core.thumbnails import (
     create_fallback_pixmap,
     delete_thumbnail_if_unreferenced,
+    fetch_thumbnail_remote,
     get_rounded_pixmap,
     save_thumbnail,
 )
@@ -79,3 +82,34 @@ def test_thumbnail_shared_reference_retention(tmp_path: Path, monkeypatch):
     deleted_now = delete_thumbnail_if_unreferenced("shared_vid", db_path=db_path)
     assert deleted_now is True
     assert not Path(thumb_path).exists()
+
+
+def test_thumbnail_download_size_capped_at_5mb(tmp_path: Path, monkeypatch):
+    """Chunk 8.3: Thumbnails exceeding 5 MB must be discarded and return None (T4)."""
+    import app.core.thumbnails as thumb_mod
+    monkeypatch.setattr(thumb_mod, "THUMBS_DIR", tmp_path)
+
+    # Case 1: Oversized response (> 5 MB)
+    large_payload = b"X" * 5_000_001
+    class FakeOversizedResponse(io.BytesIO):
+        status = 200
+        def read(self, amt=None):
+            return super().read(amt)
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=5: FakeOversizedResponse(large_payload))
+    res_large = fetch_thumbnail_remote("too_large_vid")
+    assert res_large is None
+    assert not (tmp_path / "too_large_vid.jpg").exists()
+
+    # Case 2: Normal response (<= 5 MB)
+    normal_payload = b"\xff\xd8\xff\xe0" + b"N" * 2000
+    class FakeNormalResponse(io.BytesIO):
+        status = 200
+        def read(self, amt=None):
+            return super().read(amt)
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=5: FakeNormalResponse(normal_payload))
+    res_normal = fetch_thumbnail_remote("normal_vid")
+    assert res_normal is not None
+    assert (tmp_path / "normal_vid.jpg").exists()
+    assert (tmp_path / "normal_vid.jpg").stat().st_size == len(normal_payload)

@@ -50,7 +50,10 @@ def fetch_thumbnail_remote(video_id: str) -> Optional[str]:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
-                data = resp.read()
+                data = resp.read(5_000_001)
+                if len(data) > 5_000_000:
+                    logger.warning(f"Thumbnail for {video_id} exceeded 5 MB cap; discarded.")
+                    return None
                 return save_thumbnail(video_id, data)
     except Exception as exc:
         logger.debug(f"Could not re-fetch remote thumbnail for {video_id}: {exc}")

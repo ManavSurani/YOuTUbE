@@ -224,9 +224,10 @@ def test_install_tool_checksum_mismatch_deletes_and_fails(tmp_path: Path, monkey
     assert not (tmp_path / "fake-tool.download.tmp").exists()
 
 
-def test_install_tool_checksum_missing_installs_with_warning(tmp_path: Path, monkeypatch):
-    """Chunk 10.1: Missing/unreachable checksum file still allows install with warning."""
+def test_install_tool_checksum_missing_fails_closed(tmp_path: Path, monkeypatch):
+    """Chunk 8.1: Missing/unreachable checksum source fails closed and rejects unverified download."""
     import urllib.request
+    import urllib.error
     from app.core.tool_manager import install_tool
 
     data = b"executable_without_checksum_file"
@@ -241,17 +242,52 @@ def test_install_tool_checksum_missing_installs_with_warning(tmp_path: Path, mon
     }
     monkeypatch.setattr("app.core.tool_manager.get_tools_manifest", lambda: manifest)
 
+    retry_count = [0]
     def mock_urlopen(req, timeout=30):
         url = req.full_url if hasattr(req, "full_url") else str(req)
         if "SHA256SUMS_404" in url:
+            retry_count[0] += 1
             raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        return FakeResponse(data, headers={"Content-Length": str(len(data))})
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+    verify_called = []
+    monkeypatch.setattr("app.core.tool_manager.verify_tool", lambda tf, bd: verify_called.append(tf) or True)
+
+    monkeypatch.setattr("time.sleep", lambda s: None)
+
+    success = install_tool("fake-tool", bin_dir=tmp_path)
+    assert success is False
+    assert retry_count[0] == 3, f"Expected 3 retries, got {retry_count[0]}"
+    assert not (tmp_path / "fake-tool.exe").exists()
+    assert not (tmp_path / "fake-tool.download.tmp").exists()
+    assert len(verify_called) == 0, "verify_tool (--version) must never run on unverified binary"
+
+
+def test_install_tool_no_checksum_source_installs_with_warning(tmp_path: Path, monkeypatch):
+    """Chunk 8.1: Tools without checksum_url source in manifest keep existing warning behaviour."""
+    import urllib.request
+    from app.core.tool_manager import install_tool
+
+    data = b"executable_with_no_checksum_source"
+
+    manifest = {
+        "fake-tool-no-hash": {
+            "url": "https://example.com/fake-tool-no-hash.exe",
+            "type": "exe",
+            "target_files": ["fake-tool-no-hash.exe"],
+        }
+    }
+    monkeypatch.setattr("app.core.tool_manager.get_tools_manifest", lambda: manifest)
+
+    def mock_urlopen(req, timeout=30):
         return FakeResponse(data, headers={"Content-Length": str(len(data))})
 
     monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
     monkeypatch.setattr("app.core.tool_manager.verify_tool", lambda tf, bd: True)
 
-    success = install_tool("fake-tool", bin_dir=tmp_path)
+    success = install_tool("fake-tool-no-hash", bin_dir=tmp_path)
     assert success is True
-    assert (tmp_path / "fake-tool.exe").exists()
-    assert (tmp_path / "fake-tool.exe").read_bytes() == data
+    assert (tmp_path / "fake-tool-no-hash.exe").exists()
+    assert (tmp_path / "fake-tool-no-hash.exe").read_bytes() == data
 

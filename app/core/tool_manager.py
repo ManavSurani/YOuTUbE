@@ -13,32 +13,38 @@ from app.core.logger import get_logger
 REQUIRED_TOOLS = ["yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "deno.exe"]
 
 
-def fetch_expected_checksum(checksum_url: str, filename: str) -> Optional[str]:
-    """Fetch publisher checksum file and parse SHA-256 for target filename."""
-    try:
-        req = urllib.request.Request(checksum_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            content = resp.read().decode("utf-8", errors="replace")
+def fetch_expected_checksum(checksum_url: str, filename: str, retries: int = 3) -> Optional[str]:
+    """Fetch publisher checksum file and parse SHA-256 for target filename with retries."""
+    import time
+    backoffs = [1.0, 2.0, 4.0]
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(checksum_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                content = resp.read().decode("utf-8", errors="replace")
 
-        target_name = Path(filename).name.lower()
-        for line in content.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split()
-            if len(parts) >= 2:
-                h = parts[0].strip().lower()
-                fn = Path(parts[-1].strip().lstrip("*")).name.lower()
-                if len(h) == 64 and fn == target_name:
-                    return h
-                fn_first = Path(parts[0].strip().lstrip("*")).name.lower()
-                h_last = parts[-1].strip().lower()
-                if len(h_last) == 64 and fn_first == target_name:
-                    return h_last
-            elif len(parts) == 1 and len(parts[0].strip()) == 64:
-                return parts[0].strip().lower()
-    except Exception as exc:
-        get_logger().warning(f"Could not fetch checksum from {checksum_url}: {exc}")
+            target_name = Path(filename).name.lower()
+            for line in content.strip().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    h = parts[0].strip().lower()
+                    fn = Path(parts[-1].strip().lstrip("*")).name.lower()
+                    if len(h) == 64 and fn == target_name:
+                        return h
+                    fn_first = Path(parts[0].strip().lstrip("*")).name.lower()
+                    h_last = parts[-1].strip().lower()
+                    if len(h_last) == 64 and fn_first == target_name:
+                        return h_last
+                elif len(parts) == 1 and len(parts[0].strip()) == 64:
+                    return parts[0].strip().lower()
+            return None
+        except Exception as exc:
+            get_logger().warning(f"Attempt {attempt + 1} failed fetching checksum from {checksum_url}: {exc}")
+            if attempt < retries - 1:
+                time.sleep(backoffs[attempt] if attempt < len(backoffs) else 1.0)
     return None
 
 
@@ -128,19 +134,22 @@ def install_tool(
             temp_file.unlink(missing_ok=True)
             return False
 
-        # Chunk 10.1: Check publisher checksum if configured (U5)
+        # Chunk 8.1: Fail-closed checksum verification with 3 retries (T1)
         checksum_url = entry.get("checksum_url")
         if checksum_url:
             download_filename = Path(url).name
-            expected_hash = fetch_expected_checksum(checksum_url, download_filename)
-            if expected_hash:
-                if not verify_checksum(temp_file, expected_hash):
-                    get_logger().error(f"Checksum mismatch for {tool_key}. Download deleted.")
-                    temp_file.unlink(missing_ok=True)
-                    return False
-                get_logger().info(f"Checksum verified for {tool_key}.")
-            else:
-                get_logger().warning(f"Checksum could not be retrieved for {tool_key}; proceeding with installation.")
+            expected_hash = fetch_expected_checksum(checksum_url, download_filename, retries=3)
+            if not expected_hash:
+                get_logger().error(f"Could not verify the download for {tool_key}. Checksum unavailable.")
+                temp_file.unlink(missing_ok=True)
+                return False
+            if not verify_checksum(temp_file, expected_hash):
+                get_logger().error(f"Could not verify the download for {tool_key}. Checksum mismatch. Download deleted.")
+                temp_file.unlink(missing_ok=True)
+                return False
+            get_logger().info(f"Checksum verified for {tool_key}.")
+        else:
+            get_logger().warning(f"No checksum source defined for {tool_key}; proceeding with installation.")
 
         if file_type == "exe":
             target_path = target_dir / target_files[0]

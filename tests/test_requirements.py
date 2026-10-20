@@ -1,4 +1,4 @@
-"""Test that all required dependencies are installed and importable."""
+"""Test that all required dependencies are installed, pinned, and importable."""
 
 from pathlib import Path
 
@@ -8,9 +8,14 @@ def test_requirements_dependencies_importable():
     assert req_file.exists()
     lines = [line.strip().lower() for line in req_file.read_text().splitlines() if line.strip()]
 
-    assert "pywin32" in lines
-    assert "pyside6" in lines
-    assert "send2trash" in lines
+    pkg_names = [line.split("==")[0].strip() for line in lines]
+    assert "pywin32" in pkg_names
+    assert "pyside6" in pkg_names
+    assert "send2trash" in pkg_names
+
+    # Verify that all dependencies are pinned (T3)
+    for line in lines:
+        assert "==" in line, f"Dependency line '{line}' is not pinned with =="
 
     # Verify imports
     import PySide6

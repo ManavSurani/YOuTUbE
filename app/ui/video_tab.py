@@ -331,7 +331,10 @@ class ThumbnailLoader(QThread):
         try:
             req = urllib.request.Request(self.url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as resp:
-                data = resp.read()
+                data = resp.read(5_000_001)
+                if len(data) > 5_000_000:
+                    get_logger().warning('Thumbnail exceeded 5 MB cap; discarded.')
+                    return
             self.loaded.emit(data)
         except Exception as exc:
             get_logger().debug(f"Thumbnail load failed: {exc}")

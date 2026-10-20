@@ -23,5 +23,8 @@ This log records every test that was replaced or updated during the autonomous f
 | `test_network_error` (asserted 'No internet connection.') | `test_network_error` (asserts 'The internet connection was interrupted. Check your connection and press Retry.') | Phase 6 | Prompt Phase 6 requirement: friendly network retry message |
 | `test_unknown_error_fallback` (asserted 'Something went wrong. Copy the details and try again.') | `test_unknown_error_fallback` (asserts 'Something went wrong. Open Settings and press Export log to see the details.') | Phase 6 | Prompt Phase 6 requirement: remove mention of non-existent 'Copy details' button and guide user to Settings Export log |
 | (None) | `test_14_audit_error_samples` (parameterized test across 14 audit error cases) | Phase 6 | Prompt Phase 6 requirement: verify 14 error samples from audit map to specified friendly texts |
+| `test_install_tool_checksum_missing_installs_with_warning` | `test_install_tool_checksum_missing_fails_closed` & `test_install_tool_no_checksum_source_installs_with_warning` | Phase 8 (Chunk 8.1) | Prompt Phase 8 Chunk 8.1 requirement: missing/unavailable checksum source must fail closed and reject unverified download after 3 retries |
+| `test_requirements_dependencies_importable` (checked unpinned names in lines) | `test_requirements_dependencies_importable` (checks package names before `==` and asserts all lines are pinned with `==`) | Phase 8 (Chunk 8.4) | Prompt Phase 8 Chunk 8.4 requirement (T3): pin exact dependency versions in requirements.txt |
+
 
 

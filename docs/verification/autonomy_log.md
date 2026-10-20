@@ -58,4 +58,24 @@
 - **Result:** PASS
 - **Repair Rounds:** 0
 
+## Phase 4: Progress Numbers, Whole-Job Total, and Combined Formats
+- **Status:** COMPLETED
+- **Plan:** `plan/14_PHASE_4_accurate_progress.md`
+- **Commits:**
+  - `c1ffce0`: `fixLOOP.4.1: dynamic stream detection and improved audio estimate`
+  - `83daaae`: `fixLOOP.4.2: monotonic progress and seamless stream transition`
+  - `efca492`: `fixLOOP.4.3: verified progress numbers within 5% tolerance`
+- **Verification Details:**
+  - Dynamic combined format detection in `DownloadWorker` sets `is_dual_stream = False` and uncaps stream from 95% to 99.9% (verified in `test_single_format_not_capped_at_95`).
+  - Audio estimate upgraded from 13,000 to 17,000 B/s (~136 kbps Opus) (verified in `test_audio_estimate_closer_to_real_audio_size`).
+  - Strict progress monotonicity enforced: progress bar never goes backwards (verified with 1,532 real progress line replay and unit tests).
+  - Smooth audio interpolation prevents progress freezes at video-to-audio transitions.
+  - Resume restores finished video bytes from temp directory scanning and `initial_done_bytes` from manager.
+  - Replay verification on 3 real test links confirmed total size error <= 1.19% at 5%, 50%, and 95% (well within 5% tolerance).
+  - Scope check: `python tools/check_scope.py --baseline cdfed4e --final` passed.
+  - Requirements matrix: Rows A1, A2, A3, and A4 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0
+
+
 

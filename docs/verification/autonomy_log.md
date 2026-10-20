@@ -119,3 +119,18 @@
   - Requirements matrix: Row U1 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 8: Supply Chain and Small Hardening
+- **Status:** COMPLETED
+- **Plan:** plan/18_PHASE_8_supply_chain_hardening.md
+- **Commits:**
+  - 78604c7: fixLOOP.8.0: plan for Phase 8 supply chain hardening
+  - 7ddc387: fixLOOP.8.1: tool checksum verification, installer hardening, thumbnail cap, and pinned requirements
+- **Verification Details:**
+  - Implemented fail-closed checksum verification with 3 retries (backoff: 1s, 2s, 4s) in app/core/tool_manager.py; updated tests in tests/test_tool_manager.py (11/11 passed).
+  - Hardened installer in installer/setup.iss removing unverified tool downloads; marked UNTESTED as ISCC.exe is not installed in environment.
+  - Capped thumbnail downloads at 5 MB in app/core/thumbnails.py and app/ui/video_tab.py; verified with tests/test_thumbnails.py (4/4 passed).
+  - Pinned exact dependency versions in requirements.txt and requirements-dev.txt; validated with pip install --dry-run and tests/test_requirements.py.
+  - Recorded test changes in docs/verification/test_changes.md.
+  - Requirements matrix: Rows T1, T3, T4 marked PASS; T2 marked UNTESTED.
+- **Result:** PASS
+- **Repair Rounds:** 0

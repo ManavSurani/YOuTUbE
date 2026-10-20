@@ -157,6 +157,8 @@ def build_video_cmd(
         "--print-to-file", f"after_move:filepath", str(path_file),
         "--merge-output-format", "mkv",
         "--embed-metadata",
+        "--concurrent-fragments", "4",
+        "--http-chunk-size", "10M",
     ]
 
     if force_overwrite:
@@ -200,6 +202,8 @@ def build_audio_cmd(
         "--progress-template", _POST_TEMPLATE,
         "--print-to-file", "after_move:filepath", str(path_file),
         "--embed-metadata",
+        "--concurrent-fragments", "4",
+        "--http-chunk-size", "10M",
     ]
 
     if force_overwrite:

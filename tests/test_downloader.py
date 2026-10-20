@@ -117,6 +117,15 @@ class TestBuildVideoCmd:
         cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1", force_overwrite=True)
         assert "--force-overwrites" in cmd
 
+    def test_video_cmd_has_concurrent_fragments_and_chunk_size(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        assert "--concurrent-fragments" in cmd or "-N" in cmd
+        idx = cmd.index("--concurrent-fragments") if "--concurrent-fragments" in cmd else cmd.index("-N")
+        assert cmd[idx + 1] == "4"
+        assert "--http-chunk-size" in cmd
+        idx_chunk = cmd.index("--http-chunk-size")
+        assert cmd[idx_chunk + 1] == "10M"
+
 
 class TestBuildAudioCmd:
     def test_audio_normal_job_no_force_overwrite(self):
@@ -126,6 +135,15 @@ class TestBuildAudioCmd:
     def test_audio_force_overwrite_flag(self):
         cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2", force_overwrite=True)
         assert "--force-overwrites" in cmd
+
+    def test_audio_cmd_has_concurrent_fragments_and_chunk_size(self):
+        cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2")
+        assert "--concurrent-fragments" in cmd or "-N" in cmd
+        idx = cmd.index("--concurrent-fragments") if "--concurrent-fragments" in cmd else cmd.index("-N")
+        assert cmd[idx + 1] == "4"
+        assert "--http-chunk-size" in cmd
+        idx_chunk = cmd.index("--http-chunk-size")
+        assert cmd[idx_chunk + 1] == "10M"
 
     def test_audio_output_template_unchanged(self):
         cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j2")

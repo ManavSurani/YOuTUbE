@@ -1,0 +1,21 @@
+# Documented True Final Size: 20040000 bytes (18000000 video + 2040000 audio, duration=120s)
+[download] Destination: tmp_video.mp4
+[download] YTPROG|downloading|0|18000000|18000000|NA|NA|av01.0.05M.08|none
+[download] YTPROG|downloading|900000|18000000|18000000|2500000|7|av01.0.05M.08|none
+[download] YTPROG|downloading|1002000|18000000|18000000|2800000|6|av01.0.05M.08|none
+[download] YTPROG|downloading|3600000|18000000|18000000|3000000|5|av01.0.05M.08|none
+[download] YTPROG|downloading|7200000|18000000|18000000|3200000|4|av01.0.05M.08|none
+[download] YTPROG|downloading|10020000|18000000|18000000|3100000|3|av01.0.05M.08|none
+[download] YTPROG|downloading|14400000|18000000|18000000|3300000|2|av01.0.05M.08|none
+[download] YTPROG|downloading|17100000|18000000|18000000|3400000|1|av01.0.05M.08|none
+[download] YTPROG|downloading|18000000|18000000|18000000|3500000|0|av01.0.05M.08|none
+[download] YTPROG|finished|18000000|18000000|18000000|NA|0|av01.0.05M.08|none
+[download] Destination: tmp_audio.m4a
+[download] YTPROG|downloading|0|2040000|2040000|NA|NA|none|opus
+[download] YTPROG|downloading|408000|2040000|2040000|500000|3|none|opus
+[download] YTPROG|downloading|1038000|2040000|2040000|520000|2|none|opus
+[download] YTPROG|downloading|1600000|2040000|2040000|540000|1|none|opus
+[download] YTPROG|downloading|2040000|2040000|2040000|550000|0|none|opus
+[download] YTPROG|finished|2040000|2040000|2040000|NA|0|none|opus
+[Merger] Merging formats into 'final_output.mkv'
+[download] Done

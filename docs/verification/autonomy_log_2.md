@@ -80,3 +80,20 @@
   - Requirements matrix: Row S4 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 6: A1 Automated Accuracy Replay Test
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_6_accuracy_replay_test.md`
+- **Commits:**
+  - `fixDONE.6.1: automated progress replay tests with 5 percent tolerance`
+- **Verification Details:**
+  - Created deterministic dual-stream fixture `tests/fixtures/progress_dual.txt` representing a 120s 1080p download (18 MB AV1 video + 2.04 MB Opus audio, true final size 20,040,000 bytes).
+  - Created test suite `tests/test_accuracy_replay.py` validating:
+    - Total size within 5% tolerance at 5%, 50%, and 95% milestones.
+    - Strict percentage monotonicity across stream transitions (`p[i] >= p[i-1]`).
+    - Audio stage smoothness without artificial freeze.
+    - Single combined stream format dynamic uncapping above 95% (reaches >= 99%).
+    - Mid-job resume continuity preserving `initial_done_bytes` and `floor_percent`.
+  - All 3 tests in `tests/test_accuracy_replay.py` pass.
+  - Requirements matrix: Row A1 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

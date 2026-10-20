@@ -2022,3 +2022,28 @@ can you rebuild the app or something so when i click on .exe shorcut i can see t
 3. **Shortcut verification**: Confirmed that both the user's Desktop shortcut (`C:\Users\Manav\OneDrive\Desktop\YOuTUbE.lnk`) and Start Menu shortcut (`C:\Users\Jay\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\YOuTUbE.lnk`) point directly to `C:\Users\Jay\AppData\Local\Programs\YOuTUbE\YOuTUbE.exe`. Clicking either shortcut now launches the newly rebuilt version with all latest fixes.
 4. **Zero codebase changes**: Verified with `git status` and `git diff` that no files in `app/`, `tests/`, or `installer/` were modified.
 
+---
+
+## User Query:
+python -c "import sys; from PySide6.QtWidgets import QApplication, QMessageBox; app = QApplication.instance() or QApplication(sys.argv); from app.ui.main_window import MainWindow; print('1. Creating MainWindow'); win = MainWindow(); print('2. MainWindow created'); win._on_went_offline(); print('3. Went offline'); win._on_came_online(); print('4. Came online'); win.network_monitor.stop(); win.network_monitor.wait(1000); win.close(); print('5. Done')" why now this is stop
+
+## Assistant Response:
+### 1. Root Cause Analysis
+The command stopped at `win.close()` because `MainWindow.closeEvent()` checks whether an active download job exists in either the video or audio lane. Prior stress tests (`test_phase8_stress_edge_cases.py`) had enqueued mock jobs that were persisted to user disk (`%APPDATA%\YouTube\queue_video.json`). When `MainWindow()` booted, it restored that active job. Calling `win.close()` caused `closeEvent()` to display a modal confirmation dialog (`QMessageBox.exec()`) asking if the user wanted to cancel active downloads. In a headless terminal or automated script without user interaction, `QMessageBox.exec()` blocks the Qt event loop indefinitely.
+
+### 2. Resolution & Verification
+- Cleaned up persisted queue states and added automatic mock safety in tests requiring `MainWindow` close events.
+- All 51 tests across `test_network_monitor.py`, `test_paths.py`, `test_per_item_cards.py`, `test_proc.py`, `test_recent_list.py`, `test_recent_sync.py`, `test_requirements.py`, `test_settings.py`, and `test_settings_dialog.py` now run cleanly and pass in **4.22 seconds** without hanging.
+
+### 3. Completed Autonomous Fix Loop (Phases 0 through 9)
+All 9 phases of the autonomous fix loop have been completed, verified, and committed:
+- **Phase 0 (Baseline):** Recorded clean baseline commit `cdfed4e`, verified 429 passing tests, and established test harness.
+- **Phase 1 (Per-Job Isolation & Parallel Lanes):** Replaced shared temp directory with `job_tmp_dir(job_id)`. Abolished cross-lane deferral rule, allowing simultaneous download of the same YouTube video as both video and audio. Verified parallel execution in 8.37s vs 13.73s sequentially (`9b50b37`).
+- **Phase 2 (Atomic Queue & Crash Recovery):** Implemented `_atomic_write_json` (`.tmp` + `fsync` + atomic `os.replace`). Upgraded persistence to `{"active_job": ..., "waiting_queue": [...]}` allowing active downloads to survive crashes and app restarts up to 3 retry attempts (`e8fe549`).
+- **Phase 3 (Network Flapping & Watchdog):** Debounced network status transitions to prevent worker collisions. Implemented 60-second silent stall watchdog in `DownloadWorker` restarting stalled downloads via `--continue` while suppressing during format merging and pauses (`ca8a302`).
+- **Phase 4 (Accurate Progress Numbers):** Upgraded Opus audio estimate to 17,000 B/s (~136 kbps). Dynamically detected single combined streams, uncapping progress to 99.9%. Enforced strict monotonic progress (never backward) and smooth audio stage interpolation. Verified total size accuracy <= 1.19% across test links (`83daaae`).
+- **Phase 5 (Speed Optimization):** Benchmarked baseline 1 stream vs `-N 4`. Integrated `--concurrent-fragments 4` and `--http-chunk-size 10M` in `downloader.py`, increasing download throughput by 19% to 519% (`81bbfc8`).
+- **Phase 6 (Friendly Error Messages):** Mapped all 14 sample audit error cases (private, age, bot check, geo-blocks, DNS, disk full, 403, 429, 404, reset, permission, merger, copyright, premiere) to clear plain-language descriptions without referencing non-existent UI buttons (`5a0f714`).
+- **Phase 7 (Plain-Text Web Labels):** Enforced `setTextFormat(Qt.TextFormat.PlainText)` on all dynamic labels displaying web data across all UI components, neutralizing hostile HTML/script injection payloads (`0f8e111`).
+- **Phase 8 (Supply Chain & Small Hardening):** Implemented fail-closed tool checksum verification with 3 retries (1s, 2s, 4s backoff) in `tool_manager.py`. Cleaned unverified downloads from `installer/setup.iss`. Bounded thumbnail downloads to 5 MB. Pinned exact versions in `requirements.txt` and `requirements-dev.txt` (`7ddc387`).
+- **Phase 9 (Final Review & Audit Report):** Executed full test suite (475 passed in 56.57s). Verified all global constraints (zero forbidden files touched, zero `print()` calls, zero `shell=True`, zero layout/theme regressions). Completed `docs/verification/requirements_matrix.md` (all 21 rows PASS/UNTESTED) and compiled comprehensive report in `docs/verification/final_report.md` (`26e162c`).

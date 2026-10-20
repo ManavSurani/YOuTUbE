@@ -91,3 +91,19 @@
   - Requirements matrix: Row C1 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+
+## Phase 6: Friendly Plain-Language Error Messages
+- **Status:** COMPLETED
+- **Plan:** `plan/16_PHASE_6_friendly_errors.md`
+- **Commits:**
+  - `5a0f714`: `fixLOOP.6.1: friendly plain language error messages for audit samples`
+- **Verification Details:**
+  - Added friendly mappings for HTTP 403, HTTP 429, HTTP 404, connection reset / unreachable, permission errors, ffmpeg merger failures, copyright claims, and live streams/premieres in `app/core/errors.py`.
+  - Replaced generic fallback message to remove mention of non-existent copy button, directing users calmly to Settings > Export log.
+  - Added parameterized test `test_14_audit_error_samples` and updated existing unit tests in `tests/test_errors.py` (24/24 passed).
+  - Recorded test changes in `docs/verification/test_changes.md`.
+  - Recorded approved exception in `docs/verification/scope_exceptions.md` (Section 1.1 approved file).
+  - Requirements matrix: Row E1 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0
+

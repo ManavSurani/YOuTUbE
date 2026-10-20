@@ -15,6 +15,8 @@ This log records every approved file modification permitted during the autonomou
 | `app/core/download_manager.py` | Phase 3 (Chunk 3.1) | Flapping network debouncer, worker collision guard on resume, and active job zombie prevention | Approved in prompt Section 1.1 & Section 5 Chunk 3.1 |
 | `app/core/downloader.py` | Phase 3 (Chunk 3.2) | Download stall watchdog detecting 60s silence, skipping merge, restarting via --continue with 3-retry limit | Approved in prompt Section 1.1 & Section 5 Chunk 3.2 |
 | `app/core/downloader.py` | Phase 4 (Chunk 4.1) | Dynamic detection of combined single stream formats, uncap from 95%, and upgrade audio estimate to 17000 B/s | Approved in prompt Section 1.1 & Section 5 Chunk 4.1 |
+| `app/core/downloader.py` | Phase 5 (Chunk 5.2) | Speed optimization: add `--concurrent-fragments 4` and `--http-chunk-size 10M` to `build_video_cmd` and `build_audio_cmd` | Approved in prompt Section 1.1 & Section 5 Phase 5 |
+| `app/core/errors.py` | Phase 6 (Chunk 6.2) | Friendly plain-language error mapping for 14 audit error samples, removing mention of non-existent copy button | Approved in prompt Section 1.1 & Section 5 Phase 6 |
 
 
 

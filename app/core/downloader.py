@@ -405,7 +405,7 @@ class DownloadWorker(QThread):
         is_dual_stream: bool = True,
         duration_seconds: int = 0,
         floor_percent: float = 0.0,
-        stall_timeout_seconds: float = 60.0,
+        stall_timeout_seconds: float = 90.0,
         initial_done_bytes: int = 0,
         parent=None,
     ) -> None:
@@ -417,7 +417,7 @@ class DownloadWorker(QThread):
         self.is_dual_stream = is_dual_stream
         self.duration_seconds = max(0, int(duration_seconds or 0))
         self.floor_percent = max(0.0, min(99.9, float(floor_percent or 0.0)))
-        self.stall_timeout_seconds = max(0.05, float(stall_timeout_seconds or 60.0))
+        self.stall_timeout_seconds = max(0.05, float(stall_timeout_seconds or 90.0))
         self.initial_done_bytes = max(0, int(initial_done_bytes or 0))
         self._current_stage = ""
         self._stalled      = False
@@ -470,8 +470,11 @@ class DownloadWorker(QThread):
                         break
                     if self._is_cancelled or self._is_paused:
                         break
-                    is_merging = "merg" in self._current_stage.lower()
-                    if is_merging:
+                    is_post_processing = any(
+                        k in self._current_stage.lower()
+                        for k in ("merg", "convert", "embed", "metadata", "post", "process")
+                    )
+                    if is_post_processing:
                         continue
                     elapsed = time.time() - last_output_time[0]
                     if elapsed > self.stall_timeout_seconds:

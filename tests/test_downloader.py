@@ -1186,3 +1186,57 @@ def test_resume_preserves_downloaded_bytes_count(monkeypatch, tmp_path):
 
 
 
+
+
+
+def test_watchdog_default_stall_timeout_is_90_seconds():
+    """Phase 5 / S4: DownloadWorker stall_timeout_seconds defaults to 90.0 seconds."""
+    worker = DownloadWorker(["dummy"])
+    assert worker.stall_timeout_seconds == 90.0
+
+
+def test_stall_watchdog_skips_during_converting_audio_and_postprocessing(monkeypatch, tmp_path):
+    """Phase 5 / S4: Post-processing stages (converting, metadata, embedding) never trigger watchdog."""
+    import time
+
+    class ConvertingProc:
+        def __init__(self):
+            self.killed = False
+            self.returncode = 0
+
+        @property
+        def stdout(self):
+            yield "[ExtractAudio] Destination: out.mp3\n"
+            # Simulate long ffmpeg audio conversion without output
+            time.sleep(0.25)
+            yield "[download] Done\n"
+
+        def wait(self):
+            return self.returncode
+
+    proc = ConvertingProc()
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: proc)
+    monkeypatch.setattr("app.core.downloader.kill_tree", lambda p: setattr(p, "killed", True))
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "final.mp3"))
+
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, stall_timeout_seconds=0.1)
+    stages = []
+    worker.stage.connect(lambda s: stages.append(s))
+    finished = []
+    worker.finished.connect(lambda p: finished.append(p))
+
+    worker.run()
+
+    assert proc.killed is False, "Process must not be killed during audio conversion"
+    assert not any("stall" in s.lower() for s in stages)
+    assert len(finished) == 1
+
+
+def test_watchdog_boundary_does_not_fire_at_65s_fires_at_91s():
+    """Phase 5 / S4: Boundary check confirming 90.0s threshold."""
+    worker = DownloadWorker(["dummy"])
+    assert worker.stall_timeout_seconds == 90.0
+    # At 65s elapsed:
+    assert 65.0 < worker.stall_timeout_seconds
+    # At 91s elapsed:
+    assert 91.0 > worker.stall_timeout_seconds

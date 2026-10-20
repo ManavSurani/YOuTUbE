@@ -66,3 +66,17 @@
   - Requirements matrix: Row S3 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 5: S4 Watchdog Default 90s
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_5_watchdog_default.md`
+- **Commits:**
+  - `fixDONE.5.1: watchdog default timeout set to 90s`
+- **Verification Details:**
+  - `DownloadWorker` default `stall_timeout_seconds` changed from 60.0s to 90.0s.
+  - Watchdog loop skips stall detection during merging, audio conversion, metadata writing, and embedding.
+  - Retained strict 3 stall restarts per job before emitting failure.
+  - Added unit tests in `tests/test_downloader.py`: `test_watchdog_default_stall_timeout_is_90_seconds`, `test_stall_watchdog_skips_during_converting_audio_and_postprocessing`, and `test_watchdog_boundary_does_not_fire_at_65s_fires_at_91s`.
+  - All 79 tests in `tests/test_downloader.py` pass.
+  - Requirements matrix: Row S4 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

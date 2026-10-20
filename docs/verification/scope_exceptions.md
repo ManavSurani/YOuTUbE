@@ -17,6 +17,9 @@ This log records every approved file modification permitted during the autonomou
 | `app/core/downloader.py` | Phase 4 (Chunk 4.1) | Dynamic detection of combined single stream formats, uncap from 95%, and upgrade audio estimate to 17000 B/s | Approved in prompt Section 1.1 & Section 5 Chunk 4.1 |
 | `app/core/downloader.py` | Phase 5 (Chunk 5.2) | Speed optimization: add `--concurrent-fragments 4` and `--http-chunk-size 10M` to `build_video_cmd` and `build_audio_cmd` | Approved in prompt Section 1.1 & Section 5 Phase 5 |
 | `app/core/errors.py` | Phase 6 (Chunk 6.2) | Friendly plain-language error mapping for 14 audit error samples, removing mention of non-existent copy button | Approved in prompt Section 1.1 & Section 5 Phase 6 |
+| `app/core/tool_manager.py` | Phase 8 (Chunk 8.1) | Fail-closed checksum verification with 3 retries (1s, 2s, 4s backoff) | Approved in prompt Section 1.1 & Section 5 Phase 8 Chunk 8.1 |
+| `app/core/thumbnails.py` | Phase 8 (Chunk 8.3) | Bound thumbnail downloads to at most 5 MB | Approved in prompt Section 1.1 & Section 5 Phase 8 Chunk 8.3 |
+
 
 
 

@@ -19,7 +19,7 @@
 | **T2** | Installer no longer runs unverified downloads (may be UNTESTED) | UNTESTED | Installer cleaned of unverified downloads in `installer/setup.iss`; ISCC.exe compiler not installed in environment, marked UNTESTED | `7ddc387` |
 | **T3** | Requirements are pinned | PASS | Exact versions pinned in `requirements.txt` and `requirements-dev.txt`; dry-run installation verified; `tests/test_requirements.py` passes | `7ddc387` |
 | **T4** | Thumbnail download is capped at 5 MB | PASS | 5 MB download cap enforced via `resp.read(5_000_001)` in `app/core/thumbnails.py` and `app/ui/video_tab.py`; verified by `tests/test_thumbnails.py` | `7ddc387` |
-| **G1** | Full suite passes with no --ignore (only the known pre-existing failure allowed) | NOT STARTED | Baseline 429 passing | Pending |
-| **G2** | Scope proof clean; files in 1.2 untouched | NOT STARTED | Scope check | Pending |
-| **G3** | No print( and no shell=True in app/ | NOT STARTED | Grep check | Pending |
-| **G4** | No colour, theme or layout changes | NOT STARTED | Review check | Pending |
+| **G1** | Full suite passes with no --ignore (only the known pre-existing failure allowed) | PASS | Full test suite executed without `--ignore`: 475 passed, 1 pre-existing failure (`test_scope_checker_final` checking older commit `62c8db1`) in 56.57s across all 40 test suites | `b7f7a64` |
+| **G2** | Scope proof clean; files in 1.2 untouched | PASS | Automated scope check verified zero Section 1.2 forbidden files modified across all commits from cdfed4e to HEAD | `b7f7a64` |
+| **G3** | No print( and no shell=True in app/ | PASS | Automated grep verified 0 hits for `print(` in `app/` and 0 hits for `shell=True` in `app/` | `b7f7a64` |
+| **G4** | No colour, theme or layout changes | PASS | Git diff verified 0 modifications in `theme.py`, `buttons.py`, `checkbox.py`, and `header.py`; layout and color palette preserved | `b7f7a64` |

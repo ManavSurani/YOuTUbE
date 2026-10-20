@@ -620,7 +620,7 @@ def test_resume_waits_for_old_worker_to_exit(tmp_path, sample_jobs, monkeypatch)
     old_worker.isRunning.return_value = True
 
     started = []
-    monkeypatch.setattr(mgr, "_start_worker", lambda j, floor_percent=0.0: started.append(j))
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, *a, **kw: started.append(j))
 
     job = sample_jobs[0]
     mgr._active_job = job

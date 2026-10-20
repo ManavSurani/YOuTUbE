@@ -46,8 +46,8 @@ def _atomic_write_json(path: Path, data: Any, lock: Optional[threading.RLock] = 
             if temp_path.exists():
                 try:
                     temp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    get_logger().debug(f"Could not unlink temp file: {exc}")
 
 
 class DownloadManager(QObject):
@@ -79,6 +79,7 @@ class DownloadManager(QObject):
         self._running_forced_job_ids: Set[str] = set()
         self._failed_forced_job_ids: Set[str] = set()
         self._active_job_last_pct: float = 0.0
+        self._active_job_last_done: int = 0
         self._queue_file = APP_DATA / f"queue_{self.kind}.json"
         self._lane_lock = threading.RLock()
         self._restart_counts: Dict[str, int] = {}
@@ -150,6 +151,7 @@ class DownloadManager(QObject):
                 self._worker.cancel()
                 self._worker = None
             self._active_job_last_pct = 0.0
+            self._active_job_last_done = 0
             self._active_job = None
             self._save_persisted_queue()
             self.job_cancelled.emit(job)
@@ -253,15 +255,16 @@ class DownloadManager(QObject):
                 if hasattr(old, "cancel"):
                     try:
                         old.cancel()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        get_logger().debug(f"Error cancelling stale worker: {exc}")
                 self._on_worker_failed(job, "Download stalled and could not resume.")
             return
 
         self._resume_attempts = 0
         floor = self._active_job_last_pct
+        initial_done = self._active_job_last_done
         self._paused_worker = None
-        self._start_worker(job, floor_percent=floor)
+        self._start_worker(job, floor_percent=floor, initial_done_bytes=initial_done)
 
     def _process_next(self) -> None:
         """Start the next waiting job if one is available."""
@@ -275,7 +278,12 @@ class DownloadManager(QObject):
         self.queue_changed.emit()
         self._start_worker(job)
 
-    def _start_worker(self, job: DownloadJob, floor_percent: float = 0.0) -> None:
+    def _start_worker(
+        self,
+        job: DownloadJob,
+        floor_percent: float = 0.0,
+        initial_done_bytes: int = 0,
+    ) -> None:
         settings = load_settings()
         out_dir = job.output_dir or settings.get("download_dir", str(DEFAULT_DOWNLOADS))
 
@@ -311,6 +319,7 @@ class DownloadManager(QObject):
             is_dual_stream=is_dual,
             duration_seconds=job.duration_seconds,
             floor_percent=floor_percent,
+            initial_done_bytes=initial_done_bytes,
             parent=self,
         )
         self._worker.job_id = job.job_id
@@ -349,6 +358,7 @@ class DownloadManager(QObject):
                 return
         if self._active_job and job and self._active_job.job_id == job.job_id:
             self._active_job_last_pct = pct
+            self._active_job_last_done = done
             self.progress.emit(job, pct, speed, eta, done, total)
 
     def _on_worker_finished(self, a1, a2=None) -> None:
@@ -373,6 +383,7 @@ class DownloadManager(QObject):
         self._running_forced_job_ids.discard(job.job_id)
         self._failed_forced_job_ids.discard(job.job_id)
         self._active_job_last_pct = 0.0
+        self._active_job_last_done = 0
         self._worker = None
         self._active_job = None
         self._save_persisted_queue()
@@ -445,6 +456,7 @@ class DownloadManager(QObject):
             self._failed_forced_job_ids.add(job.job_id)
 
         self._active_job_last_pct = 0.0
+        self._active_job_last_done = 0
         self._worker = None
         self._active_job = None
         self._save_persisted_queue()

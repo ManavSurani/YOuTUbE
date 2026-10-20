@@ -534,18 +534,14 @@ def test_download_worker_fluctuating_estimates_sequence(monkeypatch):
     # Reading 2: early spike to 94.6%
     assert abs(emitted[1] - 94.6) < 1.0
 
-    # Reading 3: estimate dropped by >25% (1.1MB -> 276KB), bar adjusts to 0.63% (does not stay at 94.6%)
-    assert emitted[2] < 1.0
-
-    # Reading 4: estimate expanded by >25% (276KB -> 1.39GB), bar adjusts to 0.13%
-    assert emitted[3] < 1.0
-    # Assert bar comes back down after 1.39 GB estimate arrives (self-correction)
-    assert emitted[3] < emitted[1]
+    # Requirement A2: bar never goes backwards (monotonicity preserved)
+    for i in range(1, len(emitted)):
+        assert emitted[i] >= emitted[i - 1], f"Progress bar went backwards: {emitted[i-1]} -> {emitted[i]}"
 
     # Floor never violated (all values >= 0.0)
     assert all(val >= 0.0 for val in emitted)
 
-    # Ends at video stage cap (95.0%) before final completion (100.0%) - cannot reach 99.9 until audio finishes
+    # Ends at video stage cap (95.0%) before final completion (100.0%)
     assert emitted[-2] == 95.0
     assert emitted[-1] == 100.0
 
@@ -836,10 +832,9 @@ def test_real_first_lines_vp9_video_log(monkeypatch):
     assert emitted[0][0] == 0.0
     # Reading 2: 1 MB of 1.1 MB
     assert emitted[1][0] > 0.0
-    # Reading 3: estimate dropped by >25% -> self-corrects down without getting stuck
-    assert emitted[2][0] < emitted[1][0]
-    # Reading 4: estimate expanded to 1.39 GB -> self-corrects to 0.13%
-    assert emitted[3][0] < 1.0
+    # Requirement A2: bar never goes backwards (monotonicity preserved)
+    for i in range(1, len(emitted)):
+        assert emitted[i][0] >= emitted[i - 1][0], f"Progress bar went backwards: {emitted[i-1][0]} -> {emitted[i][0]}"
 
 
 def test_worker_floor_percent_prevents_bar_drop_on_audio_resume(monkeypatch):
@@ -1071,6 +1066,101 @@ def test_audio_estimate_closer_to_real_audio_size():
     # 600s * 17000 B/s = 10,200,000 bytes (~9.7 MB)
     est = int(worker.duration_seconds * 17000)
     assert est == 10_200_000
+
+
+def test_percent_strictly_monotonic_across_stream_boundary(monkeypatch, tmp_path):
+    """Percent must never drop when transitioning from video to audio and must advance smoothly."""
+    lines = [
+        # Video stream ends at 85.0%
+        "[download] YTPROG|downloading|850000|1000000|NA|50000|10|av01|none\n",
+        "[download] YTPROG|finished|1000000|1000000|NA|50000|0|av01|none\n",
+        # Audio stream starts (under raw math would drop to ~82%, but must be monotonic >= previous)
+        "[download] YTPROG|downloading|1000|200000|NA|10000|20|none|opus\n",
+        "[download] YTPROG|downloading|100000|200000|NA|10000|10|none|opus\n",
+        "[download] YTPROG|finished|200000|200000|NA|10000|0|none|opus\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, out): self.stdout = out; self.returncode = 0
+        def wait(self): return 0
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "vid.mkv"))
+
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, is_dual_stream=True, duration_seconds=60)
+    percents = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: percents.append(pct))
+
+    worker.run()
+
+    # Monotonicity check: every emitted percentage must be >= the previous
+    for i in range(1, len(percents)):
+        assert percents[i] >= percents[i - 1], f"Percent dropped backwards: {percents[i-1]}% -> {percents[i]}%"
+
+    # Progress must not freeze: audio progressing from 100KB to 200KB must advance the percentage
+    assert percents[3] > percents[2], f"Audio stream progress should advance percentage: {percents[2]} -> {percents[3]}"
+
+
+def test_percent_never_drops_on_audio_estimate_reconciliation(monkeypatch, tmp_path):
+    """Replay investigation numbers: 85.59% video end must not drop to 82.72% on audio start."""
+    lines = [
+        "[download] YTPROG|finished|878075747|878075747|NA|NA|NA|av01|none\n",
+        # Audio starts with 1 KB of 183 MB real total
+        "[download] YTPROG|downloading|1024|183434020|NA|NA|NA|none|opus\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, out): self.stdout = out; self.returncode = 0
+        def wait(self): return 0
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "vid.mkv"))
+
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, is_dual_stream=True, duration_seconds=11375)
+    percents = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: percents.append(pct))
+
+    worker.run()
+
+    assert len(percents) >= 2
+    video_end_pct = percents[0]
+    audio_start_pct = percents[1]
+    assert audio_start_pct >= video_end_pct, f"Percent dropped from {video_end_pct}% to {audio_start_pct}%!"
+
+
+def test_resume_preserves_downloaded_bytes_count(monkeypatch, tmp_path):
+    """When resuming a job where video is already finished, overall_done includes the video size."""
+    job_id = "test-resume-bytes"
+    # Put a completed 500 MB video stream file in job temp dir
+    from app.core.paths import job_tmp_dir
+    j_tmp = job_tmp_dir(job_id)
+    j_tmp.mkdir(parents=True, exist_ok=True)
+    fake_video = j_tmp / "video [vid].f137.mp4"
+    fake_video.write_bytes(b"X" * 1024)  # Small file for test, mocked size or real size
+
+    # Simulate yt-dlp downloading audio stream: 10,000,000 of 50,000,000 bytes
+    lines = [
+        "[download] YTPROG|downloading|10000000|50000000|NA|1000000|40|none|opus\n",
+    ]
+
+    class FakeProc:
+        def __init__(self, out): self.stdout = out; self.returncode = 0
+        def wait(self): return 0
+
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: FakeProc(lines))
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "vid.mkv"))
+
+    # Initial done bytes = 500,000,000 passed from prior video download
+    worker = DownloadWorker(["dummy"], out_dir=tmp_path, job_id=job_id, is_dual_stream=True, initial_done_bytes=500_000_000)
+    done_values = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: done_values.append(done))
+
+    worker.run()
+
+    # overall_done should be 500,000,000 + 10,000,000 = 510,000,000
+    assert len(done_values) >= 1
+    assert done_values[0] == 510_000_000, f"Expected 510,000,000 done bytes, got {done_values[0]}"
+
 
 
 

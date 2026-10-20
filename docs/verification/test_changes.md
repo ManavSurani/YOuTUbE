@@ -16,4 +16,9 @@ This log records every test that was replaced or updated during the autonomous f
 | `test_queue_row_deferred_status_text` | `test_queue_row_waiting_status_text` | Phase 1 (Chunk 1.3) | Prompt Phase 1 Chunk 1.3: 'Waiting for the same video to finish' status text removed |
 | `test_queue.py` (`_deferred_job_ids.clear()`) | `test_queue.py` (without `_deferred_job_ids`) | Phase 1 (Chunk 1.3) | Prompt Phase 1 Chunk 1.3: `_deferred_job_ids` attribute removed |
 | `test_audio_guess_replaced_by_real_total_within_25_percent_rule` (expected ~83.2% with 13000 B/s) | `test_audio_guess_replaced_by_real_total_within_25_percent_rule` (expected ~79.1% with 17000 B/s) | Phase 4 (Chunk 4.1) | Prompt Section 5 Phase 4 Chunk 4.1 requirement: audio estimate upgraded from 13000 to 17000 B/s (~136 kbps) to match YouTube Opus streams |
+| `test_download_worker_fluctuating_estimates_sequence` (asserted backward drop < 1.0%) | `test_download_worker_fluctuating_estimates_sequence` (asserted strict monotonicity `>= previous`) | Phase 4 (Chunk 4.2) | Prompt Requirement A2 & Chunk 4.2: 25% latch rule drop removed, progress bar must never go backwards |
+| `test_real_first_lines_vp9_video_log` (asserted backward drop `emitted[2] < emitted[1]`) | `test_real_first_lines_vp9_video_log` (asserted strict monotonicity `emitted[i] >= emitted[i-1]`) | Phase 4 (Chunk 4.2) | Prompt Requirement A2 & Chunk 4.2: 25% latch rule drop removed, progress bar must never go backwards |
+| `test_edge_case_queue_dir_switch_mid_download` | `test_edge_case_queue_dir_switch_mid_download` (with queue cleanup) | Phase 4 | Cleaned up active job at end of test to prevent dirty state persisting to `queue_video.json` |
+| `test_main_window_network_transitions` | `test_main_window_network_transitions` (with `QMessageBox.exec` mock) | Phase 4 | Mocked `QMessageBox.exec` to prevent exit confirmation modal dialog from blocking test runner |
+
 

@@ -170,6 +170,12 @@ def test_main_window_network_transitions(monkeypatch):
         popup_calls.append((title, text))
 
     monkeypatch.setattr(QMessageBox, "information", mock_info)
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.DialogCode.Accepted)
+
+    # Ensure no lingering active jobs trigger exit prompt
+    from app.core.download_manager import get_download_manager
+    get_download_manager("video")._active_job = None
+    get_download_manager("audio")._active_job = None
 
     win = MainWindow()
     try:

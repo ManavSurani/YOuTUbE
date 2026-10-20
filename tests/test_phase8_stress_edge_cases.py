@@ -210,6 +210,12 @@ def test_edge_case_change_download_folder_mid_queue(tmp_path: Path, monkeypatch)
     assert launched_dirs[0] == ("job_1", str(old_dir))
     assert launched_dirs[1] == ("job_2", str(new_dir))
 
+    # Clean up test jobs so they do not persist into queue_video.json
+    mgr._on_worker_finished(j2, str(new_dir / "job_2.mkv"))
+    mgr._active_job = None
+    mgr._waiting_queue.clear()
+    mgr._save_persisted_queue()
+
 
 def test_edge_case_rename_downloads_folder_history_survives(tmp_path: Path):
     """History database persists and flags missing files when Downloads folder is moved."""

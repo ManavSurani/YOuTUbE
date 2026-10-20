@@ -402,6 +402,7 @@ class DownloadWorker(QThread):
         duration_seconds: int = 0,
         floor_percent: float = 0.0,
         stall_timeout_seconds: float = 60.0,
+        initial_done_bytes: int = 0,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -413,6 +414,7 @@ class DownloadWorker(QThread):
         self.duration_seconds = max(0, int(duration_seconds or 0))
         self.floor_percent = max(0.0, min(99.9, float(floor_percent or 0.0)))
         self.stall_timeout_seconds = max(0.05, float(stall_timeout_seconds or 60.0))
+        self.initial_done_bytes = max(0, int(initial_done_bytes or 0))
         self._current_stage = ""
         self._stalled      = False
         self._proc         = None
@@ -430,8 +432,18 @@ class DownloadWorker(QThread):
         self._current_stage = "Starting…"
 
         # Track stream type and whole-job totals across potential stall restarts
-        _finished_bytes: int = 0
-        _last_total_used: int = 0
+        _finished_bytes: int = self.initial_done_bytes
+        temp_dir = job_tmp_dir(self.job_id)
+        if temp_dir.exists() and temp_dir.is_dir():
+            try:
+                for f in temp_dir.iterdir():
+                    if f.is_file() and not any(f.name.endswith(ext) for ext in (".part", ".ytdl", ".tmp", ".path")):
+                        _finished_bytes = max(_finished_bytes, f.stat().st_size)
+            except Exception as scan_err:
+                logger.debug(f"Could not scan temp folder for finished bytes: {scan_err}")
+
+        _last_video_bytes: int = 0
+        _pct_at_video_end: float = self.floor_percent
         overall_done: int = 0
         overall_total: int = 0
         stall_count: int = 0
@@ -497,9 +509,19 @@ class DownloadWorker(QThread):
                     if has_v and has_a:
                         self.is_dual_stream = False
 
-                    # Update finished_bytes when video finishes
-                    if p.status == "finished" and p.stage == "Downloading video" and self.is_dual_stream:
-                        _finished_bytes = max(_finished_bytes, p.done_bytes or p.total_bytes)
+                    # Chunk 4.2: Track video bytes and transition state cleanly
+                    if self.is_dual_stream:
+                        if p.stage == "Downloading video":
+                            _last_video_bytes = max(_last_video_bytes, p.done_bytes or p.total_bytes)
+                            if p.status == "finished":
+                                _finished_bytes = max(_finished_bytes, _last_video_bytes)
+                                if _pct_at_video_end == 0.0:
+                                    _pct_at_video_end = self._max_percent
+                        elif p.stage == "Downloading audio":
+                            if _finished_bytes == 0 and _last_video_bytes > 0:
+                                _finished_bytes = _last_video_bytes
+                            if _pct_at_video_end == 0.0:
+                                _pct_at_video_end = max(self._max_percent, self.floor_percent)
 
                     # Remaining estimate for audio while video stream is running (17,000 B/s Opus estimate)
                     if self.is_dual_stream and p.stage == "Downloading video":
@@ -531,26 +553,15 @@ class DownloadWorker(QThread):
                     else:
                         pct = 0.0
 
-                    # Latch rule (25% rule)
-                    if p.is_exact or p.status == "finished":
-                        overall = max(self._max_percent, pct)
-                        if overall_total > 0:
-                            _last_total_used = overall_total
-                    else:
-                        if overall_total > 0:
-                            if _last_total_used > 0:
-                                ratio = abs(overall_total - _last_total_used) / _last_total_used
-                                if ratio > 0.25:
-                                    overall = pct
-                                else:
-                                    overall = max(self._max_percent, pct)
-                            else:
-                                overall = max(self._max_percent, pct)
-                            _last_total_used = overall_total
-                        else:
-                            overall = self._max_percent
+                    # Audio smooth interpolation: prevent freezing when raw pct calculates lower than video end
+                    if self.is_dual_stream and p.stage == "Downloading audio" and _pct_at_video_end > 0.0:
+                        audio_ratio = (p.done_bytes / p.total_bytes) if p.total_bytes > 0 else 0.0
+                        audio_ratio = max(0.0, min(1.0, audio_ratio))
+                        interpolated = _pct_at_video_end + (99.9 - _pct_at_video_end) * audio_ratio
+                        pct = max(pct, interpolated)
 
-                    overall = max(self.floor_percent, overall)
+                    # Strict monotonicity: progress bar NEVER goes backwards
+                    overall = max(self._max_percent, pct, self.floor_percent)
                     overall = min(stream_cap, max(0.0, overall))
                     self._max_percent = overall
                     self.stage.emit(p.stage)

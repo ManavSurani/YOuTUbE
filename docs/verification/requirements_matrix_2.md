@@ -13,8 +13,8 @@
 | **M3** | Path & URL scrubbing in logs or documented OPEN | Phase 8 | PASS | Documented as OPEN with risk assessment and owner recommendation in `docs/verification/open_items_audit.md` | `fixDONE.8.1` |
 | **M4** | Two video qualities of same video filename audit | Phase 8 | PASS | Confirmed CLOSED in `docs/verification/open_items_audit.md`; output template includes `[%(height)sp]` verified by `test_video_output_template_has_height_and_capped_title` | `fixDONE.8.1` |
 | **M11**| Identified data-loss, duplicate-worker, temp-leak, or wrong-number defects handled | Phase 8 | PASS | Confirmed CLOSED in `docs/verification/open_items_audit.md`; all defects S1, S2a, S2b, S3, S4 closed and verified | `fixDONE.8.1` |
-| **T2** | Installer compile (stays UNTESTED unless ISCC.exe exists) | Phase 9 | NOT STARTED | Pending Phase 9 | Pending |
-| **G1** | Full test suite passes without `--ignore` (only known baseline failure allowed) | Global | NOT STARTED | Pending Phase 9 | Pending |
-| **G2** | Section 2.2 forbidden files completely untouched | Global | NOT STARTED | Pending Phase 9 | Pending |
-| **G3** | Zero `print(` and zero `shell=True` in `app/` | Global | NOT STARTED | Pending Phase 9 | Pending |
-| **G4** | Zero colour, theme, or layout changes (except Phase 2 dialog text) | Global | NOT STARTED | Pending Phase 9 | Pending |
+| **T2** | Installer compile (stays UNTESTED unless ISCC.exe exists) | Phase 9 | UNTESTED | `ISCC.exe` not present on build host; per contract remains UNTESTED | N/A |
+| **G1** | Full test suite passes without `--ignore` (only known baseline failure allowed) | Global | PASS | Full suite executed without `--ignore`: 493 passed, 1 known pre-existing failure (`test_scope_checker_final`) in 56.63s | Phase 9 |
+| **G2** | Section 2.2 forbidden files completely untouched | Global | PASS | `git diff --stat 819db71 HEAD -- <forbidden files>` returned 0 diffs across all 18 forbidden files | Phase 9 |
+| **G3** | Zero `print(` and zero `shell=True` in `app/` | Global | PASS | `git grep -n "print(" -- app` and `git grep -n "shell=True" -- app` returned 0 hits | Phase 9 |
+| **G4** | Zero colour, theme, or layout changes (except Phase 2 dialog text) | Global | PASS | Theme files untouched; only dialogue text and QueueRow button layout updated | Phase 9 |

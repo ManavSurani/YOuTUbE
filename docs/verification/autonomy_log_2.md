@@ -111,3 +111,16 @@
   - Requirements matrix: Row C1 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 8: M6, M3, M4, M11 Open Items Audit & Resolution
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_8_open_items_audit.md`
+- **Commits:**
+  - `fixDONE.8.1: audit and handle open items`
+- **Verification Details:**
+  - M6: Added `IconButton("copy", tooltip="Copy error details")` to failed `QueueRow` in `app/ui/queue_widget.py`, copying failure reason to clipboard and flashing success. Verified by `test_failed_queue_row_has_copy_details_button_and_copies_to_clipboard` in `tests/test_per_item_cards.py`. Marked CLOSED.
+  - M4: Audited `build_video_cmd` output template formatting with `[%(height)sp]`, ensuring distinct filenames for different qualities. Verified by tests. Marked CLOSED.
+  - M11: Confirmed all identified defects (S1 corrupt queue rename, S2a 2-restart limit, S2b quit dialog text, S3 100ms resume polling with 3s cancel and 10s failure, S4 90s watchdog) are verified closed. Marked CLOSED.
+  - M3: Conducted privacy audit for debug logs. Documented as OPEN with owner recommendation in `docs/verification/open_items_audit.md`.
+  - Requirements matrix: Rows M6, M3, M4, M11 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

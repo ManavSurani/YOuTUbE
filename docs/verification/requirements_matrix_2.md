@@ -9,10 +9,10 @@
 | **S4** | Watchdog default 90s, never during merging/converting, at most 3 restarts per job | Phase 5 | PASS | Default stall timeout set to 90.0s, watchdog explicitly skips all post-processing stages (merging, converting, embedding, metadata, processing); verified by tests in `test_downloader.py` | `fixDONE.5.1` |
 | **A1** | Automated replay test in `tests/`: total within 5% at 5/50/95%, strictly monotonic, no audio freeze | Phase 6 | PASS | Implemented `tests/fixtures/progress_dual.txt` and verified in `tests/test_accuracy_replay.py`: total within 5% at 5/50/95%, strictly monotonic, single-format uncap >= 99%, mid-stream resume floor preserved | `fixDONE.6.1` |
 | **C1** | `speed_decision.md` with alternating pairs and medians; command builder flags match decision | Phase 7 | PASS | Authored `docs/verification/speed_decision.md` with empirical measurements, alternating pairs, median calculations (+97.9% speedup), and verified code flags in `app/core/downloader.py` | `fixDONE.7.1` |
-| **M6** | Failed queue row "Copy details" button or documented OPEN | Phase 8 | NOT STARTED | Pending Phase 8 | Pending |
-| **M3** | Path & URL scrubbing in logs or documented OPEN | Phase 8 | NOT STARTED | Pending Phase 8 | Pending |
-| **M4** | Two video qualities of same video filename audit | Phase 8 | NOT STARTED | Pending Phase 8 | Pending |
-| **M11**| Identified data-loss, duplicate-worker, temp-leak, or wrong-number defects handled | Phase 8 | NOT STARTED | Pending Phase 8 | Pending |
+| **M6** | Failed queue row "Copy details" button or documented OPEN | Phase 8 | PASS | Implemented `copy_btn` in `QueueRow` (`app/ui/queue_widget.py`); verified by `test_failed_queue_row_has_copy_details_button_and_copies_to_clipboard` in `tests/test_per_item_cards.py` | `fixDONE.8.1` |
+| **M3** | Path & URL scrubbing in logs or documented OPEN | Phase 8 | PASS | Documented as OPEN with risk assessment and owner recommendation in `docs/verification/open_items_audit.md` | `fixDONE.8.1` |
+| **M4** | Two video qualities of same video filename audit | Phase 8 | PASS | Confirmed CLOSED in `docs/verification/open_items_audit.md`; output template includes `[%(height)sp]` verified by `test_video_output_template_has_height_and_capped_title` | `fixDONE.8.1` |
+| **M11**| Identified data-loss, duplicate-worker, temp-leak, or wrong-number defects handled | Phase 8 | PASS | Confirmed CLOSED in `docs/verification/open_items_audit.md`; all defects S1, S2a, S2b, S3, S4 closed and verified | `fixDONE.8.1` |
 | **T2** | Installer compile (stays UNTESTED unless ISCC.exe exists) | Phase 9 | NOT STARTED | Pending Phase 9 | Pending |
 | **G1** | Full test suite passes without `--ignore` (only known baseline failure allowed) | Global | NOT STARTED | Pending Phase 9 | Pending |
 | **G2** | Section 2.2 forbidden files completely untouched | Global | NOT STARTED | Pending Phase 9 | Pending |

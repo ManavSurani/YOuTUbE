@@ -101,12 +101,25 @@ class QueueRow(QWidget):
         self.status_lbl.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {status_color};")
         layout.addWidget(self.status_lbl)
 
-        # Action buttons (Retry and/or Remove)
+        # Action buttons (Retry, Copy details, and/or Remove)
         self.retry_btn = None
         if can_retry:
             self.retry_btn = IconButton("redownload", size=28, tooltip="Retry", parent=self)
             self.retry_btn.clicked.connect(lambda: manager.retry_job(target_job.job_id))
             layout.addWidget(self.retry_btn)
+
+        self.copy_btn = None
+        if failure_reason:
+            self.copy_btn = IconButton("copy", size=28, tooltip="Copy error details", parent=self)
+            def _on_copy():
+                from PySide6.QtWidgets import QApplication
+                clipboard = QApplication.clipboard()
+                if clipboard:
+                    clipboard.setText(failure_reason)
+                if self.copy_btn and hasattr(self.copy_btn, "flash_success"):
+                    self.copy_btn.flash_success()
+            self.copy_btn.clicked.connect(_on_copy)
+            layout.addWidget(self.copy_btn)
 
         self.remove_btn = None
         if can_remove:

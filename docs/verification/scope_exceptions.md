@@ -28,3 +28,4 @@ This log records every approved file modification permitted during the autonomou
 | `app/core/download_manager.py` | Completion Loop Phase 3 | Rename corrupt or 0-byte modern queue files to .corrupt (or .corrupt_<timestamp>) and reset queue | Approved in prompt Section 2.1 & Section 5 Phase 3 |
 | `app/core/download_manager.py`, `app/core/errors.py` | Completion Loop Phase 4 | Resume polling 100ms, force cancel lingering worker at attempt 30 (~3s), fail at attempt 100 (~10s) with D3 message | Approved in prompt Section 2.1 & Section 5 Phase 4 |
 | `app/core/downloader.py` | Completion Loop Phase 5 | Change default stall timeout to 90s, ensure watchdog skips all post-processing stages | Approved in prompt Section 2.1 & Section 5 Phase 5 |
+| `app/ui/queue_widget.py` | Completion Loop Phase 8 | Add Copy error details button to failed QueueRow | Approved in prompt Section 2.1 & Section 5 Phase 8 |

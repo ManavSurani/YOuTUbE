@@ -260,3 +260,36 @@ def test_tab_scroll_bounds_with_many_queued_items(qapp):
         win.tray_icon.deleteLater()
         win.deleteLater()
         QApplication.processEvents()
+
+
+
+def test_failed_queue_row_has_copy_details_button_and_copies_to_clipboard(qapp):
+    """Phase 8 / M6: Failed QueueRow includes a 'Copy details' button that copies failure reason to clipboard."""
+    from PySide6.QtWidgets import QApplication
+    job = DownloadJob(
+        job_id="job_copy_test",
+        url="https://youtube.com/watch?v=copytest",
+        video_id="copytest",
+        title="Test Failed Job",
+        channel="Channel",
+        duration_seconds=60,
+        thumbnail_url="",
+        thumbnail_bytes=None,
+        kind="video",
+        quality_label="1080p",
+        height=1080,
+        audio_format=None,
+        output_dir="",
+        created_at="2026-10-20T12:00:00Z",
+    )
+    failure_text = "Specific network connection reset by peer [Errno 10054]"
+    row = QueueRow(job=(job, failure_text))
+
+    assert hasattr(row, "copy_btn"), "QueueRow must have copy_btn attribute"
+    assert row.copy_btn is not None, "Failed QueueRow must display copy_btn"
+    assert row.copy_btn.toolTip() == "Copy error details"
+
+    # Click the button and check clipboard
+    row.copy_btn.click()
+    clipboard_text = QApplication.clipboard().text()
+    assert clipboard_text == failure_text

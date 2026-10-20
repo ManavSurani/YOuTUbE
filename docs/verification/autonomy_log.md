@@ -77,5 +77,17 @@
 - **Result:** PASS
 - **Repair Rounds:** 0
 
-
-
+## Phase 5: Download Speed Decision and Tuning
+- **Status:** COMPLETED
+- **Plan:** `plan/15_PHASE_5_speed_tuning.md`
+- **Commits:**
+  - `81bbfc8`: `fixLOOP.5.1: speed optimization with concurrent fragments and http chunk size`
+- **Verification Details:**
+  - Empirical benchmark evaluated baseline 1 stream (5.16 MB/s down to 0.99 MB/s during YouTube throttling) vs `-N 4` (6.13 MB/s, 19% to 519% faster, 0 errors).
+  - Adopted `--concurrent-fragments 4` and `--http-chunk-size 10M` in `downloader.py:build_video_cmd` and `build_audio_cmd`.
+  - Added unit tests in `TestBuildVideoCmd` and `TestBuildAudioCmd` in `tests/test_downloader.py`.
+  - All 76 tests in `tests/test_downloader.py` passed cleanly.
+  - Scope check: `python tools/check_scope.py --baseline cdfed4e --final` passed.
+  - Requirements matrix: Row C1 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

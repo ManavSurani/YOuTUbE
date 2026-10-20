@@ -386,6 +386,7 @@ class HistoryRowWidget(QWidget):
         info_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.title_label = QLabel(self.item.title, self)
+        self.title_label.setTextFormat(Qt.TextFormat.PlainText)
         self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #FFFFFF;")
         info_layout.addWidget(self.title_label)
 

@@ -129,6 +129,7 @@ class ProgressCard(QWidget):
         h_layout.addWidget(self.thumb)
 
         self.title_lbl = QLabel(self.header_widget)
+        self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
         h_layout.addWidget(self.title_lbl, 1)
 
@@ -137,10 +138,12 @@ class ProgressCard(QWidget):
         # 2. Stage and Percent Line
         meta_layout = QHBoxLayout()
         self.stage_label = QLabel("Starting…", self)
+        self.stage_label.setTextFormat(Qt.TextFormat.PlainText)
         self.stage_label.setStyleSheet("font-size: 12px; font-weight: 500; color: #AAAAAA;")
         meta_layout.addWidget(self.stage_label, 1)
 
         self.percent_label = QLabel("0%", self)
+        self.percent_label.setTextFormat(Qt.TextFormat.PlainText)
         self.percent_label.setStyleSheet("font-size: 12px; font-weight: 600; color: #FFFFFF;")
         meta_layout.addWidget(self.percent_label)
         layout.addLayout(meta_layout)
@@ -163,6 +166,7 @@ class ProgressCard(QWidget):
 
         # 4. Details line (Speed • ETA • Size)
         self.stats_label = QLabel("", self)
+        self.stats_label.setTextFormat(Qt.TextFormat.PlainText)
         self.stats_label.setStyleSheet("font-size: 11px; color: #888888;")
         layout.addWidget(self.stats_label)
 

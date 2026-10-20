@@ -77,13 +77,15 @@ class QueueRow(QWidget):
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.setSpacing(2)
 
-        title_lbl = QLabel(target_job.title, self)
-        title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
-        info_layout.addWidget(title_lbl)
+        self.title_lbl = QLabel(target_job.title, self)
+        self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
+        self.title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        info_layout.addWidget(self.title_lbl)
 
-        meta_lbl = QLabel(f"{target_job.kind.capitalize()} • {target_job.quality_label}", self)
-        meta_lbl.setStyleSheet("font-size: 11px; color: #AAAAAA;")
-        info_layout.addWidget(meta_lbl)
+        self.meta_lbl = QLabel(f"{target_job.kind.capitalize()} • {target_job.quality_label}", self)
+        self.meta_lbl.setTextFormat(Qt.TextFormat.PlainText)
+        self.meta_lbl.setStyleSheet("font-size: 11px; color: #AAAAAA;")
+        info_layout.addWidget(self.meta_lbl)
 
         self.progress_bar = ModernProgressBar(self)
         self.progress_bar.setFixedHeight(6)
@@ -95,6 +97,7 @@ class QueueRow(QWidget):
 
         # Status text
         self.status_lbl = QLabel(status_text, self)
+        self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.status_lbl.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {status_color};")
         layout.addWidget(self.status_lbl)
 

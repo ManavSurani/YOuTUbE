@@ -362,11 +362,13 @@ class MediaInfoCard(QWidget):
         text_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.title_label = QLabel(self)
+        self.title_label.setTextFormat(Qt.TextFormat.PlainText)
         self.title_label.setWordWrap(True)
         self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #FFFFFF;")
         text_layout.addWidget(self.title_label)
 
         self.meta_label = QLabel(self)
+        self.meta_label.setTextFormat(Qt.TextFormat.PlainText)
         self.meta_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
         text_layout.addWidget(self.meta_label)
 

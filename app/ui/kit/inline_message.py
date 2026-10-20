@@ -18,6 +18,7 @@ class InlineMessage(QWidget):
         layout.setSpacing(8)
 
         self._label = QLabel(self)
+        self._label.setTextFormat(Qt.TextFormat.PlainText)
         self._label.setStyleSheet("font-size: 12px; font-weight: 500;")
         layout.addWidget(self._label)
 

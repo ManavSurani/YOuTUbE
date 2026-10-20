@@ -428,7 +428,7 @@ class MainWindow(QMainWindow):
             if settings.get("confirm_exit_on_download", True):
                 msg_box = QMessageBox(self)
                 msg_box.setWindowTitle(APP_NAME)
-                msg_box.setText("A download is running. Quit and cancel it?")
+                msg_box.setText("A download is running. Quit now? It will continue the next time you open the app.")
                 quit_btn = msg_box.addButton("Quit", QMessageBox.ButtonRole.AcceptRole)
                 keep_btn = msg_box.addButton("Keep downloading", QMessageBox.ButtonRole.RejectRole)
                 msg_box.setDefaultButton(keep_btn)

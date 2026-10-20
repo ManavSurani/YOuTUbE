@@ -24,3 +24,4 @@ This log records every approved file modification permitted during the autonomou
 
 
 | pp/core/download_manager.py | Completion Loop Phase 1 | Active-job restart limit set to 2 with D1 failure message | approved by the owner in the autonomous completion prompt |
+| `app/ui/main_window.py` | Completion Loop Phase 2 | Update exit confirmation dialog text to: "A download is running. Quit now? It will continue the next time you open the app." | Approved in prompt Section 2.1 & Section 5 Phase 2 |

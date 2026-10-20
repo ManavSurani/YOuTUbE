@@ -24,3 +24,15 @@
   - Requirements matrix: Row S2a marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 2: S2b Closing Dialog
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_2_closing_dialog.md`
+- **Commits:**
+  - `fixDONE.2.1: closing dialog wording says download continues next time`
+- **Verification Details:**
+  - Updated dialog text in `app/ui/main_window.py` (`closeEvent`) to exact wording: `"A download is running. Quit now? It will continue the next time you open the app."`.
+  - Added unit test `test_close_dialog_text_exact_wording` in `tests/test_close_event.py`.
+  - All 13 tests in `tests/test_close_event.py` pass.
+  - Requirements matrix: Row S2b marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

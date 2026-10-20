@@ -424,3 +424,43 @@ def test_close_rejected_leaves_both_lanes_running():
             win.deleteLater()
             QApplication.processEvents()
 
+
+
+def test_close_dialog_text_exact_wording():
+    """Phase 2 / S2b: Closing dialog says exactly 'A download is running. Quit now? It will continue the next time you open the app.'"""
+    v_mgr = MagicMock()
+    v_mgr.active_job = MagicMock(title="Running Video")
+    a_mgr = MagicMock()
+    a_mgr.active_job = None
+
+    def fake_get_dm(kind):
+        return v_mgr if kind == "video" else a_mgr
+
+    with patch("app.ui.main_window.NetworkMonitor.start"), \
+         patch("app.ui.main_window.UpdateCheckWorker.start"), \
+         patch("app.ui.main_window.get_download_manager", side_effect=fake_get_dm):
+        win = MainWindow()
+        try:
+            captured_boxes = []
+            def fake_exec(*args, **kwargs):
+                box = win.findChild(QMessageBox)
+                if box:
+                    captured_boxes.append(box.text())
+                    for btn in box.buttons():
+                        if btn.text() == "Keep downloading":
+                            box._mock_clicked = btn
+                            break
+
+            with patch("PySide6.QtWidgets.QMessageBox.exec", side_effect=fake_exec), \
+                 patch("PySide6.QtWidgets.QMessageBox.clickedButton", side_effect=lambda *a: getattr(win.findChild(QMessageBox), "_mock_clicked", None)):
+                event = QCloseEvent()
+                win.closeEvent(event)
+                assert len(captured_boxes) == 1
+                assert captured_boxes[0] == "A download is running. Quit now? It will continue the next time you open the app."
+                assert not event.isAccepted()
+        finally:
+            if hasattr(win, "tray_icon") and win.tray_icon:
+                win.tray_icon.hide()
+                win.tray_icon.deleteLater()
+            win.deleteLater()
+            QApplication.processEvents()

@@ -5,6 +5,7 @@ Maintains queue state, retries, and coordinates with HistoryService.
 """
 
 import json
+from datetime import datetime
 import os
 from pathlib import Path
 import threading
@@ -527,20 +528,62 @@ class DownloadManager(QObject):
         except Exception as exc:
             get_logger().debug(f"Failed to persist queue: {exc}")
 
+    def _handle_corrupt_queue_file(self, reason: str) -> None:
+        """Rename corrupt queue file to .corrupt (or .corrupt_<timestamp>), log warning, and start fresh."""
+        try:
+            corrupt_dest = self._queue_file.with_name(f"{self._queue_file.name}.corrupt")
+            if corrupt_dest.exists():
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                corrupt_dest = self._queue_file.with_name(f"{self._queue_file.name}.corrupt_{ts}")
+                if corrupt_dest.exists():
+                    import time
+                    corrupt_dest = self._queue_file.with_name(f"{self._queue_file.name}.corrupt_{ts}_{int(time.time() * 1000) % 1000}")
+
+            os.replace(self._queue_file, corrupt_dest)
+            get_logger().warning(
+                f"Corrupt or empty {self._queue_file.name} detected ({reason}); renamed to {corrupt_dest.name}"
+            )
+        except Exception as rename_exc:
+            get_logger().debug(f"Could not rename corrupt queue file: {rename_exc}")
+
+        self._waiting_queue.clear()
+        self._active_job = None
+        self._restart_counts.clear()
+
     def _load_persisted_queue(self) -> None:
         """Restore waiting jobs and any interrupted active job from queue_<kind>.json."""
         if not self._queue_file.is_file():
             return
+
         try:
             raw = self._queue_file.read_text(encoding="utf-8")
-            data = json.loads(raw)
+        except Exception as exc:
+            self._handle_corrupt_queue_file(f"read error: {exc}")
+            return
 
+        if not raw.strip():
+            self._handle_corrupt_queue_file("zero-byte or whitespace file")
+            return
+
+        try:
+            data = json.loads(raw)
+        except Exception as exc:
+            self._handle_corrupt_queue_file(f"invalid JSON: {exc}")
+            return
+
+        if not isinstance(data, (dict, list)):
+            self._handle_corrupt_queue_file(f"unexpected data type: {type(data).__name__}")
+            return
+
+        try:
             active_dict = None
             waiting_list = []
 
             if isinstance(data, dict):
                 active_dict = data.get("active_job")
                 waiting_list = data.get("waiting_queue", [])
+                if not isinstance(waiting_list, list):
+                    waiting_list = []
             elif isinstance(data, list):
                 waiting_list = data
 
@@ -562,6 +605,8 @@ class DownloadManager(QObject):
                         )
 
             for item in waiting_list:
+                if not isinstance(item, dict):
+                    continue
                 job = self._deserialize_job(item)
                 if job:
                     self._restart_counts[job.job_id] = int(item.get("restart_count", 0))

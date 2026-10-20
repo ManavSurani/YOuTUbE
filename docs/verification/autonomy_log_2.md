@@ -36,3 +36,17 @@
   - Requirements matrix: Row S2b marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 3: S1 Corrupt Modern Queue File
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_3_corrupt_queue.md`
+- **Commits:**
+  - `fixDONE.3.1: rename corrupt modern queue files to .corrupt`
+- **Verification Details:**
+  - Added `_handle_corrupt_queue_file` to `DownloadManager`.
+  - Zero-byte files, invalid JSON syntax, and top-level scalar values are safely renamed to `<filename>.corrupt` (or `<filename>.corrupt_<timestamp>` if `.corrupt` already exists).
+  - Malformed single entries in an otherwise valid queue are skipped and logged while valid jobs load cleanly.
+  - Added 5 unit tests in `tests/test_download_manager.py` (`test_load_corrupt_zero_byte_queue_renames_to_corrupt`, `test_load_corrupt_invalid_json_renames_to_corrupt`, `test_load_corrupt_queue_when_corrupt_already_exists_adds_timestamp`, `test_load_corrupt_queue_non_dict_non_list_renames`, `test_load_queue_with_one_invalid_job_skips_and_does_not_rename`).
+  - All 24 tests in `tests/test_download_manager.py` pass.
+  - Requirements matrix: Row S1 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

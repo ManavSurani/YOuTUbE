@@ -715,3 +715,99 @@ def test_resume_waits_for_old_worker_to_exit(tmp_path, sample_jobs, monkeypatch)
     assert started == [job]
 
 
+
+
+def test_load_corrupt_zero_byte_queue_renames_to_corrupt(tmp_path, monkeypatch):
+    """Phase 3 / S1: Zero-byte queue file is renamed to .corrupt, starts with empty queue."""
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    q_file = tmp_path / "queue_video.json"
+    q_file.write_bytes(b"")
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    assert not q_file.exists()
+    assert (tmp_path / "queue_video.json.corrupt").exists()
+    assert mgr.waiting_jobs == []
+    assert mgr.active_job is None
+
+
+def test_load_corrupt_invalid_json_renames_to_corrupt(tmp_path, monkeypatch):
+    """Phase 3 / S1: Invalid JSON syntax in queue file is renamed to .corrupt."""
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    q_file = tmp_path / "queue_video.json"
+    q_file.write_text('{"waiting_queue": [{"title": "bad json', encoding="utf-8")
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    assert not q_file.exists()
+    assert (tmp_path / "queue_video.json.corrupt").exists()
+    assert mgr.waiting_jobs == []
+    assert mgr.active_job is None
+
+
+def test_load_corrupt_queue_when_corrupt_already_exists_adds_timestamp(tmp_path, monkeypatch):
+    """Phase 3 / S1: If .corrupt already exists, appends timestamp."""
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    existing_corrupt = tmp_path / "queue_video.json.corrupt"
+    existing_corrupt.write_text("prior corruption", encoding="utf-8")
+
+    q_file = tmp_path / "queue_video.json"
+    q_file.write_text("new corrupted data", encoding="utf-8")
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    assert not q_file.exists()
+    assert existing_corrupt.exists()
+    # There should now be a file matching queue_video.json.corrupt_*
+    timestamped_files = list(tmp_path.glob("queue_video.json.corrupt_*"))
+    assert len(timestamped_files) == 1
+    assert mgr.waiting_jobs == []
+
+
+def test_load_corrupt_queue_non_dict_non_list_renames(tmp_path, monkeypatch):
+    """Phase 3 / S1: Top-level JSON that is scalar (e.g. number, string, boolean) is treated as corrupt."""
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    q_file = tmp_path / "queue_video.json"
+    q_file.write_text("12345", encoding="utf-8")
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    assert not q_file.exists()
+    assert (tmp_path / "queue_video.json.corrupt").exists()
+    assert mgr.waiting_jobs == []
+
+
+def test_load_queue_with_one_invalid_job_skips_and_does_not_rename(tmp_path, monkeypatch):
+    """Phase 3 / S1: A single corrupt record inside an otherwise valid queue is skipped without renaming."""
+    import json
+    import app.core.download_manager as dm_mod
+    monkeypatch.setattr(dm_mod, "APP_DATA", tmp_path)
+    q_file = tmp_path / "queue_video.json"
+    payload = {
+        "active_job": None,
+        "waiting_queue": [
+            {"not_a_valid_job": True},  # missing job_id, url, title etc.
+            {
+                "job_id": "valid1",
+                "video_id": "valid1",
+                "kind": "video",
+                "url": "https://www.youtube.com/watch?v=valid1",
+                "title": "Valid Video",
+                "quality": "1080p",
+                "format_id": "137+140",
+                "ext": "mp4",
+                "target_dir": str(tmp_path),
+                "duration_seconds": 60,
+                "restart_count": 0,
+            }
+        ]
+    }
+    q_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    # File must NOT be renamed to .corrupt
+    assert q_file.exists()
+    assert not (tmp_path / "queue_video.json.corrupt").exists()
+    # Valid job must be loaded
+    assert len(mgr.waiting_jobs) == 1
+    assert mgr.waiting_jobs[0].job_id == "valid1"

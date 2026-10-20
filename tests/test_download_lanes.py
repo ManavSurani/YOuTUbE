@@ -656,8 +656,8 @@ def test_resume_waits_until_old_worker_stopped(tmp_path, monkeypatch):
     assert started == [job]
 
 
-def test_resume_gives_up_after_20_attempts_without_starting_second_worker(tmp_path, monkeypatch, caplog):
-    """If old worker stays running, gives up after 20 attempts without starting second worker."""
+def test_resume_gives_up_after_100_attempts_without_starting_second_worker(tmp_path, monkeypatch, caplog):
+    """Phase 4 / S3: If old worker stays running, force cancels at attempt 30 and gives up at attempt 100 without second worker."""
     from PySide6.QtCore import QTimer
     from app.core.logger import get_logger
 
@@ -682,14 +682,15 @@ def test_resume_gives_up_after_20_attempts_without_starting_second_worker(tmp_pa
             mgr.set_online(False)
             mgr.set_online(True)
 
-            # Fire singleShot callbacks 21 times while isRunning stays True
-            for _ in range(21):
+            # Fire singleShot callbacks 101 times while isRunning stays True
+            for _ in range(101):
                 if callbacks:
                     cb = callbacks.pop(0)
                     cb()
 
             assert started == []
-            assert any("did not stop; resume skipped" in r.message for r in caplog.records)
+            assert fake_worker.cancel.called
+            assert any("resume failed" in r.message for r in caplog.records)
     finally:
         logger.propagate = False
 

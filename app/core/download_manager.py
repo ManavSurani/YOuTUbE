@@ -248,17 +248,25 @@ class DownloadManager(QObject):
 
         if is_running is True:
             self._resume_attempts += 1
-            if self._resume_attempts <= 20:          # up to 10s (20 x 500ms), non-blocking
-                QTimer.singleShot(500, self._resume_active_job)
+            if self._resume_attempts == 30:
+                get_logger().warning("Old %s worker did not stop after 3s (attempt 30); force cancelling", self.kind)
+                if hasattr(old, "cancel"):
+                    try:
+                        old.cancel()
+                    except Exception as exc:
+                        get_logger().debug(f"Error cancelling stale worker: {exc}")
+
+            if self._resume_attempts < 100:
+                QTimer.singleShot(100, self._resume_active_job)
             else:
-                get_logger().warning("Old %s worker did not stop; resume skipped", self.kind)
+                get_logger().warning("Old %s worker did not stop after 10s (attempt 100); resume failed", self.kind)
                 self._paused_worker = None
                 if hasattr(old, "cancel"):
                     try:
                         old.cancel()
                     except Exception as exc:
                         get_logger().debug(f"Error cancelling stale worker: {exc}")
-                self._on_worker_failed(job, "Download stalled and could not resume.")
+                self._on_worker_failed(job, "The download could not be resumed. Press Retry.")
             return
 
         self._resume_attempts = 0

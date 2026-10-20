@@ -811,3 +811,122 @@ def test_load_queue_with_one_invalid_job_skips_and_does_not_rename(tmp_path, mon
     # Valid job must be loaded
     assert len(mgr.waiting_jobs) == 1
     assert mgr.waiting_jobs[0].job_id == "valid1"
+
+
+def test_resume_polling_interval_is_100ms(tmp_path, sample_jobs, monkeypatch):
+    """Phase 4 / S3: Resume polling interval is exactly 100ms."""
+    from PySide6.QtCore import QTimer
+    import app.core.download_manager as dm_mod
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = sample_jobs[0]
+    mgr._active_job = job
+
+    old_worker = MagicMock()
+    old_worker.isRunning.return_value = True
+    mgr._paused_worker = old_worker
+    mgr._is_offline = False
+
+    intervals = []
+    callbacks = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: (intervals.append(ms), callbacks.append(cb)))
+
+    mgr._resume_active_job()
+    assert intervals == [100]
+
+
+def test_resume_force_cancels_old_worker_at_attempt_30(tmp_path, sample_jobs, monkeypatch):
+    """Phase 4 / S3: At attempt 30 (~3s), old worker cancel() is called to force stop it."""
+    from PySide6.QtCore import QTimer
+    import app.core.download_manager as dm_mod
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = sample_jobs[0]
+    mgr._active_job = job
+
+    old_worker = MagicMock()
+    old_worker.isRunning.return_value = True
+    mgr._paused_worker = old_worker
+    mgr._is_offline = False
+
+    callbacks = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
+
+    mgr._resume_attempts = 29
+    mgr._resume_active_job()
+
+    # Attempt 30 reached -> old_worker.cancel() must be called
+    assert mgr._resume_attempts == 30
+    assert old_worker.cancel.called
+
+
+def test_resume_fails_job_at_attempt_100_with_exact_message(tmp_path, sample_jobs, monkeypatch):
+    """Phase 4 / S3: At attempt 100 (~10s), resume gives up and fails with exact D3 message."""
+    from PySide6.QtCore import QTimer
+    import app.core.download_manager as dm_mod
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = sample_jobs[0]
+    mgr._active_job = job
+
+    old_worker = MagicMock()
+    old_worker.isRunning.return_value = True
+    mgr._paused_worker = old_worker
+    mgr._is_offline = False
+
+    started = []
+    monkeypatch.setattr(mgr, "_start_worker", lambda j, *a, **kw: started.append(j))
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: cb())
+
+    failed_emits = []
+    mgr.job_failed.connect(lambda j, reason: failed_emits.append((j, reason)))
+
+    mgr._resume_attempts = 99
+    mgr._resume_active_job()
+
+    assert started == []
+    assert mgr.active_job is None
+    assert len(failed_emits) == 1
+    assert failed_emits[0][1] == "The download could not be resumed. Press Retry."
+
+
+def test_rapid_flapping_network_maintains_single_worker(tmp_path, sample_jobs, monkeypatch):
+    """Phase 4 / S3: 20 rapid online/offline cycles maintain strict single active worker."""
+    from PySide6.QtCore import QTimer
+    import app.core.download_manager as dm_mod
+
+    mgr = dm_mod.DownloadManager(kind="video")
+    mgr._queue_file = tmp_path / "queue_video.json"
+    job = sample_jobs[0]
+
+    started_count = 0
+    running_worker = MagicMock()
+    running_worker.isRunning.return_value = False
+
+    def fake_start(j, *a, **kw):
+        nonlocal started_count
+        started_count += 1
+        mgr._worker = running_worker
+
+    monkeypatch.setattr(mgr, "_start_worker", fake_start)
+
+    callbacks = []
+    monkeypatch.setattr(QTimer, "singleShot", lambda ms, cb: callbacks.append(cb))
+
+    mgr.enqueue(job)
+    assert started_count == 1
+
+    # Rapid flapping 20 times
+    for _ in range(20):
+        mgr.set_online(False)
+        mgr.set_online(True)
+        # Flush any scheduled callbacks
+        while callbacks:
+            cb = callbacks.pop(0)
+            cb()
+
+    # The same job should only have resumed or run cleanly, never spawning concurrent duplicates
+    assert mgr._active_job == job

@@ -9,6 +9,12 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     text = (raw_text or "").strip()
     text_lower = text.lower()
 
+    # 0. Resume failure / multiple crash failure
+    if "could not be resumed" in text_lower:
+        return "The download could not be resumed. Press Retry."
+    if "the app closed several times" in text_lower:
+        return text
+
     # 1. Low disk space (explicit check or from error string)
     if (needed_bytes is not None and free_bytes is not None and free_bytes < needed_bytes) or (
         "no space left on device" in text_lower or "disk full" in text_lower or "not enough space" in text_lower

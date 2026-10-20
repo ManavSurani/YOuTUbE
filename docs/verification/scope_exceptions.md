@@ -26,3 +26,4 @@ This log records every approved file modification permitted during the autonomou
 | pp/core/download_manager.py | Completion Loop Phase 1 | Active-job restart limit set to 2 with D1 failure message | approved by the owner in the autonomous completion prompt |
 | `app/ui/main_window.py` | Completion Loop Phase 2 | Update exit confirmation dialog text to: "A download is running. Quit now? It will continue the next time you open the app." | Approved in prompt Section 2.1 & Section 5 Phase 2 |
 | `app/core/download_manager.py` | Completion Loop Phase 3 | Rename corrupt or 0-byte modern queue files to .corrupt (or .corrupt_<timestamp>) and reset queue | Approved in prompt Section 2.1 & Section 5 Phase 3 |
+| `app/core/download_manager.py`, `app/core/errors.py` | Completion Loop Phase 4 | Resume polling 100ms, force cancel lingering worker at attempt 30 (~3s), fail at attempt 100 (~10s) with D3 message | Approved in prompt Section 2.1 & Section 5 Phase 4 |

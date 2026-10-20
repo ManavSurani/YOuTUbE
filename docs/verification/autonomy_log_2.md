@@ -50,3 +50,19 @@
   - Requirements matrix: Row S1 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 4: S3 Resume Polling and Force Stop
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_4_force_stop_resume.md`
+- **Commits:**
+  - `fixDONE.4.1: resume polling 100ms with 3s force stop and 10s failure`
+- **Verification Details:**
+  - Polling interval updated to 100ms in `_resume_active_job()`.
+  - At attempt 30 (~3 seconds), lingering old worker is actively cancelled (`old.cancel()`).
+  - At attempt 100 (~10 seconds), job fails with exact plain-language reason: `"The download could not be resumed. Press Retry."`.
+  - Updated `explain()` in `app/core/errors.py` to recognize resume failure.
+  - Contract updated for `test_resume_gives_up_after_100_attempts_without_starting_second_worker` in `tests/test_download_lanes.py`.
+  - Added unit tests in `tests/test_download_manager.py`: `test_resume_polling_interval_is_100ms`, `test_resume_force_cancels_old_worker_at_attempt_30`, `test_resume_fails_job_at_attempt_100_with_exact_message`, and `test_rapid_flapping_network_maintains_single_worker`.
+  - All 54 tests in `tests/test_download_manager.py` and `tests/test_download_lanes.py` pass.
+  - Requirements matrix: Row S3 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

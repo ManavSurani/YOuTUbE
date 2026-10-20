@@ -97,3 +97,17 @@
   - Requirements matrix: Row A1 marked PASS.
 - **Result:** PASS
 - **Repair Rounds:** 0
+## Phase 7: C1 Speed Decision Document
+- **Status:** COMPLETED
+- **Plan:** `plan/12_PHASE_7_speed_decision.md`
+- **Commits:**
+  - `fixDONE.7.1: speed decision document and command builder alignment`
+- **Verification Details:**
+  - Authored standalone decision record `docs/verification/speed_decision.md` implementing Decision D6.
+  - Included raw connection baseline (Cloudflare CDN 50 MB: 8.42 MB/s).
+  - Collated alternating measurement pairs (A1, B1, A2, B2) on 689 MB video `aqz-KE-bpKQ`: baseline median 3.075 MB/s vs optimized median 6.085 MB/s (+97.9% speedup; up to 6.2x faster during throttle events).
+  - Documented prevention of HTTP 403 Forbidden errors via `--http-chunk-size 10M`.
+  - Confirmed `build_video_cmd` and `build_audio_cmd` retain `--concurrent-fragments 4` and `--http-chunk-size 10M`, verified by `tests/test_downloader.py`.
+  - Requirements matrix: Row C1 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

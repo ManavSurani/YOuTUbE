@@ -107,3 +107,15 @@
 - **Result:** PASS
 - **Repair Rounds:** 0
 
+## Phase 7: Plain Text for Labels that Show Web Data
+- **Status:** COMPLETED
+- **Plan:** `plan/17_PHASE_7_plain_text_labels.md`
+- **Commits:**
+  - `0f8e111`: `fixLOOP.7.1: plain text format for labels displaying web data`
+- **Verification Details:**
+  - Configured `setTextFormat(Qt.TextFormat.PlainText)` on all dynamic web data labels (titles, channels, queue status, failure reasons, history items, media info cards, inline messages) across `queue_widget.py`, `video_tab.py`, `audio_tab.py`, `history_tab.py`, `recent_list.py`, `app/ui/kit/progress_card.py`, and `app/ui/kit/inline_message.py`.
+  - Added test suite `tests/test_ui_plain_text.py` verifying hostile payload `'<b>x</b><img src="http://example.invalid/a.png">'` is rendered strictly as plain text.
+  - Ran full UI test suite (79/79 passed in 8.07s).
+  - Requirements matrix: Row U1 marked PASS.
+- **Result:** PASS
+- **Repair Rounds:** 0

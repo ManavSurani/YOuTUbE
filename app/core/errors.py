@@ -28,7 +28,35 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "Please paste a valid YouTube link."
 
-    # 3. Network error
+    # 3. Copyright claim
+    if "copyright" in text_lower:
+        return "This video was removed because of a copyright claim."
+
+    # 4. Live stream / premiere
+    if "live event will begin" in text_lower or "is live" in text_lower or "premiere" in text_lower:
+        return "This is a live stream or premiere that is not ready yet."
+
+    # 5. HTTP Error 403
+    if "http error 403" in text_lower or "403: forbidden" in text_lower or "403 forbidden" in text_lower:
+        return "YouTube refused the download for now. Wait a minute and press Retry. If it keeps happening, update the tools."
+
+    # 6. HTTP Error 429
+    if "http error 429" in text_lower or "429: too many requests" in text_lower or "too many requests" in text_lower:
+        return "YouTube says there were too many requests. Wait a few minutes and try again."
+
+    # 7. HTTP Error 404
+    if "http error 404" in text_lower or "404: not found" in text_lower or "404 not found" in text_lower:
+        return "This video or file is no longer available."
+
+    # 8. Permission error
+    if "permissionerror" in text_lower or "permission denied" in text_lower:
+        return "The app cannot write to the download folder. Choose another folder in Settings or close the program that uses the file."
+
+    # 9. Merger / combination error
+    if "[merger]" in text_lower or "invalid data found" in text_lower or "error parsing" in text_lower:
+        return "The video and audio could not be combined. Press Retry. If it repeats, update the tools."
+
+    # 10. Network / socket / connection interrupted
     if (
         "[errno 11001]" in text_lower
         or "getaddrinfo failed" in text_lower
@@ -41,10 +69,14 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
         or "incompleteread" in text_lower
         or "connection reset" in text_lower
         or "no internet" in text_lower
+        or "winerror 10051" in text_lower
+        or "winerror 10054" in text_lower
+        or "winerror 10060" in text_lower
+        or "unreachable" in text_lower
     ):
-        return "No internet connection."
+        return "The internet connection was interrupted. Check your connection and press Retry."
 
-    # 4. Private / members-only
+    # 11. Private / members-only
     if (
         "private video" in text_lower
         or "this video is private" in text_lower
@@ -54,7 +86,7 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "This video is private or for members only."
 
-    # 5. Age-restricted
+    # 12. Age-restricted
     if (
         "sign in to confirm your age" in text_lower
         or "age-restricted" in text_lower
@@ -63,7 +95,7 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "This video is age restricted and can't be downloaded without sign-in."
 
-    # 6. Sign-in / bot check
+    # 13. Sign-in / bot check
     if (
         "confirm you’re not a bot" in text_lower
         or "confirm you're not a bot" in text_lower
@@ -75,7 +107,7 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "YouTube asked for verification. Try again later or update tools."
 
-    # 7. Unavailable / removed
+    # 14. Unavailable / removed
     if (
         "video unavailable" in text_lower
         or "this video is unavailable" in text_lower
@@ -86,7 +118,7 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "This video is not available."
 
-    # 8. ffmpeg missing
+    # 15. ffmpeg missing
     if (
         "ffmpeg not found" in text_lower
         or "ffprobe not found" in text_lower
@@ -95,7 +127,7 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "ffmpeg is missing. Please update or repair tools."
 
-    # 9. Extraction error
+    # 16. Extraction error
     if (
         "unable to extract" in text_lower
         or "extractionerror" in text_lower
@@ -105,5 +137,5 @@ def explain(raw_text: str, free_bytes: Optional[int] = None, needed_bytes: Optio
     ):
         return "YouTube changed something. Please try again after the update."
 
-    # 10. Fallback
-    return "Something went wrong. Copy the details and try again."
+    # 17. Fallback (calm and truthful without referencing non-existent buttons)
+    return "Something went wrong. Open Settings and press Export log to see the details."

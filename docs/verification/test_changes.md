@@ -20,5 +20,8 @@ This log records every test that was replaced or updated during the autonomous f
 | `test_real_first_lines_vp9_video_log` (asserted backward drop `emitted[2] < emitted[1]`) | `test_real_first_lines_vp9_video_log` (asserted strict monotonicity `emitted[i] >= emitted[i-1]`) | Phase 4 (Chunk 4.2) | Prompt Requirement A2 & Chunk 4.2: 25% latch rule drop removed, progress bar must never go backwards |
 | `test_edge_case_queue_dir_switch_mid_download` | `test_edge_case_queue_dir_switch_mid_download` (with queue cleanup) | Phase 4 | Cleaned up active job at end of test to prevent dirty state persisting to `queue_video.json` |
 | `test_main_window_network_transitions` | `test_main_window_network_transitions` (with `QMessageBox.exec` mock) | Phase 4 | Mocked `QMessageBox.exec` to prevent exit confirmation modal dialog from blocking test runner |
+| `test_network_error` (asserted 'No internet connection.') | `test_network_error` (asserts 'The internet connection was interrupted. Check your connection and press Retry.') | Phase 6 | Prompt Phase 6 requirement: friendly network retry message |
+| `test_unknown_error_fallback` (asserted 'Something went wrong. Copy the details and try again.') | `test_unknown_error_fallback` (asserts 'Something went wrong. Open Settings and press Export log to see the details.') | Phase 6 | Prompt Phase 6 requirement: remove mention of non-existent 'Copy details' button and guide user to Settings Export log |
+| (None) | `test_14_audit_error_samples` (parameterized test across 14 audit error cases) | Phase 6 | Prompt Phase 6 requirement: verify 14 error samples from audit map to specified friendly texts |
 
 

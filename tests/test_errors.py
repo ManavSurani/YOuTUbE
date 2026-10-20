@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -8,12 +9,99 @@ if str(ROOT) not in sys.path:
 from app.core.errors import explain
 
 
+# ---------------------------------------------------------------------------
+# Test the 14 Error Samples from Audit (Prompt Phase 6)
+# ---------------------------------------------------------------------------
+
+FOURTEEN_ERROR_SAMPLES = [
+    # 1. Private video
+    (
+        "ERROR: [youtube] abc: Private video. Sign in if you've been granted access to this video",
+        "This video is private or for members only.",
+    ),
+    # 2. Age-restricted
+    (
+        "ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users.",
+        "This video is age restricted and can't be downloaded without sign-in.",
+    ),
+    # 3. Bot check / verification
+    (
+        "ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.",
+        "YouTube asked for verification. Try again later or update tools.",
+    ),
+    # 4. Geo-blocked / Unavailable
+    (
+        "ERROR: [youtube] abc: Video unavailable. This video is not available in your country",
+        "This video is not available.",
+    ),
+    # 5. DNS / Unreachable
+    (
+        "ERROR: [youtube] abc: Unable to download API page: <urlopen error [Errno 11001] getaddrinfo failed>",
+        "The internet connection was interrupted. Check your connection and press Retry.",
+    ),
+    # 6. Disk full
+    (
+        "OSError: [Errno 28] No space left on device",
+        "Not enough free space.",
+    ),
+    # 7. HTTP 403
+    (
+        "ERROR: [youtube] abc: HTTP Error 403: Forbidden",
+        "YouTube refused the download for now. Wait a minute and press Retry. If it keeps happening, update the tools.",
+    ),
+    # 8. HTTP 429
+    (
+        "ERROR: [youtube] abc: HTTP Error 429: Too Many Requests",
+        "YouTube says there were too many requests. Wait a few minutes and try again.",
+    ),
+    # 9. HTTP 404
+    (
+        "ERROR: [youtube] abc: HTTP Error 404: Not Found",
+        "This video or file is no longer available.",
+    ),
+    # 10. WinError socket / Connection reset
+    (
+        "urllib.error.URLError: <urlopen error [WinError 10054] An existing connection was forcibly closed by the remote host>",
+        "The internet connection was interrupted. Check your connection and press Retry.",
+    ),
+    # 11. Permission error
+    (
+        "PermissionError: [Errno 13] Permission denied: 'C:\\Downloads\\video.mkv'",
+        "The app cannot write to the download folder. Choose another folder in Settings or close the program that uses the file.",
+    ),
+    # 12. Merger failure
+    (
+        "ERROR: [Merger] Error parsing file: Invalid data found when processing input",
+        "The video and audio could not be combined. Press Retry. If it repeats, update the tools.",
+    ),
+    # 13. Copyright claim
+    (
+        "ERROR: [youtube] abc: This video has been removed due to a copyright claim by Warner Bros",
+        "This video was removed because of a copyright claim.",
+    ),
+    # 14. Live stream / premiere
+    (
+        "ERROR: [youtube] abc: This live event will begin in 2 hours.",
+        "This is a live stream or premiere that is not ready yet.",
+    ),
+]
+
+
+@pytest.mark.parametrize("sample,expected", FOURTEEN_ERROR_SAMPLES)
+def test_14_audit_error_samples(sample, expected):
+    result = explain(sample)
+    if "Not enough free space" in expected:
+        assert expected in result
+    else:
+        assert result == expected
+
+
 def test_network_error():
     sample = "ERROR: [youtube] abc: Unable to download API page: <urlopen error [Errno 11001] getaddrinfo failed>"
-    assert explain(sample) == "No internet connection."
+    assert explain(sample) == "The internet connection was interrupted. Check your connection and press Retry."
 
     sample2 = "urllib.error.URLError: <urlopen error [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time>"
-    assert explain(sample2) == "No internet connection."
+    assert explain(sample2) == "The internet connection was interrupted. Check your connection and press Retry."
 
 
 def test_private_or_members_only():
@@ -74,7 +162,7 @@ def test_invalid_link():
 
 def test_unknown_error_fallback():
     sample = "Some totally unknown trace at line 42 with weird cryptic message 0xDEADBEEF"
-    assert explain(sample) == "Something went wrong. Copy the details and try again."
+    assert explain(sample) == "Something went wrong. Open Settings and press Export log to see the details."
 
     # None and empty string
-    assert explain("") == "Something went wrong. Copy the details and try again."
+    assert explain("") == "Something went wrong. Open Settings and press Export log to see the details."

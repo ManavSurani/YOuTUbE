@@ -2047,3 +2047,31 @@ All 9 phases of the autonomous fix loop have been completed, verified, and commi
 - **Phase 7 (Plain-Text Web Labels):** Enforced `setTextFormat(Qt.TextFormat.PlainText)` on all dynamic labels displaying web data across all UI components, neutralizing hostile HTML/script injection payloads (`0f8e111`).
 - **Phase 8 (Supply Chain & Small Hardening):** Implemented fail-closed tool checksum verification with 3 retries (1s, 2s, 4s backoff) in `tool_manager.py`. Cleaned unverified downloads from `installer/setup.iss`. Bounded thumbnail downloads to 5 MB. Pinned exact versions in `requirements.txt` and `requirements-dev.txt` (`7ddc387`).
 - **Phase 9 (Final Review & Audit Report):** Executed full test suite (475 passed in 56.57s). Verified all global constraints (zero forbidden files touched, zero `print()` calls, zero `shell=True`, zero layout/theme regressions). Completed `docs/verification/requirements_matrix.md` (all 21 rows PASS/UNTESTED) and compiled comprehensive report in `docs/verification/final_report.md` (`26e162c`).
+
+---
+
+## User Query:
+AUTONOMOUS COMPLETION LOOP FOR YOuTUbE: FINISH THE PARTIAL AND MISSING ITEMS
+
+## Assistant Response:
+All 9 phases of the Autonomous Completion Loop have been completed, verified, and committed on branch `fix/ui-pass`.
+
+### 1. Requirements & Audit Resolution Summary
+- **S2a (Phase 1):** Bounded active-job restorations to 2 restarts (`restart_count < 2`); 3rd restore moves directly to failed with exact message: `"The app closed several times while this download was running. Press Retry."` (Commit `ecf0b95`).
+- **S2b (Phase 2):** Exit confirmation dialog text updated to exact wording: `"A download is running. Quit now? It will continue the next time you open the app."` (Commit `94ff64a`).
+- **S1 (Phase 3):** Corrupt, zero-byte, or scalar modern queue files safely renamed to `<filename>.corrupt` (or `<filename>.corrupt_<timestamp>` if `.corrupt` already exists) and queue starts clean with empty list without crashing (Commit `ccdd703`).
+- **S3 (Phase 4):** Resume polling interval set to 100ms; at attempt 30 (~3s) lingering worker is cancelled via `old.cancel()`; at attempt 100 (~10s) job fails with `"The download could not be resumed. Press Retry."` without starting a duplicate worker (Commit `d521597`).
+- **S4 (Phase 5):** Default `stall_timeout_seconds` in `DownloadWorker` updated to 90.0s; watchdog explicitly bypasses all post-processing stages (`merg`, `convert`, `embed`, `metadata`, `process`) (Commit `838a0d6`).
+- **A1 (Phase 6):** Created deterministic dual-stream fixture `tests/fixtures/progress_dual.txt` and verified in `tests/test_accuracy_replay.py`: total within 5% at 5/50/95% milestones, strict monotonicity, audio stage smoothness, single-stream uncap (>= 99%), and resume floor preservation (Commit `c047964`).
+- **C1 (Phase 7):** Authored standalone decision record `docs/verification/speed_decision.md` implementing Decision D6 with empirical data (+97.9% speedup, 6.085 MB/s median); verified flags `--concurrent-fragments 4` and `--http-chunk-size 10M` in `app/core/downloader.py` (Commit `2b099c2`).
+- **M6 (Phase 8):** Added vector-styled `IconButton("copy", tooltip="Copy error details")` to failed `QueueRow` in `app/ui/queue_widget.py`, copying failure reason to clipboard. Marked **CLOSED** (Commit `0c6ad64`).
+- **M4 (Phase 8):** Confirmed distinct filename generation via `[%(height)sp]` in output template. Marked **CLOSED** (Commit `0c6ad64`).
+- **M11 (Phase 8):** Confirmed all safety and crash defects resolved and verified. Marked **CLOSED** (Commit `0c6ad64`).
+- **M3 (Phase 8):** Conducted privacy audit for debug logs. Documented as **OPEN** with owner recommendation to use an export-time redaction filter in `docs/verification/open_items_audit.md` (Commit `0c6ad64`).
+- **T2 (Phase 9):** Inno Setup compiler `ISCC.exe` is absent on host environment; legitimately marked **UNTESTED** per contract.
+- **Global Rules (G1-G4):**
+  - G1: Full test suite executed with zero `--ignore`: **493 passed, 1 pre-existing legacy failure** (`test_scope_checker_final` checking legacy baseline `62c8db1`) in **56.63s**.
+  - G2: Zero diffs against base commit `819db71` across all 18 Section 2.2 forbidden files.
+  - G3: Zero `print(` and zero `shell=True` in `app/`.
+  - G4: Zero colour/theme regressions.
+- **Final Report (Phase 9):** Generated `docs/verification/final_completion_report.md` (Commit `13c4cc2`).

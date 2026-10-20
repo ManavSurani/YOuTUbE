@@ -491,7 +491,7 @@ def test_active_job_restart_limit_moves_to_failed(tmp_path, sample_jobs, monkeyp
         "video_id": job.video_id,
         "title": job.title,
         "kind": "video",
-        "restart_count": 3,
+        "restart_count": 2,
     }
     qfile.write_text(json.dumps({"active_job": job_dict, "waiting_queue": []}), encoding="utf-8")
 
@@ -505,7 +505,81 @@ def test_active_job_restart_limit_moves_to_failed(tmp_path, sample_jobs, monkeyp
     assert len(mgr.waiting_jobs) == 0
     assert job.job_id in mgr._failed_jobs
     failed_job, reason = mgr._failed_jobs[job.job_id]
-    assert "interrupted repeatedly" in reason.lower()
+    assert reason == "The app closed several times while this download was running. Press Retry."
+
+
+def test_active_job_restart_limit_boundaries(tmp_path, sample_jobs, monkeypatch):
+    """Decision D1: 0 restores -> 1; 1 restore -> 2; 2 restores -> failed; missing -> 0->1."""
+    import json
+    job = sample_jobs[0]
+
+    # Case A: restart_count = 0 -> restores with restart_count = 1
+    qfile = tmp_path / "queue_video_a.json"
+    job_dict_0 = {
+        "job_id": "job_0", "url": job.url, "video_id": job.video_id, "title": "Job 0",
+        "kind": "video", "restart_count": 0,
+    }
+    qfile.write_text(json.dumps({"active_job": job_dict_0, "waiting_queue": []}), encoding="utf-8")
+    mgr0 = DownloadManager(kind="video")
+    mgr0._waiting_queue.clear()
+    mgr0._active_job = None
+    mgr0._queue_file = qfile
+    monkeypatch.setattr(mgr0, "_start_worker", lambda j: None)
+    mgr0._load_persisted_queue()
+    assert len(mgr0.waiting_jobs) == 1
+    assert mgr0._restart_counts["job_0"] == 1
+    assert "job_0" not in mgr0._failed_jobs
+
+    # Case B: restart_count = 1 -> restores with restart_count = 2
+    qfile = tmp_path / "queue_video_b.json"
+    job_dict_1 = {
+        "job_id": "job_1", "url": job.url, "video_id": job.video_id, "title": "Job 1",
+        "kind": "video", "restart_count": 1,
+    }
+    qfile.write_text(json.dumps({"active_job": job_dict_1, "waiting_queue": []}), encoding="utf-8")
+    mgr1 = DownloadManager(kind="video")
+    mgr1._waiting_queue.clear()
+    mgr1._active_job = None
+    mgr1._queue_file = qfile
+    monkeypatch.setattr(mgr1, "_start_worker", lambda j: None)
+    mgr1._load_persisted_queue()
+    assert len(mgr1.waiting_jobs) == 1
+    assert mgr1._restart_counts["job_1"] == 2
+    assert "job_1" not in mgr1._failed_jobs
+
+    # Case C: restart_count = 2 -> 3rd restore fails with D1 message
+    qfile = tmp_path / "queue_video_c.json"
+    job_dict_2 = {
+        "job_id": "job_2", "url": job.url, "video_id": job.video_id, "title": "Job 2",
+        "kind": "video", "restart_count": 2,
+    }
+    qfile.write_text(json.dumps({"active_job": job_dict_2, "waiting_queue": []}), encoding="utf-8")
+    mgr2 = DownloadManager(kind="video")
+    mgr2._waiting_queue.clear()
+    mgr2._active_job = None
+    mgr2._queue_file = qfile
+    monkeypatch.setattr(mgr2, "_start_worker", lambda j: None)
+    mgr2._load_persisted_queue()
+    assert len(mgr2.waiting_jobs) == 0
+    assert "job_2" in mgr2._failed_jobs
+    assert mgr2._failed_jobs["job_2"][1] == "The app closed several times while this download was running. Press Retry."
+
+    # Case D: missing restart_count -> treated as 0 -> restores with restart_count = 1
+    qfile = tmp_path / "queue_video_d.json"
+    job_dict_missing = {
+        "job_id": "job_d", "url": job.url, "video_id": job.video_id, "title": "Job D",
+        "kind": "video",
+    }
+    qfile.write_text(json.dumps({"active_job": job_dict_missing, "waiting_queue": []}), encoding="utf-8")
+    mgr_d = DownloadManager(kind="video")
+    mgr_d._waiting_queue.clear()
+    mgr_d._active_job = None
+    mgr_d._queue_file = qfile
+    monkeypatch.setattr(mgr_d, "_start_worker", lambda j: None)
+    mgr_d._load_persisted_queue()
+    assert len(mgr_d.waiting_jobs) == 1
+    assert mgr_d._restart_counts["job_d"] == 1
+    assert "job_d" not in mgr_d._failed_jobs
 
 
 def test_user_cancel_active_job_cleared_from_persistence(tmp_path, sample_jobs, monkeypatch):

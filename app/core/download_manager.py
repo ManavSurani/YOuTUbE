@@ -548,14 +548,14 @@ class DownloadManager(QObject):
                 active_job = self._deserialize_job(active_dict)
                 if active_job:
                     restart_count = int(active_dict.get("restart_count", 0))
-                    if restart_count < 3:
+                    if restart_count < 2:
                         self._restart_counts[active_job.job_id] = restart_count + 1
                         self._waiting_queue.append(active_job)
                         get_logger().info(
-                            f"Restored interrupted active job '{active_job.title}' to head of queue (restart {restart_count + 1}/3)"
+                            f"Restored interrupted active job '{active_job.title}' to head of queue (restart {restart_count + 1}/2)"
                         )
                     else:
-                        reason = "Download interrupted repeatedly; cancelled"
+                        reason = "The app closed several times while this download was running. Press Retry."
                         self._failed_jobs[active_job.job_id] = (active_job, reason)
                         get_logger().warning(
                             f"Job '{active_job.title}' exceeded restart limit ({restart_count}); moved to failed"

@@ -29,6 +29,7 @@ from app.core.info_fetcher import InfoFetchWorker, VideoInfo
 from app.core.jobs import DownloadJob
 from app.core.logger import get_logger
 from app.core.paths import DEFAULT_DOWNLOADS
+from app.core.file_actions import reveal_in_folder
 from app.core.settings import load_settings
 from app.core.thumbnails import save_thumbnail
 from app.core.url_tools import clean_url, extract_video_id, is_youtube_url
@@ -156,6 +157,7 @@ class AudioTab(QWidget):
         self.format_combo.setMinimumWidth(210)
         for label, fmt_key in self.AUDIO_FORMATS:
             self.format_combo.addItem(label, fmt_key)
+        self.format_combo.setCurrentIndex(max(0, self.format_combo.findData(load_settings().get("default_audio_format", "best"))))
         actions_row.addWidget(self.format_combo)
 
         self.download_btn = AnimatedButton("Download", role="primary", parent=container)
@@ -450,7 +452,8 @@ class AudioTab(QWidget):
         if text.strip():
             self.clip_chip.setVisible(False)
         clean = text.strip()
-        if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
+        auto_fetch = load_settings().get("auto_fetch_links", True)
+        if clean and is_youtube_url(clean) and clean != self._last_fetched_url and auto_fetch:
             self.fetch_url()
         elif not clean:
             self._fetch_seq += 1
@@ -720,6 +723,8 @@ class AudioTab(QWidget):
     def _on_manager_finished(self, job: DownloadJob, final_path: str) -> None:
         if job.kind == "audio":
             self.progress_card.show_done(out_dir=job.output_dir, final_path=final_path)
+            if final_path and load_settings().get("open_folder_when_done", False):
+                reveal_in_folder(final_path)
             self.recent_list.refresh()
             self.download_completed.emit(job.title)
             same_link = self._is_job_link(job)

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -39,6 +40,7 @@ from app.core.app_updater import (
     should_check_update,
 )
 from app.core.download_manager import get_download_manager
+from app.core.file_actions import reveal_in_folder
 from app.core.logger import get_logger
 from app.core.network_monitor import NetworkMonitor
 from app.core.settings import load_settings, save_settings
@@ -294,6 +296,24 @@ class MainWindow(QMainWindow):
         self.tray_icon = QSystemTrayIcon(self)
         if icon_path.exists():
             self.tray_icon.setIcon(QIcon(str(icon_path)))
+        tray_menu = QMenu(self)
+        tray_menu.addAction("Show", self._show_from_tray)
+        tray_menu.addSeparator()
+        tray_menu.addAction("Pause all", lambda: self._set_all_paused(True))
+        tray_menu.addAction("Resume all", lambda: self._set_all_paused(False))
+        tray_menu.addSeparator()
+        tray_menu.addAction("Quit", self.close)
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setToolTip(APP_NAME)
+        self.tray_icon.activated.connect(
+            lambda reason: self._show_from_tray() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
+        self._last_finished_path = ""
+        self.tray_icon.messageClicked.connect(
+            lambda: reveal_in_folder(self._last_finished_path) if self._last_finished_path else None)
+        for kind in ("video", "audio"):
+            mgr = get_download_manager(kind)
+            mgr.progress.connect(lambda _job, pct, *_rest: self._update_tray_tooltip(pct))
+            mgr.job_finished.connect(self._on_job_finished_for_tray)
         self.tray_icon.show()
 
         # Network monitor
@@ -438,7 +458,26 @@ class MainWindow(QMainWindow):
         is_dark = settings.get("theme", "dark").lower() != "light"
         apply_dark_title_bar(int(self.winId()), is_dark=is_dark)
 
+    def _show_from_tray(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _set_all_paused(self, paused: bool) -> None:
+        for kind, tab in (("video", self.video_tab), ("audio", self.audio_tab)):
+            if tab._job_running() and get_download_manager(kind).is_paused != paused:
+                tab.toggle_pause()
+
+    def _update_tray_tooltip(self, percent: float) -> None:
+        self.tray_icon.setToolTip(f"{APP_NAME} · Downloading {int(percent)}%")
+
+    def _on_job_finished_for_tray(self, _job, final_path: str) -> None:
+        self._last_finished_path = final_path or ""
+        self.tray_icon.setToolTip(APP_NAME)
+
     def _on_download_finished_notification(self, title: str) -> None:
+        if not load_settings().get("notify_when_done", True):
+            return
         if not self.isActiveWindow():
             self.tray_icon.showMessage(
                 APP_NAME,

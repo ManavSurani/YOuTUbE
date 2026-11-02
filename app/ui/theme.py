@@ -47,6 +47,23 @@ LIGHT_TOKENS: Dict[str, str] = {
 _current_theme = "dark"
 
 
+def windows_prefers_light() -> bool:
+    """Windows 'app mode' setting (Settings > Personalization > Colors)."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+            return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 1
+    except OSError:
+        return False
+
+
+def resolve_theme(name: str) -> str:
+    """'system' becomes 'light' or 'dark' from Windows; other names pass through."""
+    if (name or "").lower() == "system":
+        return "light" if windows_prefers_light() else "dark"
+    return "light" if (name or "").lower() == "light" else "dark"
+
+
 def current_theme() -> str:
     """Name of the theme applied through ThemeManager ('dark' or 'light')."""
     return _current_theme

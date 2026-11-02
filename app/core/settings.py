@@ -12,6 +12,14 @@ DEFAULTS: Dict[str, Any] = {
     "shortcut_created": False,
     "last_tool_check": 0,
     "last_app_check": 0,
+    # Plan 23 options (Settings dialog)
+    "default_video_quality": "best",
+    "default_audio_format": "best",
+    "open_folder_when_done": False,
+    "notify_when_done": True,
+    "auto_fetch_links": True,
+    "start_with_windows": False,
+    "animations_enabled": True,
 }
 
 

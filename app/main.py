@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import QApplication
 from app.version import APP_NAME, APP_VERSION
 from app.core.settings import load_settings, save_settings
-from app.ui.theme import ThemeManager
+from app.ui.theme import ThemeManager, resolve_theme
 from app.ui.splash import SplashScreen
 from app.ui.main_window import MainWindow
 from app.core.paths import purge_stale_tmp, DEFAULT_DOWNLOADS
@@ -84,7 +84,7 @@ def main() -> int:
 
     settings = load_settings()
     theme = settings.get("theme", "dark")
-    ThemeManager.instance().apply(theme)
+    ThemeManager.instance().apply(resolve_theme(theme))
 
     main_window_holder = []
     splash_holder = []

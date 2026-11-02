@@ -347,6 +347,12 @@ class IconButton(AnimatedButton):
             tri.closeSubpath()
             painter.fillPath(tri, icon_color)
 
+        elif self.icon_name == "more":
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(icon_color)
+            for dx in (-5.0, 0.0, 5.0):
+                painter.drawEllipse(QPointF(cx + dx, cy), 1.6, 1.6)
+
         elif self.icon_name == "pause":
             painter.fillRect(QRectF(cx - 4.5, cy - 5.5, 3.0, 11.0), icon_color)
             painter.fillRect(QRectF(cx + 1.5, cy - 5.5, 3.0, 11.0), icon_color)

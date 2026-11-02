@@ -61,6 +61,27 @@ def get_desktop_dir() -> Path:
     return Path.home() / "Desktop"
 
 
+def set_start_with_windows(enabled: bool) -> bool:
+    """Add or remove the installed app from the user's Windows startup list (HKCU Run). Source runs: no-op."""
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run",
+                            0, winreg.KEY_SET_VALUE) as key:
+            if enabled:
+                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, f'"{sys.executable}"')
+            else:
+                try:
+                    winreg.DeleteValue(key, APP_NAME)
+                except FileNotFoundError:
+                    logger.debug("Start with Windows was already off")
+        return True
+    except OSError as exc:
+        logger.warning(f"Could not update start with Windows: {exc}")
+        return False
+
+
 def create_desktop_shortcut(
     force: bool = False,
     custom_target: Optional[Path | str] = None,

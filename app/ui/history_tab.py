@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -71,17 +72,40 @@ def format_size(size_bytes: int) -> str:
     return f"{size:.1f} {units[idx]}"
 
 
+def _to_local(date_str: Optional[str]) -> Optional[datetime]:
+    if not date_str:
+        return None
+    try:
+        stamp = datetime.fromisoformat(date_str.replace("T", " ").strip())
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)  # SQLite CURRENT_TIMESTAMP is UTC
+    return stamp.astimezone()
+
+
+def date_group(date_str: Optional[str], now: Optional[datetime] = None) -> str:
+    """History section for a stored UTC timestamp: Today, Yesterday, This week or Earlier."""
+    local = _to_local(date_str)
+    if local is None:
+        return "Earlier"
+    days = ((now or datetime.now()).astimezone().date() - local.date()).days
+    if days <= 0:
+        return "Today"
+    if days == 1:
+        return "Yesterday"
+    if days < 7:
+        return "This week"
+    return "Earlier"
+
+
 def format_date_str(date_str: Optional[str], now: Optional[datetime] = None) -> str:
     """Friendly local time for a stored UTC timestamp: 'Today, 9:51 AM', 'Yesterday, 6:30 PM', '17 Oct', '17 Oct 2025'."""
     if not date_str:
         return ""
-    try:
-        stamp = datetime.fromisoformat(date_str.replace("T", " ").strip())
-    except ValueError:
+    local = _to_local(date_str)
+    if local is None:
         return date_str
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)  # SQLite CURRENT_TIMESTAMP is UTC
-    local = stamp.astimezone()
     now = (now or datetime.now()).astimezone()
     clock = f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
     days = (now.date() - local.date()).days
@@ -142,8 +166,8 @@ class FilterChip(QPushButton):
             f"QPushButton {{ background-color: {tok('surface')}; color: {tok('text_muted')}; border: none; "
             "border-radius: 16px; padding: 0 16px; font-family: 'Segoe UI'; font-size: 13px; font-weight: 500; } "
             f"QPushButton:hover {{ background-color: {tok('surface_hover')}; color: {tok('text')}; }} "
-            f"QPushButton:checked {{ background-color: {tok('accent_hover')}; color: white; font-weight: 600; }} "
-            f"QPushButton:checked:hover {{ background-color: {tok('accent_pressed')}; color: white; }}"
+            f"QPushButton:checked {{ background-color: {tok('text')}; color: {tok('bg')}; font-weight: 600; }} "
+            f"QPushButton:checked:hover {{ background-color: {tok('text')}; color: {tok('bg')}; }}"
         )
 
 
@@ -335,7 +359,7 @@ class HistoryRowWidget(QWidget):
     def __init__(self, item: HistoryItem, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.item = item
-        self.setFixedHeight(72)
+        self.setFixedHeight(64)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._setup_ui()
         self._restyle()
@@ -417,12 +441,35 @@ class HistoryRowWidget(QWidget):
         self.delete_btn.clicked.connect(self._delete_prompt)
         self.actions_layout.addWidget(self.delete_btn)
 
+        # Less used actions live in the "more" menu (the buttons stay for keyboard/tests via the menu)
+        for btn in (self.copy_btn, self.redownload_btn, self.delete_btn):
+            btn.setVisible(False)
+        self.more_btn = IconButton("more", size=32, tooltip="More", parent=self)
+        self.more_btn.clicked.connect(
+            lambda: self.build_more_menu().exec(self.more_btn.mapToGlobal(self.more_btn.rect().bottomLeft())))
+        self.actions_layout.addWidget(self.more_btn)
+
         layout.addLayout(self.actions_layout)
 
         # Apply initial file existence state from cache
         file_missing = bool(self.item.file_missing)
         self.play_btn.setVisible(not file_missing)
         self.locate_btn.setVisible(file_missing)
+
+    def build_more_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.addAction("Copy link", self.copy_btn.click)
+        menu.addAction("Re-download", self.redownload_btn.click)
+        menu.addSeparator()
+        menu.addAction("Delete", self.delete_btn.click)
+        return menu
+
+    def contextMenuEvent(self, event) -> None:
+        self.build_more_menu().exec(event.globalPos())
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if not self.item.file_missing:
+            self._play_file()
 
     def _update_meta_text(self) -> None:
         parts = [
@@ -561,6 +608,7 @@ class HistoryTab(QWidget):
         self._all_items: List[HistoryItem] = []
         self._rendered_rows: Dict[int, HistoryRowWidget] = {}
         self._rendered_count = 0
+        self._last_group = ""
         self._file_worker: Optional[FileCheckWorker] = None
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -603,13 +651,19 @@ class HistoryTab(QWidget):
         self.search_input.setPlaceholderText("Search history…")
         self.search_input.setFixedHeight(36)
         self.search_input.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._on_search_changed)
         top_row.addWidget(self.search_input, 1)
 
-        # Clear all history ghost button
-        self.clear_all_btn = AnimatedButton("Clear all", role="ghost", parent=self)
-        self.clear_all_btn.setToolTip("Clear download history")
-        self.clear_all_btn.clicked.connect(self._on_clear_all)
+        self.result_count = QLabel(self)
+        self.result_count.setProperty("role", "meta")
+        self.result_count.setVisible(False)
+        top_row.addWidget(self.result_count)
+
+        # Rare, destructive action: behind a "more" menu instead of next to the search box
+        self.clear_all_btn = IconButton("more", size=32, tooltip="More", parent=self)
+        self.clear_all_btn.clicked.connect(
+            lambda: self.build_more_menu().exec(self.clear_all_btn.mapToGlobal(self.clear_all_btn.rect().bottomLeft())))
         top_row.addWidget(self.clear_all_btn)
 
         layout.addLayout(top_row)
@@ -681,6 +735,11 @@ class HistoryTab(QWidget):
         self._current_filter = filter_type
         self.reload_history()
 
+    def build_more_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.addAction("Clear all history…", self._on_clear_all)
+        return menu
+
     def _on_search_changed(self, text: str) -> None:
         self.reload_history()
 
@@ -690,8 +749,15 @@ class HistoryTab(QWidget):
             self._file_worker.stop()
             self._file_worker.wait(200)
 
-        search_query = self.search_input.text().strip()
-        self._all_items = list_items(type_filter=self._current_filter, search=search_query)
+        # Search matches the title or the channel (case-insensitive)
+        query = self.search_input.text().strip().lower()
+        items = list_items(type_filter=self._current_filter)
+        if query:
+            items = [i for i in items if query in (i.title or "").lower() or query in (i.channel or "").lower()]
+            self.result_count.setText(f"{len(items)} result" + ("" if len(items) == 1 else "s"))
+        self.result_count.setVisible(bool(query))
+        self._all_items = items
+        self._last_group = ""
 
         # Clear existing row widgets
         while self.list_layout.count() > 1:
@@ -726,6 +792,13 @@ class HistoryTab(QWidget):
         worker_batch: List[Tuple[int, str, int]] = []
 
         for item in batch:
+            group = date_group(item.created_at)
+            if group != self._last_group:
+                header = QLabel(group, self.container_widget)
+                header.setProperty("role", "strong")
+                header.setProperty("group_header", True)
+                self.list_layout.insertWidget(self.list_layout.count() - 1, header)
+                self._last_group = group
             row = HistoryRowWidget(item, self.container_widget)
             row.deleted.connect(lambda r=row: self._on_row_deleted(r))
             row.redownload.connect(self.redownload_requested.emit)

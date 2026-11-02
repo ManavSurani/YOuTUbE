@@ -41,8 +41,9 @@ from app.core.file_actions import open_folder
 from app.core.logger import get_logger
 from app.core.paths import APP_LOG_FILE, DEFAULT_DOWNLOADS
 from app.core.settings import load_settings, save_settings
+from app.core.shortcut import set_start_with_windows
 from app.ui.kit import AnimatedButton, AnimatedCheckBox
-from app.ui.theme import ThemeManager, tok
+from app.ui.theme import ThemeManager, resolve_theme, tok
 from app.version import APP_NAME, APP_VERSION
 
 
@@ -88,7 +89,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"{APP_NAME} — Settings")
         self.setModal(True)
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(820)  # two columns
 
         self._settings = load_settings()
         self._saved_download_dir = self._settings.get("download_dir", str(DEFAULT_DOWNLOADS))
@@ -109,7 +110,7 @@ class SettingsDialog(QDialog):
 
     def _apply_dark_title_bar(self, is_dark: Optional[bool] = None) -> None:
         if is_dark is None:
-            is_dark = (self._settings.get("theme", "dark") == "dark")
+            is_dark = resolve_theme(self._settings.get("theme", "dark")) == "dark"
         try:
             from app.ui.main_window import apply_dark_title_bar
             apply_dark_title_bar(int(self.winId()), is_dark=is_dark)
@@ -117,9 +118,15 @@ class SettingsDialog(QDialog):
             get_logger().debug(f"Title bar update skipped: {exc}")
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 24)
-        layout.setSpacing(16)
+        # Two columns keep every option visible without scrolling on 768-px-high screens
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(24, 20, 24, 24)
+        outer.setSpacing(32)
+        left_col, right_col = QVBoxLayout(), QVBoxLayout()
+        for col in (left_col, right_col):
+            col.setSpacing(16)
+            outer.addLayout(col, 1)
+        layout = left_col
 
         # -------------------------------------------------------------
         # Section 1: Download Folder
@@ -182,10 +189,72 @@ class SettingsDialog(QDialog):
 
         self.theme_combo = QComboBox(self)
         self.theme_combo.setFixedHeight(36)
+        self.theme_combo.addItem("Same as Windows", "system")
         self.theme_combo.addItem("Dark", "dark")
         self.theme_combo.addItem("Light", "light")
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         layout.addWidget(self.theme_combo)
+
+        self.reduce_motion_check = AnimatedCheckBox("Reduce motion", parent=self)
+        self.reduce_motion_check.toggled.connect(lambda on: self._save_option("animations_enabled", not on))
+        layout.addWidget(self.reduce_motion_check)
+
+        layout.addWidget(self._create_divider(self))
+
+        # -------------------------------------------------------------
+        # Section: Downloads (defaults for new downloads)
+        # -------------------------------------------------------------
+        downloads_header = QLabel("Downloads", self)
+        downloads_header.setProperty("role", "section")
+        layout.addWidget(downloads_header)
+
+        from app.ui.audio_tab import AudioTab  # same format list as the Audio tab
+        self.default_quality_combo = QComboBox(self)
+        self.default_quality_combo.setFixedHeight(36)
+        for label, key in (("Best available", "best"), ("2160p", "2160p"), ("1440p", "1440p"), ("1080p", "1080p"),
+                           ("720p", "720p"), ("480p", "480p"), ("360p", "360p")):
+            self.default_quality_combo.addItem(label, key)
+        self.default_audio_combo = QComboBox(self)
+        self.default_audio_combo.setFixedHeight(36)
+        for label, key in AudioTab.AUDIO_FORMATS:
+            self.default_audio_combo.addItem(label, key)
+        for caption, combo in (("Video quality", self.default_quality_combo), ("Audio format", self.default_audio_combo)):
+            row = QHBoxLayout()
+            row_label = QLabel(caption, self)
+            row_label.setProperty("role", "muted")
+            row_label.setFixedWidth(96)
+            row.addWidget(row_label)
+            row.addWidget(combo, 1)
+            layout.addLayout(row)
+        self.default_quality_combo.currentIndexChanged.connect(
+            lambda _: self._save_option("default_video_quality", self.default_quality_combo.currentData()))
+        self.default_audio_combo.currentIndexChanged.connect(
+            lambda _: self._save_option("default_audio_format", self.default_audio_combo.currentData()))
+
+        self.open_folder_check = AnimatedCheckBox("Open the folder when a download finishes", parent=self)
+        self.open_folder_check.toggled.connect(lambda on: self._save_option("open_folder_when_done", on))
+        layout.addWidget(self.open_folder_check)
+        layout.addStretch(1)
+
+        # -------------------------------------------------------------
+        # Right column. Section: Behaviour
+        # -------------------------------------------------------------
+        layout = right_col
+        behaviour_header = QLabel("Behaviour", self)
+        behaviour_header.setProperty("role", "section")
+        layout.addWidget(behaviour_header)
+
+        self.start_windows_check = AnimatedCheckBox("Start with Windows", parent=self)
+        self.start_windows_check.toggled.connect(self._on_start_windows_toggled)
+        layout.addWidget(self.start_windows_check)
+
+        self.notify_check = AnimatedCheckBox("Notify me when a download finishes", parent=self)
+        self.notify_check.toggled.connect(lambda on: self._save_option("notify_when_done", on))
+        layout.addWidget(self.notify_check)
+
+        self.auto_fetch_check = AnimatedCheckBox("Fetch pasted links automatically", parent=self)
+        self.auto_fetch_check.toggled.connect(lambda on: self._save_option("auto_fetch_links", on))
+        layout.addWidget(self.auto_fetch_check)
 
         layout.addWidget(self._create_divider(self))
 
@@ -247,8 +316,14 @@ class SettingsDialog(QDialog):
         self.export_log_btn.clicked.connect(self._on_export_log)
         about_actions_row.addWidget(self.export_log_btn)
 
+        self.open_log_btn = AnimatedButton("Open log folder", role="secondary", parent=self)
+        self.open_log_btn.setFixedHeight(34)
+        self.open_log_btn.clicked.connect(lambda: open_folder(APP_LOG_FILE.parent))
+        about_actions_row.addWidget(self.open_log_btn)
+
         about_actions_row.addStretch(1)
         layout.addLayout(about_actions_row)
+        layout.addStretch(1)
 
         self._restyle()
         self.adjustSize()
@@ -302,9 +377,37 @@ class SettingsDialog(QDialog):
         theme = self._settings.get("theme", "dark").lower()
         idx_t = self.theme_combo.findData(theme)
         if idx_t >= 0:
+            blocked = self.theme_combo.blockSignals(True)  # loading must not re-apply the theme
             self.theme_combo.setCurrentIndex(idx_t)
+            self.theme_combo.blockSignals(blocked)
 
         self.auto_update_check.setChecked(self._settings.get("auto_update", True))
+
+        # New options: set quietly so loading does not write the settings file
+        for widget, value in (
+            (self.reduce_motion_check, not self._settings.get("animations_enabled", True)),
+            (self.open_folder_check, self._settings.get("open_folder_when_done", False)),
+            (self.start_windows_check, self._settings.get("start_with_windows", False)),
+            (self.notify_check, self._settings.get("notify_when_done", True)),
+            (self.auto_fetch_check, self._settings.get("auto_fetch_links", True)),
+        ):
+            blocked = widget.blockSignals(True)
+            widget.setChecked(bool(value))
+            widget.blockSignals(blocked)
+        for combo, key in ((self.default_quality_combo, "default_video_quality"),
+                           (self.default_audio_combo, "default_audio_format")):
+            idx = combo.findData(self._settings.get(key, "best"))
+            blocked = combo.blockSignals(True)
+            combo.setCurrentIndex(max(0, idx))
+            combo.blockSignals(blocked)
+
+    def _save_option(self, key: str, value) -> None:
+        self._settings[key] = value
+        save_settings(self._settings)
+
+    def _on_start_windows_toggled(self, enabled: bool) -> None:
+        set_start_with_windows(enabled)
+        self._save_option("start_with_windows", enabled)
 
     def _update_free_space_label(self, path: Path) -> None:
         try:
@@ -365,19 +468,20 @@ class SettingsDialog(QDialog):
 
     def _on_theme_changed(self, index: int) -> None:
         chosen_theme = self.theme_combo.currentData()
-        if chosen_theme in ("dark", "light"):
+        if chosen_theme in ("system", "dark", "light"):
             self._settings["theme"] = chosen_theme
             save_settings(self._settings)
 
-            ThemeManager.instance().apply(chosen_theme)
+            applied = resolve_theme(chosen_theme)
+            ThemeManager.instance().apply(applied)
 
             # Apply dark title bar to self and parent window
-            self._apply_dark_title_bar(is_dark=(chosen_theme == "dark"))
+            self._apply_dark_title_bar(is_dark=(applied == "dark"))
             parent_win = self.parent()
             if parent_win and hasattr(parent_win, "winId"):
                 try:
                     from app.ui.main_window import apply_dark_title_bar
-                    apply_dark_title_bar(int(parent_win.winId()), is_dark=(chosen_theme == "dark"))
+                    apply_dark_title_bar(int(parent_win.winId()), is_dark=(applied == "dark"))
                 except Exception as exc:
                     get_logger().debug(f"Title bar update skipped: {exc}")
 

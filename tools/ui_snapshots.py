@@ -50,7 +50,7 @@ from app.core.download_manager import get_download_manager  # noqa: E402
 from app.core.history_db import HistoryItem  # noqa: E402
 from app.core.info_fetcher import VideoInfo  # noqa: E402
 from app.core.jobs import DownloadJob  # noqa: E402
-from app.ui.history_tab import ClearAllDialog, HistoryDeleteDialog, HistoryRowWidget, HistoryWarningDialog  # noqa: E402
+from app.ui.history_tab import ClearAllDialog, HistoryDeleteDialog, HistoryWarningDialog  # noqa: E402
 from app.ui.kit import IconButton  # noqa: E402
 from app.ui.main_window import MainWindow  # noqa: E402
 from app.ui.settings_dialog import SettingsDialog  # noqa: E402
@@ -115,6 +115,34 @@ class Snapper:
         want = QColor(tok("surface"))
         if max(abs(bg.red() - want.red()), abs(bg.green() - want.green()), abs(bg.blue() - want.blue())) > 24:
             self.findings.append(f"{name}: background {bg.name()} does not match theme surface {want.name()}")
+
+
+def _popup_offscreen(s: Snapper, menu, name: str) -> None:
+    if menu is None:
+        s.findings.append(f"{name}: menu was not created")
+        return
+    menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
+    menu.popup(QPoint(0, 0))
+    s.popup_bg(menu, name)
+    menu.close()
+
+
+def _row_right_click_menu(row):
+    """The menu a right-click on a History row opens (its blocking exec is caught on the instance)."""
+    caught = []
+    build = row.build_more_menu
+
+    def build_caught():
+        menu = build()
+        menu.exec = lambda *a, **kw: caught.append(menu)
+        return menu
+
+    row.build_more_menu = build_caught
+    try:
+        row.contextMenuEvent(QContextMenuEvent(QContextMenuEvent.Reason.Mouse, QPoint(5, 5), QPoint(0, 0)))
+    finally:
+        del row.build_more_menu
+    return caught[0] if caught else None
 
 
 def _show(widget, w=1000, h=820):
@@ -188,21 +216,26 @@ def render_theme(s: Snapper, theme: str) -> None:
 
     item = HistoryItem(id=1, title="Some video", url=INFO.url, type="video", quality="1080p",
                        file_path=str(done_file), size_bytes=723_000, duration=60)
-    row_menu = HistoryRowWidget(item).build_more_menu()
-    row_menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-    row_menu.popup(QPoint(0, 0))
-    s.popup_bg(row_menu, p + "08c_history_row_menu")
-    row_menu.close()
-    more_menu = win.history_tab.build_more_menu()
-    more_menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-    more_menu.popup(QPoint(0, 0))
-    s.popup_bg(more_menu, p + "08d_history_more_menu")
-    more_menu.close()
-    tray_menu = win.tray_icon.contextMenu()
-    tray_menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
-    tray_menu.popup(QPoint(0, 0))
-    s.popup_bg(tray_menu, p + "08e_tray_menu")
-    tray_menu.close()
+    # Every menu is built from its real parent in the real window, so it inherits what the user's menu does
+    rows = list(win.history_tab._rendered_rows.values())
+    if rows:
+        _popup_offscreen(s, rows[0].build_more_menu(), p + "08c_history_row_menu")
+        _popup_offscreen(s, _row_right_click_menu(rows[0]), p + "08g_history_row_right_click")
+    else:
+        s.findings.append(f"{p}08c_history_row_menu: no History rows to build the row menu from")
+    _popup_offscreen(s, win.history_tab.build_more_menu(), p + "08d_history_more_menu")
+    _popup_offscreen(s, win.tray_icon.contextMenu(), p + "08e_tray_menu")
+    win.history_tab.search_input.contextMenuEvent(
+        QContextMenuEvent(QContextMenuEvent.Reason.Keyboard, QPoint(5, 5), QPoint(0, 0)))
+    if win.history_tab.search_input._current_menu is not None:
+        s.popup_bg(win.history_tab.search_input._current_menu, p + "08h_search_box_menu")
+        win.history_tab.search_input._current_menu.close()
+    win.header.select_tab(1)
+    win.audio_tab.url_input.contextMenuEvent(
+        QContextMenuEvent(QContextMenuEvent.Reason.Keyboard, QPoint(5, 5), QPoint(0, 0)))
+    if win.audio_tab.url_input._current_menu is not None:
+        s.popup_bg(win.audio_tab.url_input._current_menu, p + "08i_audio_linkbox_menu")
+        win.audio_tab.url_input._current_menu.close()
     win.header.select_tab(0)
 
     QToolTip.showText(QPoint(10, 10), "Pause (Space)", win)
@@ -221,6 +254,8 @@ def render_theme(s: Snapper, theme: str) -> None:
                       ("13_warning_dialog", HistoryWarningDialog("File missing", "The file was moved or deleted.", win))):
         _show(dlg, *dlg.size().toTuple())
         s.snap(dlg, p + name)
+        if isinstance(dlg, SettingsDialog):
+            _popup_offscreen(s, dlg.folder_input.createStandardContextMenu(), p + "10b_settings_folder_menu")
         dlg.close()
     box = QMessageBox(QMessageBox.Icon.Question, "YOuTUbE", "A download is still running. Quit anyway?",
                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, win)

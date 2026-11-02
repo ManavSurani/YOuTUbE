@@ -1,14 +1,19 @@
 {
-  "latest_version": "1.0.6",
-  "version": "1.0.6",
+  "latest_version": "1.0.7",
+  "version": "1.0.7",
   "min_supported_version": "1.0.0",
   "force_update": false,
-  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.6/YOuTUbE_Setup.exe",
-  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.6/YOuTUbE_Setup.exe",
-  "sha256": "28c34c5256fea80f3dbb68fd623f37170cf2b748922202cb1172f4b37713e0f6",
+  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.7/YOuTUbE_Setup.exe",
+  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.7/YOuTUbE_Setup.exe",
+  "sha256": "f5ed28f6098770a039a19b3ae631ce6affb7d62a96a434210c9a954b5f867c7c",
   "release_date": "2026-11-02",
   "notes": [
-    "Quality list sizes now match the real download (uses the same format yt-dlp downloads)"
+    "Pause and Resume buttons are no longer cut off",
+    "Light mode: menus, tooltips and dialog title bars now match the theme",
+    "Same as Windows now follows a Windows theme change right away",
+    "History opens faster and is never blank when you switch to it",
+    "Paused downloads show only sizes; no gap under finished downloads",
+    "Streamed videos show no size estimate; quality list sizes are neatly aligned"
   ],
   "android": {
     "version": "1.0.1",

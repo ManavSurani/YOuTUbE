@@ -4,9 +4,9 @@ from pathlib import Path
 import sys
 from typing import Dict, Optional
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QGuiApplication
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication
 
 from app.core.logger import get_logger
 from app.core.settings import load_settings
@@ -156,15 +156,17 @@ class ThemeManager(QObject):
         super().__init__()
         app = QApplication.instance()
         if app is not None:
-            app.installEventFilter(self)  # title bar for every window as it appears
+            # Every dialog takes focus when it opens: style its title bar then
+            # (much cheaper than an app-wide event filter that sees every event)
+            app.focusWindowChanged.connect(self._on_focus_window_changed)
             QGuiApplication.styleHints().colorSchemeChanged.connect(self._on_system_scheme_changed)
 
-    def eventFilter(self, obj, event) -> bool:
-        if event.type() == QEvent.Type.Show and isinstance(obj, QWidget) and obj.isWindow():
-            self._style_title_bar(obj)
-        return False
+    def _on_focus_window_changed(self, window) -> None:
+        if window is not None:
+            self._style_title_bar(window)
 
-    def _style_title_bar(self, window: QWidget) -> None:
+    def _style_title_bar(self, window) -> None:
+        """`window` is a top-level QWidget or a QWindow (both have winId)."""
         apply_dark_title_bar(int(window.winId()), is_dark=(_current_theme != "light"))
 
     def _on_system_scheme_changed(self, *_) -> None:

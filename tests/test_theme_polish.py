@@ -152,7 +152,7 @@ def test_qss_has_menu_and_tooltip_rules_from_tokens(theme_name):
 def title_bar_calls(monkeypatch):
     calls = []
     monkeypatch.setattr(theme, "apply_dark_title_bar", lambda hwnd, is_dark=True: calls.append((hwnd, is_dark)))
-    theme.ThemeManager.instance()  # make sure the window hook is installed
+    theme.ThemeManager.instance()  # make sure the focus hook is connected
     return calls
 
 
@@ -165,6 +165,8 @@ def test_any_dialog_gets_theme_title_bar(title_bar_calls, theme_name):
     box.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
     box.show()
     _settle()
+    # Offscreen windows never take focus; send what Qt sends when a real dialog opens
+    QApplication.instance().focusWindowChanged.emit(box.windowHandle())
     assert (int(box.winId()), theme_name == "dark") in title_bar_calls
     box.close()
 

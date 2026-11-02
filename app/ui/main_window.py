@@ -171,6 +171,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self._page_fade: Optional[QPropertyAnimation] = None
+        self._fade_page = None
         self.setWindowTitle(APP_NAME)
         self.resize(800, 600)
         self.setMinimumSize(760, 520)
@@ -389,7 +390,6 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int) -> None:
         self.stacked_widget.setCurrentIndex(index)
-        self._fade_in_page(self.stacked_widget.currentWidget())
         if hasattr(self.video_tab, "reset_messages"):
             self.video_tab.reset_messages()
         if hasattr(self.audio_tab, "reset_messages"):
@@ -397,9 +397,15 @@ class MainWindow(QMainWindow):
         # Refresh history tab if switched to history
         if index == 2 and hasattr(self.history_tab, "refresh_items"):
             self.history_tab.refresh_items()
+        # Fade only after the page is built, so it never sits blank while loading
+        self._fade_in_page(self.stacked_widget.currentWidget())
 
     def _fade_in_page(self, page) -> None:
         """Short cross-fade for the newly shown tab; the effect is removed when done."""
+        if self._page_fade is not None:
+            # A fast switch: finish the previous fade so no page is left covered
+            self._page_fade.stop()
+            self._fade_page.setGraphicsEffect(None)
         self._page_fade = None
         if page is None or not is_animations_enabled():
             return
@@ -411,7 +417,7 @@ class MainWindow(QMainWindow):
         fade.setEndValue(1.0)
         fade.finished.connect(lambda: page.setGraphicsEffect(None))
         fade.start()
-        self._page_fade = fade
+        self._page_fade, self._fade_page = fade, page
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self)

@@ -764,6 +764,7 @@ class HistoryTab(QWidget):
             child = self.list_layout.takeAt(0)
             if child.widget():
                 w = child.widget()
+                w.hide()  # hide first, or Qt shows the detached row as its own window
                 w.setParent(None)
                 w.deleteLater()
 

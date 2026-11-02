@@ -1,15 +1,14 @@
 {
-  "latest_version": "1.0.3",
-  "version": "1.0.3",
+  "latest_version": "1.0.4",
+  "version": "1.0.4",
   "min_supported_version": "1.0.0",
   "force_update": false,
-  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.3/YOuTUbE_Setup.exe",
-  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.3/YOuTUbE_Setup.exe",
-  "sha256": "99b47dc8e4415eeb2ff5b4e1448a0e1d407bd5d178aa04cd4d409d4e01c8ff14",
+  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.4/YOuTUbE_Setup.exe",
+  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.4/YOuTUbE_Setup.exe",
+  "sha256": "29a83ba0a08e86a1627874784c6f9c2a568374f5da47a7b38200b70ec2fc7686",
   "release_date": "2026-11-02",
   "notes": [
-    "Exact download size from the first second, real file size when done",
-    "App updates itself when it starts"
+    "Test release: the app updates itself on start"
   ],
   "android": {
     "version": "1.0.1",

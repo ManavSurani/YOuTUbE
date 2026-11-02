@@ -1,14 +1,17 @@
 {
-  "latest_version": "1.0.4",
-  "version": "1.0.4",
+  "latest_version": "1.0.5",
+  "version": "1.0.5",
   "min_supported_version": "1.0.0",
   "force_update": false,
-  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.4/YOuTUbE_Setup.exe",
-  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.4/YOuTUbE_Setup.exe",
-  "sha256": "29a83ba0a08e86a1627874784c6f9c2a568374f5da47a7b38200b70ec2fc7686",
+  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.5/YOuTUbE_Setup.exe",
+  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.5/YOuTUbE_Setup.exe",
+  "sha256": "9c07bd53662f27b45532149eb0e4aeebc9d6d3296f30e03eae29924894447743",
   "release_date": "2026-11-02",
   "notes": [
-    "Test release: the app updates itself on start"
+    "New look: working light mode and 'Same as Windows' theme",
+    "Size shown for each quality, Pause/Resume, Open and Show in folder when done",
+    "History with local times, day groups and search by channel",
+    "Copied-link offer, drag and drop, keyboard shortcuts, new settings, tray menu"
   ],
   "android": {
     "version": "1.0.1",

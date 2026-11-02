@@ -231,13 +231,19 @@ def _window_with_history(monkeypatch, rows=50):
 
 
 def test_history_is_painted_right_after_switch(monkeypatch):
+    from app.ui.history_tab import HistoryRowWidget
     from app.ui.kit.anim import FAST
     win = _window_with_history(monkeypatch)
     try:
-        win.header.select_tab(2)
-        _settle(FAST + 100)
+        for idx in (2, 0, 2):  # the second History open replaces the rows of the first
+            win.header.select_tab(idx)
+            QApplication.processEvents()  # first paint of the freshly built page
+            _settle(FAST + 100)
         effect = win.history_tab.graphicsEffect()
         assert effect is None or effect.opacity() >= 0.99
+        # Removed rows must not pop up as their own windows (that froze the page before)
+        stray = [w for w in QApplication.topLevelWidgets() if isinstance(w, HistoryRowWidget) and w.isVisible()]
+        assert not stray
     finally:
         win.network_monitor.stop()
         win.close()

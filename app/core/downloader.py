@@ -44,6 +44,9 @@ _POST_TEMPLATE = (
     "|%(progress.postprocessor)s"
 )
 
+# Exact stream sizes, written before the download starts (video+audio jobs)
+_SIZES_TEMPLATE = "video:%(requested_formats.0.filesize)s|%(requested_formats.1.filesize)s"
+
 # Minimum bytes threshold to consider an estimate real (filters fragment-only noise)
 MIN_ESTIMATE_BYTES: int = 100_000
 
@@ -155,6 +158,7 @@ def build_video_cmd(
         "--progress-template", _POST_TEMPLATE,
         # Write final path to a UTF-8 file — never trust stdout for paths (B3 fix)
         "--print-to-file", f"after_move:filepath", str(path_file),
+        "--print-to-file", _SIZES_TEMPLATE, str(TMP_DIR / f"{job_id or 'tmp'}.sizes"),
         "--merge-output-format", "mkv",
         "--embed-metadata",
         "--concurrent-fragments", "4",
@@ -383,6 +387,20 @@ def resolve_final_path(
     return ""
 
 
+def read_stream_sizes(sizes_file: Path) -> tuple[int, int]:
+    """Read exact (video, audio) byte sizes from the last line of the sizes file; (0, 0) if unknown."""
+    try:
+        lines = sizes_file.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return 0, 0
+    last = next((l.strip() for l in reversed(lines) if l.strip()), "")
+    parts = last.split("|")
+    if len(parts) < 2:
+        return 0, 0
+    video, audio = _safe_int(parts[0]), _safe_int(parts[1])
+    return (video, audio) if video and audio else (0, 0)
+
+
 # ---------------------------------------------------------------------------
 # Download worker — fully rewritten for Phase 1
 # ---------------------------------------------------------------------------
@@ -428,6 +446,7 @@ class DownloadWorker(QThread):
         self._raw_lines: List[str] = []
         # Path file written by --print-to-file (UTF-8, B3 fix)
         self._path_file    = TMP_DIR / f"{self.job_id}.path"
+        self._sizes_file   = TMP_DIR / f"{self.job_id}.sizes"
 
     def run(self) -> None:
         logger = get_logger()
@@ -451,6 +470,8 @@ class DownloadWorker(QThread):
         overall_done: int = 0
         overall_total: int = 0
         stall_count: int = 0
+        exact_video: int = 0
+        exact_audio: int = 0
 
         while not self._is_cancelled and not self._is_paused:
             try:
@@ -536,8 +557,14 @@ class DownloadWorker(QThread):
                     else:
                         remaining_estimate = 0
 
+                    if self.is_dual_stream and not exact_video:
+                        exact_video, exact_audio = read_stream_sizes(self._sizes_file)
+
                     # Calculate whole-job done and total
-                    if self.is_dual_stream:
+                    if self.is_dual_stream and exact_video and exact_audio:
+                        overall_total = exact_video + exact_audio
+                        overall_done = p.done_bytes if p.stage == "Downloading video" else exact_video + p.done_bytes
+                    elif self.is_dual_stream:
                         if p.stage == "Downloading audio":
                             overall_done = _finished_bytes + p.done_bytes
                             overall_total = _finished_bytes + (p.total_bytes if p.total_bytes > 0 else p.done_bytes)
@@ -660,3 +687,8 @@ class DownloadWorker(QThread):
             self._path_file.unlink(missing_ok=True)
         except Exception as exc:
             logger.debug(f"Could not unlink path file {self._path_file}: {exc}")
+
+        try:
+            self._sizes_file.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.debug(f"Could not unlink sizes file {self._sizes_file}: {exc}")

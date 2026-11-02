@@ -237,7 +237,7 @@ class ProgressCard(QWidget):
             done = self._last_done
             if self._last_total > 0:
                 total = max(self._last_total, done)
-                size_slot = f"{self._fmt_bytes(done)} / {self._fmt_bytes(total)}"
+                size_slot = self._fmt_pair(done, total)
             else:
                 size_slot = self._fmt_bytes(done)
         else:
@@ -279,14 +279,15 @@ class ProgressCard(QWidget):
 
         self._update_stats_label(stats=stats)
 
-    def show_done(self, out_dir: str = "") -> None:
-        """Show completion with real folder name (B15 fix)."""
+    def show_done(self, out_dir: str = "", final_path: str = "") -> None:
+        """Show completion with real folder name (B15 fix) and real size on disk."""
         self._stop_highlight_anim()
         folder_name = Path(out_dir).name if out_dir else "Downloads"
         self.progress_bar.setValue(100)
         self.percent_label.setText("100%")
         self.stage_label.setText(f"Done. Saved to {folder_name}.")
-        self.stats_label.setText("")
+        size = Path(final_path).stat().st_size if final_path and Path(final_path).is_file() else 0
+        self.stats_label.setText(f"File size: {self._fmt_bytes(size)}" if size else "")
         self.setVisible(True)
         self._collapse_timer.start(1200)
 
@@ -320,3 +321,15 @@ class ProgressCard(QWidget):
             v /= 1024.0
             idx += 1
         return f"{v:.1f} {units[idx]}"
+
+    @staticmethod
+    def _fmt_pair(done: int, total: int) -> str:
+        """Format done / total in the total's unit so the done number counts up smoothly."""
+        units = ["B", "KB", "MB", "GB", "TB"]
+        div = 1.0
+        idx = 0
+        while total / div >= 1024.0 and idx < len(units) - 1:
+            div *= 1024.0
+            idx += 1
+        dec = 2 if idx >= 3 else 1
+        return f"{done / div:.{dec}f} {units[idx]} / {total / div:.{dec}f} {units[idx]}"

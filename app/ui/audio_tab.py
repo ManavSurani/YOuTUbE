@@ -632,7 +632,7 @@ class AudioTab(QWidget):
 
     def _on_manager_finished(self, job: DownloadJob, final_path: str) -> None:
         if job.kind == "audio":
-            self.progress_card.show_done(out_dir=job.output_dir)
+            self.progress_card.show_done(out_dir=job.output_dir, final_path=final_path)
             self.recent_list.refresh()
             self.download_completed.emit(job.title)
             same_link = self._is_job_link(job)

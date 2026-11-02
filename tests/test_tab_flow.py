@@ -994,3 +994,28 @@ def test_in_flight_duplicate_detection(TabClass, module_name, kind, monkeypatch)
 
 
 
+
+
+@pytest.mark.parametrize("TabClass,kind", [
+    (VideoTab, "video"),
+    (AudioTab, "audio"),
+])
+def test_tab_done_passes_final_path(TabClass, kind):
+    """Plan 21 Phase 3: the finished file path reaches the progress card so it can show the real size."""
+    tab = TabClass()
+    info = VideoInfo(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Rick Astley",
+        channel="RickAstleyVEVO",
+        duration=212,
+        duration_str="3:32",
+        thumbnail_url="",
+        qualities=[("1080p", 1000000)],
+        filesize_approx=1000000,
+    )
+    job = DownloadJob.create(info=info, kind=kind, quality_label="best", output_dir="C:/Downloads")
+    tab.progress_card.show_done = MagicMock()
+
+    tab._on_manager_finished(job, "C:/x/file.mkv")
+
+    tab.progress_card.show_done.assert_called_once_with(out_dir="C:/Downloads", final_path="C:/x/file.mkv")

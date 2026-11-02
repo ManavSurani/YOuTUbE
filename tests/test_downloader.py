@@ -1240,3 +1240,70 @@ def test_watchdog_boundary_does_not_fire_at_65s_fires_at_91s():
     assert 65.0 < worker.stall_timeout_seconds
     # At 91s elapsed:
     assert 91.0 > worker.stall_timeout_seconds
+
+
+# ---------------------------------------------------------------------------
+# Plan 21 Phase 1: exact stream sizes file
+# ---------------------------------------------------------------------------
+
+class TestExactStreamSizes:
+    def _print_targets(self, cmd):
+        return [(cmd[i + 1], cmd[i + 2]) for i, a in enumerate(cmd) if a == "--print-to-file"]
+
+    def test_video_cmd_prints_stream_sizes_file(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        sizes = [(t, f) for t, f in self._print_targets(cmd) if f.endswith("j1.sizes")]
+        assert len(sizes) == 1
+        template = sizes[0][0]
+        assert "requested_formats.0.filesize" in template
+        assert "requested_formats.1.filesize" in template
+        assert "filesize_approx" not in template
+
+    def test_video_cmd_keeps_path_print(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        assert ("after_move:filepath", str(TMP_DIR / "j1.path")) in self._print_targets(cmd)
+
+    def test_audio_cmd_has_no_sizes_print(self):
+        cmd = build_audio_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        assert not any(arg.endswith(".sizes") for arg in cmd)
+
+    def test_read_stream_sizes_exact(self, tmp_path):
+        from app.core.downloader import read_stream_sizes
+        f = tmp_path / "job.sizes"
+        f.write_text("18000000|2040000\n", encoding="utf-8")
+        assert read_stream_sizes(f) == (18000000, 2040000)
+
+    def test_read_stream_sizes_uses_last_line(self, tmp_path):
+        from app.core.downloader import read_stream_sizes
+        f = tmp_path / "job.sizes"
+        f.write_text("1|2\n18000000|2040000\n\n", encoding="utf-8")
+        assert read_stream_sizes(f) == (18000000, 2040000)
+
+    @pytest.mark.parametrize("content", ["NA|2040000\n", "NA|NA\n", ""])
+    def test_read_stream_sizes_na_or_empty(self, tmp_path, content):
+        from app.core.downloader import read_stream_sizes
+        f = tmp_path / "job.sizes"
+        f.write_text(content, encoding="utf-8")
+        assert read_stream_sizes(f) == (0, 0)
+
+    def test_read_stream_sizes_missing(self, tmp_path):
+        from app.core.downloader import read_stream_sizes
+        assert read_stream_sizes(tmp_path / "nope.sizes") == (0, 0)
+
+    def test_cleanup_removes_sizes_file(self, tmp_path, monkeypatch):
+        import app.core.paths as paths_mod
+        import app.core.downloader as dl_mod
+        fake_tmp = tmp_path / "app_tmp"
+        fake_tmp.mkdir()
+        monkeypatch.setattr(paths_mod, "TMP_DIR", fake_tmp)
+        monkeypatch.setattr(dl_mod, "TMP_DIR", fake_tmp)
+        sizes = fake_tmp / "job-1.sizes"
+        sizes.write_text("1|2", encoding="utf-8")
+        other = fake_tmp / "job-2.sizes"
+        other.write_text("1|2", encoding="utf-8")
+
+        worker = DownloadWorker(cmd=["echo"], out_dir=tmp_path, job_id="job-1")
+        worker._cleanup_job_tmp()
+
+        assert not sizes.exists()
+        assert other.exists()

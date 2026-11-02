@@ -182,3 +182,73 @@ def test_mid_stream_resume_preserves_bytes_and_floor(monkeypatch, tmp_path):
     for pct, done in emitted_records:
         assert pct >= floor_pct, f"Percent dropped below floor {floor_pct}: {pct}"
         assert done >= initial_done, f"Done bytes dropped below initial {initial_done}: {done}"
+
+
+# ---------------------------------------------------------------------------
+# Plan 21: exact stream sizes from the .sizes file
+# ---------------------------------------------------------------------------
+
+def _replay(monkeypatch, tmp_path, lines, sizes_text=None, **worker_kwargs):
+    proc = MockFixtureProcess(lines)
+    monkeypatch.setattr("app.core.downloader.start_hidden", lambda cmd: proc)
+    monkeypatch.setattr("app.core.downloader.kill_tree", lambda p: None)
+    monkeypatch.setattr("app.core.downloader.resolve_final_path", lambda p, v, o: str(tmp_path / "final_output.mkv"))
+    worker = DownloadWorker(["dummy_cmd"], out_dir=tmp_path, is_dual_stream=True, **worker_kwargs)
+    worker._sizes_file = tmp_path / "job.sizes"
+    if sizes_text is not None:
+        worker._sizes_file.write_text(sizes_text, encoding="utf-8")
+    emitted = []
+    worker.progress.connect(lambda pct, spd, eta, done, tot: emitted.append((pct, done, tot)))
+    worker.run()
+    return emitted
+
+
+def _fixture_lines():
+    fixture_path = Path(__file__).parent / "fixtures" / "progress_dual.txt"
+    with open(fixture_path, "r", encoding="utf-8") as f:
+        return [l for l in f if not l.startswith("#")]
+
+
+def test_exact_sizes_total_fixed_from_first_tick(monkeypatch, tmp_path):
+    """Plan 21: with exact sizes, the total is the true download size from the first tick (no audio guess)."""
+    emitted = _replay(monkeypatch, tmp_path, _fixture_lines(), "18000000|2040000\n", duration_seconds=7200)
+
+    totals = [tot for _, _, tot in emitted if tot > 0]
+    assert totals and all(t == TRUE_FINAL_BYTES for t in totals), f"Totals not fixed: {sorted(set(totals))}"
+    pcts = [p for p, _, _ in emitted]
+    assert all(b >= a for a, b in zip(pcts, pcts[1:]))
+    assert max(done for _, done, _ in emitted) == TRUE_FINAL_BYTES
+
+
+def test_no_sizes_file_keeps_old_totals(monkeypatch, tmp_path):
+    """Plan 21: without a sizes file the old estimate path runs unchanged."""
+    emitted = _replay(monkeypatch, tmp_path, _fixture_lines(), None, duration_seconds=7200)
+
+    assert [tot for _, _, tot in emitted] == [140_400_000] * 10 + [20_040_000] * 8
+
+
+_RESUMED_AUDIO_LINES = [
+    "[download] Destination: tmp_audio.m4a\n",
+    "[download] YTPROG|downloading|1000000|2040000|2040000|500000|2|none|opus\n",
+    "[download] YTPROG|downloading|1600000|2040000|2040000|540000|1|none|opus\n",
+    "[download] YTPROG|downloading|2040000|2040000|2040000|550000|0|none|opus\n",
+    "[download] YTPROG|finished|2040000|2040000|2040000|NA|0|none|opus\n",
+    "[Merger] Merging formats into 'final_output.mkv'\n",
+]
+
+
+@pytest.mark.parametrize("sizes_text", ["18000000|2040000\n", "18000000|2040000\n18000000|2040000\n"])
+def test_resume_mid_audio_with_exact_sizes(monkeypatch, tmp_path, sizes_text):
+    """Plan 21 Phase 2: resuming during audio must not count the partial audio twice."""
+    emitted = _replay(
+        monkeypatch, tmp_path, _RESUMED_AUDIO_LINES, sizes_text,
+        duration_seconds=120, initial_done_bytes=19_000_000, floor_percent=96.0,
+    )
+
+    for pct, done, tot in emitted:
+        assert tot == TRUE_FINAL_BYTES
+        assert done <= tot, f"done {done} > total {tot}"
+        assert pct >= 96.0
+    pcts = [p for p, _, _ in emitted]
+    assert all(b >= a for a, b in zip(pcts, pcts[1:]))
+    assert emitted[-1][1] == TRUE_FINAL_BYTES

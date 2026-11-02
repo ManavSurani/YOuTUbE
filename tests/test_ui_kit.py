@@ -965,3 +965,78 @@ def test_animated_line_edit_context_menu_corner_transparency():
 
 
 
+# --- Plan 20: progress numbers (same unit for done and total) ---
+
+_KIB = 1024
+_MIB = 1024 * 1024
+_GIB = 1024 * 1024 * 1024
+
+
+def _size_part(card):
+    return card.stats_label.text().split(" • ")[1]
+
+
+def test_size_pair_same_unit_gb():
+    card = ProgressCard()
+    card.set_progress(10.0, speed="5.0 MB/s", done_bytes=512 * _MIB, total_bytes=5 * _GIB)
+    assert _size_part(card) == "0.50 GB / 5.00 GB"
+
+
+def test_size_pair_counts_up_in_gb():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="5.0 MB/s", done_bytes=int(2.5 * _GIB), total_bytes=5 * _GIB)
+    assert _size_part(card) == "2.50 GB / 5.00 GB"
+
+
+def test_size_pair_mb_unchanged():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="5.0 MB/s", done_bytes=50 * _MIB, total_bytes=100 * _MIB)
+    assert _size_part(card) == "50.0 MB / 100.0 MB"
+
+
+def test_size_pair_small_done_uses_total_unit():
+    card = ProgressCard()
+    card.set_progress(1.0, speed="5.0 MB/s", done_bytes=500 * _KIB, total_bytes=int(95.4 * _MIB))
+    assert _size_part(card) == "0.5 MB / 95.4 MB"
+
+
+def test_full_line_with_gb():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="12.4 MB/s", eta="01:20", done_bytes=int(2.5 * _GIB), total_bytes=5 * _GIB)
+    assert card.stats_label.text() == "12.4 MB/s • 2.50 GB / 5.00 GB • ETA 01:20"
+
+
+def test_live_update_changes_done_only():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="10.0 MB/s", eta="04:16", done_bytes=int(2.5 * _GIB), total_bytes=5 * _GIB)
+    first = card.stats_label.text()
+    card.set_progress(52.0, speed="11.2 MB/s", eta="03:40", done_bytes=int(2.6 * _GIB), total_bytes=5 * _GIB)
+    second = card.stats_label.text()
+    assert first == "10.0 MB/s • 2.50 GB / 5.00 GB • ETA 04:16"
+    assert second == "11.2 MB/s • 2.60 GB / 5.00 GB • ETA 03:40"
+
+
+# ---------------------------------------------------------------------------
+# Plan 21 Phase 3: real size on disk when done
+# ---------------------------------------------------------------------------
+
+def test_show_done_shows_real_file_size(tmp_path):
+    f = tmp_path / "video.mkv"
+    f.write_bytes(b"\0" * 1536)
+    card = ProgressCard()
+    card.show_done(out_dir=str(tmp_path), final_path=str(f))
+    assert card.stats_label.text() == "File size: 1.5 KB"
+    assert card.stage_label.text() == f"Done. Saved to {tmp_path.name}."
+
+
+def test_show_done_without_path_clears_stats():
+    card = ProgressCard()
+    card.set_progress(50.0, speed="5 MB/s", eta="00:10", done_bytes=50000000, total_bytes=100000000)
+    card.show_done(out_dir="C:/Downloads")
+    assert card.stats_label.text() == ""
+
+
+def test_show_done_missing_file_clears_stats(tmp_path):
+    card = ProgressCard()
+    card.show_done(out_dir=str(tmp_path), final_path=str(tmp_path / "missing.mkv"))
+    assert card.stats_label.text() == ""

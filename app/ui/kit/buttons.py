@@ -260,7 +260,7 @@ class AnimatedButton(QPushButton):
 class IconButton(AnimatedButton):
     """Icon button supporting crisp vector-rendered icons and animations.
 
-    Supports vector types: 'play', 'folder', 'copy', 'redownload', 'delete', 'locate'.
+    Supports vector types: 'play', 'pause', 'folder', 'copy', 'redownload', 'delete', 'locate'.
     Supports is_danger=True which turns red on hover and press.
     """
 
@@ -346,6 +346,10 @@ class IconButton(AnimatedButton):
             tri.lineTo(cx - 3.5, cy + 5.5)
             tri.closeSubpath()
             painter.fillPath(tri, icon_color)
+
+        elif self.icon_name == "pause":
+            painter.fillRect(QRectF(cx - 4.5, cy - 5.5, 3.0, 11.0), icon_color)
+            painter.fillRect(QRectF(cx + 1.5, cy - 5.5, 3.0, 11.0), icon_color)
 
         elif self.icon_name == "folder":
             folder = QPainterPath()

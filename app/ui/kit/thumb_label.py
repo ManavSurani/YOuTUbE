@@ -25,6 +25,7 @@ class ThumbLabel(QLabel):
         self._is_audio = is_audio
         self._size = size
         self._radius = radius
+        self._has_image = False  # an image set from bytes survives theme switches
 
         self.setFixedSize(size[0], size[1])
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -32,11 +33,34 @@ class ThumbLabel(QLabel):
         ThemeManager.instance().changed.connect(self._on_theme_changed)
 
     def _on_theme_changed(self, _theme: str) -> None:
-        self.update_thumbnail(self._video_id, self._is_audio)
+        if not self._has_image:
+            self.update_thumbnail(self._video_id, self._is_audio)
+
+    def set_image_bytes(self, data: bytes) -> bool:
+        """Show encoded image bytes, center-cropped to the label size with rounded corners."""
+        src = QPixmap()
+        if not data or not src.loadFromData(data):
+            return False
+        w, h = self._size
+        scaled = src.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+        cropped = scaled.copy(max(0, (scaled.width() - w) // 2), max(0, (scaled.height() - h) // 2), w, h)
+        rounded = QPixmap(w, h)
+        rounded.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(0, 0, w, h), self._radius, self._radius)
+        painter.setClipPath(clip)
+        painter.drawPixmap(0, 0, cropped)
+        painter.end()
+        self._has_image = True
+        self.setPixmap(rounded)
+        return True
 
     def update_thumbnail(self, video_id: str, is_audio: bool = False) -> None:
         self._video_id = video_id
         self._is_audio = is_audio
+        self._has_image = False
         if not video_id or get_thumbnail_path(video_id) is None:
             self.setPixmap(self._placeholder())
             return

@@ -21,7 +21,7 @@ from PySide6.QtCore import (
     QThread,
     Signal,
 )
-from PySide6.QtGui import QContextMenuEvent, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -50,11 +50,13 @@ from app.ui.kit import (
     AnimatedButton,
     InlineMessage,
     ProgressCard,
+    ThumbLabel,
 )
 from app.ui.queue_widget import QueueWidget
 from app.ui.recent_list import RecentList
 
 _FETCH_CACHE: dict[str, VideoInfo] = {}
+QUALITY_LABEL_ROLE = Qt.ItemDataRole.UserRole + 1  # clean quality label without the size suffix
 
 
 def get_current_theme_tokens() -> dict[str, str]:
@@ -341,23 +343,27 @@ class ThumbnailLoader(QThread):
 
 
 class MediaInfoCard(QWidget):
-    """Displays fetched video details (128x72 thumbnail, title, channel • duration)."""
+    """Fetched video details: 160x90 thumbnail, 2-line title, channel • duration, and save folder."""
+
+    change_folder_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.thumb_bytes: Optional[bytes] = None
         self._thumb_loader: Optional[ThumbnailLoader] = None
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setVisible(False)
         self._setup_ui()
+        self._restyle()
+        ThemeManager.instance().changed.connect(self._restyle)
 
     def _setup_ui(self) -> None:
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 4, 0, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(16)
 
-        self.thumb_label = QLabel(self)
-        self.thumb_label.setFixedSize(128, 72)
-        layout.addWidget(self.thumb_label)
+        self.thumb_label = ThumbLabel(size=(160, 90), radius=8, parent=self)
+        layout.addWidget(self.thumb_label, 0, Qt.AlignmentFlag.AlignTop)
 
         text_layout = QVBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
@@ -375,18 +381,40 @@ class MediaInfoCard(QWidget):
         self.meta_label.setProperty("role", "meta")
         text_layout.addWidget(self.meta_label)
 
+        self.dest_label = QLabel(self)
+        self.dest_label.setTextFormat(Qt.TextFormat.RichText)
+        self.dest_label.setProperty("role", "meta")
+        self.dest_label.linkActivated.connect(lambda _: self.change_folder_requested.emit())
+        text_layout.addWidget(self.dest_label)
+
         layout.addLayout(text_layout, 1)
+
+    def _restyle(self, *_) -> None:
+        self.setStyleSheet(f"MediaInfoCard {{ background-color: {tok('surface')}; border-radius: 8px; }}")
+        self._update_dest()
+
+    def _update_dest(self) -> None:
+        folder = Path(load_settings().get("download_dir", str(DEFAULT_DOWNLOADS))).name or "Downloads"
+        safe = folder.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        self.dest_label.setText(
+            f'Saves to {safe} · <a href="change" style="color: {tok("info")}; text-decoration: none;">Change</a>'
+        )
 
     def set_info(self, info: VideoInfo) -> None:
         self.title_label.setText(info.title)
+        self.title_label.setToolTip(info.title)
+        self.title_label.ensurePolished()
+        self.title_label.setMaximumHeight(self.title_label.fontMetrics().lineSpacing() * 2 + 2)  # 2 lines max
         meta_parts = []
         if info.channel:
             meta_parts.append(info.channel)
         if info.duration_str:
             meta_parts.append(info.duration_str)
         self.meta_label.setText(" • ".join(meta_parts))
+        self._update_dest()
 
-        self.thumb_label.clear()
+        self.thumb_bytes = None
+        self.thumb_label.update_thumbnail("")  # placeholder until the image arrives
         if info.thumbnail_url:
             self._thumb_loader = ThumbnailLoader(info.thumbnail_url, self)
             self._thumb_loader.loaded.connect(self._on_thumbnail_loaded)
@@ -395,37 +423,16 @@ class MediaInfoCard(QWidget):
         self.setVisible(True)
 
     def _on_thumbnail_loaded(self, data: bytes) -> None:
-        pix = QPixmap()
-        if pix.loadFromData(data):
-            target_w, target_h = 128, 72
-            scaled = pix.scaled(
-                target_w, target_h,
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            x = max(0, (scaled.width() - target_w) // 2)
-            y = max(0, (scaled.height() - target_h) // 2)
-            cropped = scaled.copy(x, y, target_w, target_h)
-
-            rounded = QPixmap(target_w, target_h)
-            rounded.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(rounded)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            path = QPainterPath()
-            path.addRoundedRect(0, 0, target_w, target_h, 8, 8)
-            painter.setClipPath(path)
-            painter.drawPixmap(0, 0, cropped)
-            painter.end()
-
+        if self.thumb_label.set_image_bytes(data):
             self.thumb_bytes = data
-            self.thumb_label.setPixmap(rounded)
 
     def clear(self) -> None:
         self.thumb_bytes = None
-        self.thumb_label.clear()
+        self.thumb_label.update_thumbnail("")
         self.title_label.clear()
         self.meta_label.clear()
         self.setVisible(False)
+
 
 
 class VideoTab(QWidget):
@@ -485,7 +492,7 @@ class VideoTab(QWidget):
         self.url_input.setPlaceholderText("Paste a YouTube link")
         self.url_input.setFixedHeight(36)
         self.url_input.textChanged.connect(self._on_url_text_changed)
-        self.url_input.returnPressed.connect(self.fetch_url)
+        self.url_input.returnPressed.connect(self._on_return_pressed)
         input_row.addWidget(self.url_input, 1)
 
         self.fetch_btn = AnimatedButton("Fetch", role="secondary", parent=container)
@@ -493,6 +500,13 @@ class VideoTab(QWidget):
         self.fetch_btn.clicked.connect(self.fetch_url)
         input_row.addWidget(self.fetch_btn)
         layout.addLayout(input_row)
+
+        # Offer a link the user copied before switching to the app (one click to fetch)
+        self.clip_chip = AnimatedButton("", role="ghost", parent=container)
+        self.clip_chip.setVisible(False)
+        self.clip_chip.clicked.connect(self._use_clipboard_link)
+        layout.addWidget(self.clip_chip, 0, Qt.AlignmentFlag.AlignLeft)
+        self._offered_link = ""
 
         # 2. Inline Message (4s auto-hide)
         self.inline_msg = InlineMessage(container)
@@ -536,6 +550,7 @@ class VideoTab(QWidget):
 
         # 5. Active Progress Card
         self.progress_card = ProgressCard(container)
+        self.progress_card.pause_toggled.connect(self.toggle_pause)
         layout.addWidget(self.progress_card)
 
         # Backward compatibility aliases for existing tests
@@ -567,6 +582,43 @@ class VideoTab(QWidget):
         manager.job_finished.connect(self._on_manager_finished)
         manager.job_failed.connect(self._on_manager_failed)
         manager.job_cancelled.connect(self._on_manager_cancelled)
+
+    def offer_clipboard_link(self, text: str) -> None:
+        """Show 'Use copied link' once for a new YouTube link that is not already in the box."""
+        cleaned = clean_url(text.strip()) if text else ""
+        if not cleaned or not is_youtube_url(cleaned) or cleaned == self._offered_link:
+            return
+        if cleaned == clean_url(self.url_input.text().strip()):
+            return
+        self._offered_link = cleaned
+        self.clip_chip.setText(f"Use copied link · {cleaned.split('://', 1)[-1][:48]}")
+        self.clip_chip.setVisible(True)
+
+    def _use_clipboard_link(self) -> None:
+        self.clip_chip.setVisible(False)
+        self.url_input.setText(self._offered_link)
+
+    def _on_return_pressed(self) -> None:
+        """Enter fetches a new link, or downloads when the shown video is ready."""
+        cleaned = clean_url(self.url_input.text().strip())
+        ready = self._current_info is not None and cleaned and cleaned == self._last_fetched_url
+        if ready and self.download_btn.isVisibleTo(self) and self.download_btn.isEnabled():
+            self.start_download()
+        else:
+            self.fetch_url()
+
+    def toggle_pause(self) -> None:
+        """Pause or resume this lane's active download (button on the progress card or Space)."""
+        if not self._job_running():
+            return
+        manager = get_download_manager("video")
+        if manager.is_paused:
+            manager.resume_active()
+            self.progress_card.set_paused(False)
+            self.progress_card.set_stage("Resuming…")
+        elif manager.pause_active():
+            self.progress_card.set_paused(True)
+            self.progress_card.set_stage("Paused")
 
     def _job_running(self) -> bool:
         job = get_download_manager("video").active_job
@@ -756,6 +808,8 @@ class VideoTab(QWidget):
 
     def _on_url_text_changed(self, text: str) -> None:
         self._clear_input_error()
+        if text.strip():
+            self.clip_chip.setVisible(False)
         clean = text.strip()
         if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
             self.fetch_url()
@@ -847,15 +901,19 @@ class VideoTab(QWidget):
         self._current_info = info
         self.info_card.set_info(info)
 
-        # Populate quality dropdown (real resolutions descending, 'Best available' first)
+        # Populate quality dropdown (real resolutions descending, 'Best available' first).
+        # The shown text may add an approximate size; the clean label is kept for the job.
         self.quality_combo.clear()
         for label, height in info.qualities:
-            self.quality_combo.addItem(label, height)
+            size = info.quality_sizes.get(height, 0)
+            shown = f"{label} · ≈ {ProgressCard._fmt_bytes(size)}" if size else label
+            self.quality_combo.addItem(shown, height)
+            self.quality_combo.setItemData(self.quality_combo.count() - 1, label, QUALITY_LABEL_ROLE)
 
         if self._preselected_quality:
             target = self._preselected_quality.strip().lower()
             for idx in range(self.quality_combo.count()):
-                text = self.quality_combo.itemText(idx).lower()
+                text = (self.quality_combo.itemData(idx, QUALITY_LABEL_ROLE) or self.quality_combo.itemText(idx)).lower()
                 if target in text or text in target:
                     self.quality_combo.setCurrentIndex(idx)
                     break
@@ -976,7 +1034,7 @@ class VideoTab(QWidget):
             get_logger().debug(f"Could not check disk usage: {exc}")
 
         chosen_height = self.quality_combo.currentData()
-        quality_label = self.quality_combo.currentText() or "Best"
+        quality_label = self.quality_combo.currentData(QUALITY_LABEL_ROLE) or self.quality_combo.currentText() or "Best"
 
         if not self._current_info:
             # Fallback: create temporary info if info card wasn't fetched

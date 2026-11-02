@@ -13,10 +13,12 @@ import sys
 import time
 from typing import Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -40,6 +42,7 @@ from app.core.download_manager import get_download_manager
 from app.core.logger import get_logger
 from app.core.network_monitor import NetworkMonitor
 from app.core.settings import load_settings, save_settings
+from app.core.url_tools import clean_url, is_youtube_url
 from app.ui.audio_tab import AudioTab
 from app.ui.header import Header, get_asset_path
 from app.ui.history_tab import HistoryTab
@@ -284,6 +287,9 @@ class MainWindow(QMainWindow):
         self.history_tab.redownload_requested.connect(self._on_redownload)
         self.stacked_widget.addWidget(self.history_tab)
 
+        for tab in (self.video_tab, self.audio_tab):
+            tab.info_card.change_folder_requested.connect(self._open_settings)
+
         # System tray icon for finish notifications
         self.tray_icon = QSystemTrayIcon(self)
         if icon_path.exists():
@@ -301,6 +307,85 @@ class MainWindow(QMainWindow):
         self._check_for_updates()
 
         ThemeManager.instance().changed.connect(self._apply_title_bar)
+
+        self.setAcceptDrops(True)
+        self._setup_shortcuts()
+
+    # -- Links from outside: clipboard, drag & drop, keyboard ------------------------
+
+    def _current_download_tab(self):
+        """Tab that receives a link: Audio when it is open, otherwise Video."""
+        return self.audio_tab if self.header._current_tab == 1 else self.video_tab
+
+    def _setup_shortcuts(self) -> None:
+        bindings = (
+            ("Ctrl+1", lambda: self.header.select_tab(0)),
+            ("Ctrl+2", lambda: self.header.select_tab(1)),
+            ("Ctrl+3", lambda: self.header.select_tab(2)),
+            ("Ctrl+F", self._focus_history_search),
+            ("Ctrl+,", self._open_settings),
+            ("Ctrl+V", self._paste_link),
+            ("Esc", lambda: self._current_download_tab().url_input.clear()),
+            ("Space", self._space_pressed),
+        )
+        for key, slot in bindings:
+            QShortcut(QKeySequence(key), self, activated=slot)
+
+    def _focus_history_search(self) -> None:
+        self.header.select_tab(2)
+        self.history_tab.search_input.setFocus()
+
+    def _paste_link(self) -> None:
+        """Ctrl+V outside a text box: put the copied text in the link box (a valid link fetches at once)."""
+        if self.header._current_tab == 2:
+            self.header.select_tab(0)
+        self._current_download_tab().url_input.setText(QApplication.clipboard().text().strip())
+
+    def _space_pressed(self) -> None:
+        # Keep Space working on focused buttons and dropdowns; otherwise pause / resume
+        focused = QApplication.focusWidget()
+        if isinstance(focused, QAbstractButton):
+            focused.click()
+        elif isinstance(focused, QComboBox):
+            focused.showPopup()
+        else:
+            self._current_download_tab().toggle_pause()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._check_clipboard()
+
+    def _check_clipboard(self) -> None:
+        if self.header._current_tab == 2:
+            return
+        text = QApplication.clipboard().text()
+        if text:
+            self._current_download_tab().offer_clipboard_link(text)
+
+    @staticmethod
+    def _link_from_mime(mime) -> str:
+        candidates = [u.toString() for u in mime.urls()] if mime.hasUrls() else []
+        if mime.hasText():
+            candidates.append(mime.text())
+        for text in candidates:
+            cleaned = clean_url(text.strip())
+            if cleaned and is_youtube_url(cleaned):
+                return cleaned
+        return ""
+
+    def dragEnterEvent(self, event) -> None:
+        if self._link_from_mime(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        link = self._link_from_mime(event.mimeData())
+        if not link:
+            return
+        if self.header._current_tab == 2:
+            self.header.select_tab(0)
+        self._current_download_tab().url_input.setText(link)
+        event.acceptProposedAction()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

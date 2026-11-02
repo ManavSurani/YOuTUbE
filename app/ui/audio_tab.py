@@ -115,7 +115,7 @@ class AudioTab(QWidget):
         self.url_input.setPlaceholderText("Paste a YouTube link to save its audio")
         self.url_input.setFixedHeight(36)
         self.url_input.textChanged.connect(self._on_url_text_changed)
-        self.url_input.returnPressed.connect(self.fetch_url)
+        self.url_input.returnPressed.connect(self._on_return_pressed)
         input_row.addWidget(self.url_input, 1)
 
         self.fetch_btn = AnimatedButton("Fetch", role="secondary", parent=container)
@@ -123,6 +123,13 @@ class AudioTab(QWidget):
         self.fetch_btn.clicked.connect(self.fetch_url)
         input_row.addWidget(self.fetch_btn)
         layout.addLayout(input_row)
+
+        # Offer a link the user copied before switching to the app (one click to fetch)
+        self.clip_chip = AnimatedButton("", role="ghost", parent=container)
+        self.clip_chip.setVisible(False)
+        self.clip_chip.clicked.connect(self._use_clipboard_link)
+        layout.addWidget(self.clip_chip, 0, Qt.AlignmentFlag.AlignLeft)
+        self._offered_link = ""
 
         # 2. Inline Message (4s auto-hide)
         self.inline_msg = InlineMessage(container)
@@ -179,6 +186,7 @@ class AudioTab(QWidget):
 
         # 5. Active Progress Card
         self.progress_card = ProgressCard(container)
+        self.progress_card.pause_toggled.connect(self.toggle_pause)
         layout.addWidget(self.progress_card)
 
         # Backward compatibility aliases for existing tests
@@ -210,6 +218,43 @@ class AudioTab(QWidget):
         manager.job_finished.connect(self._on_manager_finished)
         manager.job_failed.connect(self._on_manager_failed)
         manager.job_cancelled.connect(self._on_manager_cancelled)
+
+    def offer_clipboard_link(self, text: str) -> None:
+        """Show 'Use copied link' once for a new YouTube link that is not already in the box."""
+        cleaned = clean_url(text.strip()) if text else ""
+        if not cleaned or not is_youtube_url(cleaned) or cleaned == self._offered_link:
+            return
+        if cleaned == clean_url(self.url_input.text().strip()):
+            return
+        self._offered_link = cleaned
+        self.clip_chip.setText(f"Use copied link · {cleaned.split('://', 1)[-1][:48]}")
+        self.clip_chip.setVisible(True)
+
+    def _use_clipboard_link(self) -> None:
+        self.clip_chip.setVisible(False)
+        self.url_input.setText(self._offered_link)
+
+    def _on_return_pressed(self) -> None:
+        """Enter fetches a new link, or downloads when the shown video is ready."""
+        cleaned = clean_url(self.url_input.text().strip())
+        ready = self._current_info is not None and cleaned and cleaned == self._last_fetched_url
+        if ready and self.download_btn.isVisibleTo(self) and self.download_btn.isEnabled():
+            self.start_download()
+        else:
+            self.fetch_url()
+
+    def toggle_pause(self) -> None:
+        """Pause or resume this lane's active download (button on the progress card or Space)."""
+        if not self._job_running():
+            return
+        manager = get_download_manager("audio")
+        if manager.is_paused:
+            manager.resume_active()
+            self.progress_card.set_paused(False)
+            self.progress_card.set_stage("Resuming…")
+        elif manager.pause_active():
+            self.progress_card.set_paused(True)
+            self.progress_card.set_stage("Paused")
 
     def _job_running(self) -> bool:
         job = get_download_manager("audio").active_job
@@ -402,6 +447,8 @@ class AudioTab(QWidget):
 
     def _on_url_text_changed(self, text: str) -> None:
         self._clear_input_error()
+        if text.strip():
+            self.clip_chip.setVisible(False)
         clean = text.strip()
         if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
             self.fetch_url()

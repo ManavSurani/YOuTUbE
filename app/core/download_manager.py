@@ -76,6 +76,7 @@ class DownloadManager(QObject):
         self._is_shutting_down = False
         self._paused_worker = None
         self._resume_attempts = 0
+        self._user_paused_job_id: Optional[str] = None  # set by pause_active(); cleared by resume_active()
         self._force_overwrite_job_ids: Set[str] = set()
         self._running_forced_job_ids: Set[str] = set()
         self._failed_forced_job_ids: Set[str] = set()
@@ -213,6 +214,31 @@ class DownloadManager(QObject):
         if not self._is_offline and not self._active_job and self._waiting_queue:
             self._process_next()
 
+    @property
+    def is_paused(self) -> bool:
+        """True while the active job is paused by the user (not by the network)."""
+        return self._active_job is not None and self._active_job.job_id == self._user_paused_job_id
+
+    def pause_active(self) -> bool:
+        """User pause: stop the worker but keep the job and its partial files (same path as going offline)."""
+        if self.is_paused or not self._active_job or not self._worker or self._is_shutting_down:
+            return False
+        self._user_paused_job_id = self._active_job.job_id
+        if not self._is_offline:
+            self._worker.pause()
+            self._paused_worker = self._worker
+        return True
+
+    def resume_active(self) -> bool:
+        """Resume a user pause. While offline it resumes automatically when the network returns."""
+        if not self.is_paused:
+            return False
+        self._user_paused_job_id = None
+        if not self._is_offline and not self._is_shutting_down and self._paused_worker is not None:
+            self._resume_attempts = 0
+            self._resume_active_job()
+        return True
+
     def set_online(self, online: bool) -> None:
         """Pause or resume downloads based on network connectivity."""
         if online == (not self._is_offline):
@@ -226,8 +252,8 @@ class DownloadManager(QObject):
                 self._worker.pause()
                 self._paused_worker = self._worker
             return
-        if self._is_shutting_down:
-            return                                   # never revive a closing lane
+        if self._is_shutting_down or self.is_paused:
+            return                                   # never revive a closing lane or a user pause
         if was_offline and (self._paused_worker is not None or (self._active_job and self._worker)):
             if self._paused_worker is None:
                 self._paused_worker = self._worker
@@ -239,7 +265,7 @@ class DownloadManager(QObject):
     def _resume_active_job(self) -> None:
         """Start a new worker for the paused job only after the old thread has really stopped."""
         old, job = self._paused_worker, self._active_job
-        if old is None or job is None or self._is_offline or self._is_shutting_down:
+        if old is None or job is None or self._is_offline or self._is_shutting_down or self.is_paused:
             return
 
         is_running = old.isRunning() if hasattr(old, "isRunning") else False

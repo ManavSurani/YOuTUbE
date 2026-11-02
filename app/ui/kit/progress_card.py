@@ -13,6 +13,7 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     Qt,
     QTimer,
+    Signal,
 )
 from PySide6.QtGui import (
     QColor,
@@ -28,8 +29,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.file_actions import open_file, reveal_in_folder
 from app.core.jobs import DownloadJob
+from app.core.thumbnails import get_thumbnail_path
 from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.elided_label import ElidedLabel
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.theme import ThemeManager, qcolor
@@ -99,6 +103,9 @@ class ModernProgressBar(QProgressBar):
 class ProgressCard(QWidget):
     """Full-featured progress card for active download with thumbnail, stats, and real folder name."""
 
+    pause_toggled = Signal()
+    DONE_VISIBLE_MS = 4000
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setStyleSheet(
@@ -135,6 +142,21 @@ class ProgressCard(QWidget):
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.title_lbl.setProperty("role", "strong")
         h_layout.addWidget(self.title_lbl, 1)
+
+        # While downloading: pause / resume. When done: open the file or its folder.
+        self.pause_btn = IconButton("pause", size=28, tooltip="Pause (Space)", parent=self.header_widget)
+        self.pause_btn.clicked.connect(self.pause_toggled.emit)
+        self.pause_btn.setVisible(False)
+        h_layout.addWidget(self.pause_btn)
+
+        self.open_btn = AnimatedButton("Open", role="ghost", parent=self.header_widget)
+        self.open_btn.clicked.connect(lambda: open_file(self._final_path))
+        self.folder_btn = AnimatedButton("Show in folder", role="ghost", parent=self.header_widget)
+        self.folder_btn.clicked.connect(lambda: reveal_in_folder(self._final_path))
+        for btn in (self.open_btn, self.folder_btn):
+            btn.setVisible(False)
+            h_layout.addWidget(btn)
+        self._final_path = ""
 
         layout.addWidget(self.header_widget)
 
@@ -212,6 +234,12 @@ class ProgressCard(QWidget):
         self._last_stage = "Starting…"
         self.title_lbl.setText(job.title)
         self.thumb.update_thumbnail(job.video_id, is_audio=(job.kind == "audio"))
+        if job.thumbnail_bytes and (not job.video_id or get_thumbnail_path(job.video_id) is None):
+            self.thumb.set_image_bytes(job.thumbnail_bytes)
+        self.set_paused(False)
+        self.pause_btn.setVisible(True)
+        self.open_btn.setVisible(False)
+        self.folder_btn.setVisible(False)
         self.stage_label.setText("Starting…")
         self.percent_label.setText("0%")
         self.progress_bar.setValue(0)
@@ -292,8 +320,30 @@ class ProgressCard(QWidget):
         saved = f"Saved to {folder_name}"
         self.stage_label.setText(f"{saved} · {self._fmt_bytes(size)}" if size else saved)
         self.stats_label.setText("")
+        self._final_path = final_path if size else ""
+        self.pause_btn.setVisible(False)
+        self.open_btn.setVisible(bool(self._final_path))
+        self.folder_btn.setVisible(bool(self._final_path))
         self.setVisible(True)
-        self._collapse_timer.start(1200)
+        self._collapse_timer.start(self.DONE_VISIBLE_MS)
+
+    def set_paused(self, paused: bool) -> None:
+        self.pause_btn.icon_name = "play" if paused else "pause"
+        self.pause_btn.setToolTip("Resume (Space)" if paused else "Pause (Space)")
+        self.pause_btn.update()
+
+    def enterEvent(self, event) -> None:
+        # Keep the Done card while the pointer is on it
+        super().enterEvent(event)
+        if self._collapse_timer.isActive():
+            self._collapse_timer.stop()
+            self._hold_done = True
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        if getattr(self, "_hold_done", False):
+            self._hold_done = False
+            self._collapse_timer.start(1500)
 
     def reset(self) -> None:
         self._stop_highlight_anim()
@@ -306,6 +356,9 @@ class ProgressCard(QWidget):
         self._last_eta = ""
         self._last_stage = ""
         self.stats_label.setText("")
+        self.pause_btn.setVisible(False)
+        self.open_btn.setVisible(False)
+        self.folder_btn.setVisible(False)
         self.setVisible(False)
 
     def _on_collapse_timeout(self) -> None:

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.kit.anim import is_animations_enabled
+from app.ui.theme import ThemeManager, qcolor
 
 
 RING: float = 3.0
@@ -48,6 +49,7 @@ class AnimatedCheckBox(QAbstractButton):
         self._anim: Optional[QPropertyAnimation] = None
 
         self.toggled.connect(self._on_toggled)
+        ThemeManager.instance().changed.connect(self.update)
 
     def _get_progress(self) -> float:
         return self._check_progress
@@ -99,18 +101,17 @@ class AnimatedCheckBox(QAbstractButton):
 
         p = self._check_progress
 
-        # Colors interpolation
-        # Unchecked: bg #1F1F1F, border #444444
-        # Checked: bg #FF0000, border #FF0000
-        bg_r = int(31 * (1.0 - p) + 255 * p)
-        bg_g = int(31 * (1.0 - p) + 0 * p)
-        bg_b = int(31 * (1.0 - p) + 0 * p)
-        bg_color = QColor(bg_r, bg_g, bg_b)
+        # Colors interpolation: unchecked (surface / text_muted border) -> checked (accent)
+        def _mix(a: QColor, b: QColor) -> QColor:
+            return QColor(
+                int(a.red() * (1.0 - p) + b.red() * p),
+                int(a.green() * (1.0 - p) + b.green() * p),
+                int(a.blue() * (1.0 - p) + b.blue() * p),
+            )
 
-        border_r = int(68 * (1.0 - p) + 255 * p)
-        border_g = int(68 * (1.0 - p) + 0 * p)
-        border_b = int(68 * (1.0 - p) + 0 * p)
-        border_color = QColor(border_r, border_g, border_b)
+        accent = qcolor("accent")
+        bg_color = _mix(qcolor("surface"), accent)
+        border_color = _mix(qcolor("text_muted"), accent)
 
         # Draw box
         path = QPainterPath()
@@ -121,7 +122,7 @@ class AnimatedCheckBox(QAbstractButton):
 
         # Keyboard focus ring
         if self.hasFocus():
-            painter.setPen(QPen(QColor("#3EA6FF"), 1.5))
+            painter.setPen(QPen(qcolor("focus"), 1.5))
             painter.drawRoundedRect(box_rect.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
 
         # Draw white checkmark if progress > 0
@@ -129,7 +130,7 @@ class AnimatedCheckBox(QAbstractButton):
             cx = box_rect.left() + box_size / 2.0
             cy = box_rect.top() + box_size / 2.0
 
-            pen = QPen(QColor("#FFFFFF"), 2.0)
+            pen = QPen(QColor(Qt.GlobalColor.white), 2.0)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(pen)
@@ -159,7 +160,7 @@ class AnimatedCheckBox(QAbstractButton):
         text = self.text()
         if text:
             painter.setFont(self.font())
-            painter.setPen(QColor("#FFFFFF" if self.isEnabled() else "#777777"))
+            painter.setPen(qcolor("text" if self.isEnabled() else "text_muted"))
             text_x = RING + box_size + 8.0
             text_rect = QRectF(text_x, 0, max(0.0, float(self.width() - text_x)), float(h))
             painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), text)

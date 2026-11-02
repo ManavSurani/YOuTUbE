@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.kit.anim import is_animations_enabled
+from app.ui.theme import tok
 
 
 class Toast(QWidget):
@@ -33,10 +34,10 @@ class Toast(QWidget):
         self.setMinimumWidth(260)
         self.setMaximumWidth(420)
         self.setStyleSheet(
-            "Toast { background-color: #212121; border: 1px solid #383838; border-radius: 8px; } "
-            "QLabel { color: #FFFFFF; font-size: 13px; font-weight: 500; } "
-            "QPushButton { background: transparent; color: #3EA6FF; font-weight: 600; border: none; padding: 4px 8px; } "
-            "QPushButton:hover { color: #65B8FF; text-decoration: underline; }"
+            f"Toast {{ background-color: {tok('surface')}; border: 1px solid {tok('border')}; border-radius: 8px; }} "
+            f"QLabel {{ color: {tok('text')}; font-size: 13px; font-weight: 500; }} "
+            f"QPushButton {{ background: transparent; color: {tok('info')}; font-weight: 600; border: none; padding: 4px 8px; }} "
+            "QPushButton:hover { text-decoration: underline; }"
         )
 
         layout = QHBoxLayout(self)

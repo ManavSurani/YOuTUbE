@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.theme import DARK_TOKENS
+from app.ui.theme import ThemeManager, qcolor
 
 
 class AnimatedButton(QPushButton):
@@ -69,6 +69,7 @@ class AnimatedButton(QPushButton):
         self._spinner_timer.setInterval(25)
         self._spinner_timer.timeout.connect(self._rotate_spinner)
 
+        ThemeManager.instance().changed.connect(self.update)
         self._update_appearance()
 
     @property
@@ -140,40 +141,33 @@ class AnimatedButton(QPushButton):
 
     def _get_colors(self):
         """Return (bg_color, text_color, border_color) for current state."""
+        white = QColor(Qt.GlobalColor.white)
+        clear = QColor(Qt.GlobalColor.transparent)
         if not self.isEnabled():
             if self._role == "primary":
-                return QColor("#551111"), QColor("#888888"), None
-            return QColor("#181818"), QColor("#555555"), QColor("#282828")
+                return qcolor("surface"), qcolor("text_muted"), None
+            return qcolor("surface_pressed"), qcolor("text_muted"), qcolor("border")
 
         if self._role == "primary":
             if self._pressed:
-                return QColor("#B30000"), QColor("#FFFFFF"), None
+                return qcolor("accent_pressed"), white, None
             if self._hovered:
-                return QColor("#CC0000"), QColor("#FFFFFF"), None
-            return QColor("#FF0000"), QColor("#FFFFFF"), None
+                return qcolor("accent_hover"), white, None
+            return qcolor("accent"), white, None
 
-        elif self._role == "secondary":
+        if self._role in ("ghost", "icon"):
             if self._pressed:
-                return QColor("#1F1F1F"), QColor("#FFFFFF"), QColor("#383838")
+                return qcolor("surface_pressed"), qcolor("text"), None
             if self._hovered:
-                return QColor("#333333"), QColor("#FFFFFF"), QColor("#444444")
-            return QColor("#272727"), QColor("#FFFFFF"), QColor("#383838")
+                return qcolor("surface_hover"), qcolor("text"), None
+            return clear, qcolor("text_muted"), None
 
-        elif self._role == "ghost":
-            if self._pressed:
-                return QColor("#222222"), QColor("#FFFFFF"), None
-            if self._hovered:
-                return QColor("#1C1C1C"), QColor("#FFFFFF"), None
-            return QColor(Qt.GlobalColor.transparent), QColor("#AAAAAA"), None
-
-        elif self._role == "icon":
-            if self._pressed:
-                return QColor("#252525"), QColor("#FFFFFF"), None
-            if self._hovered:
-                return QColor("#303030"), QColor("#FFFFFF"), None
-            return QColor(Qt.GlobalColor.transparent), QColor("#AAAAAA"), None
-
-        return QColor("#272727"), QColor("#FFFFFF"), None
+        # secondary (default)
+        if self._pressed:
+            return qcolor("surface_pressed"), qcolor("text"), qcolor("border")
+        if self._hovered:
+            return qcolor("surface_hover"), qcolor("text"), qcolor("border")
+        return qcolor("surface"), qcolor("text"), qcolor("border")
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -199,7 +193,7 @@ class AnimatedButton(QPushButton):
 
         # Focus ring
         if self.hasFocus():
-            painter.setPen(QPen(QColor("#3EA6FF"), 1.5))
+            painter.setPen(QPen(qcolor("focus"), 1.5))
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), radius - 1, radius - 1)
 
         cx, cy = rect.center().x(), rect.center().y()
@@ -286,21 +280,22 @@ class IconButton(AnimatedButton):
             self.setToolTip(tooltip)
 
     def _get_colors(self):
+        clear = QColor(Qt.GlobalColor.transparent)
         if not self.isEnabled():
-            return QColor(Qt.GlobalColor.transparent), QColor("#555555"), None
+            return clear, qcolor("border"), None
 
         if self.is_danger:
             if self._pressed:
-                return QColor("#B30000"), QColor("#FFFFFF"), None
+                return qcolor("accent_pressed"), QColor(Qt.GlobalColor.white), None
             if self._hovered:
-                return QColor("#CC0000"), QColor("#FFFFFF"), None
-            return QColor(Qt.GlobalColor.transparent), QColor("#AAAAAA"), None
+                return qcolor("accent_hover"), QColor(Qt.GlobalColor.white), None
+            return clear, qcolor("text_muted"), None
 
         if self._pressed:
-            return QColor("#252525"), QColor("#FFFFFF"), None
+            return qcolor("surface_pressed"), qcolor("text"), None
         if self._hovered:
-            return QColor("#303030"), QColor("#FFFFFF"), None
-        return QColor(Qt.GlobalColor.transparent), QColor("#AAAAAA"), None
+            return qcolor("surface_hover"), qcolor("text"), None
+        return clear, qcolor("text_muted"), None
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -321,7 +316,7 @@ class IconButton(AnimatedButton):
 
         # Focus ring
         if self.hasFocus():
-            painter.setPen(QPen(QColor("#3EA6FF"), 1.5))
+            painter.setPen(QPen(qcolor("focus"), 1.5))
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), radius - 1, radius - 1)
 
         cx, cy = rect.center().x(), rect.center().y()
@@ -368,7 +363,7 @@ class IconButton(AnimatedButton):
             # Back sheet
             painter.drawRoundedRect(QRectF(cx - 3.5, cy - 6.5, 9.0, 10.0), 1.5, 1.5)
             # Front sheet
-            bg_brush = bg if bg.alpha() > 0 else QColor("#181818")
+            bg_brush = bg if bg.alpha() > 0 else qcolor("bg")
             painter.setBrush(bg_brush)
             painter.drawRoundedRect(QRectF(cx - 6.5, cy - 3.5, 9.0, 10.0), 1.5, 1.5)
             painter.setBrush(Qt.BrushStyle.NoBrush)

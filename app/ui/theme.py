@@ -1,6 +1,10 @@
 from pathlib import Path
 import sys
-from typing import Dict
+from typing import Dict, Optional
+
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication
 
 DARK_TOKENS: Dict[str, str] = {
     "bg": "#0F0F0F",
@@ -16,6 +20,9 @@ DARK_TOKENS: Dict[str, str] = {
     "info": "#3EA6FF",
     "success": "#2BA640",
     "error": "#FF4E45",
+    # Aliases of colors already in use (same value in both themes)
+    "focus": "#3EA6FF",
+    "status_offline": "#CC0000",
 }
 
 LIGHT_TOKENS: Dict[str, str] = {
@@ -32,7 +39,47 @@ LIGHT_TOKENS: Dict[str, str] = {
     "info": "#065FD4",
     "success": "#2BA640",
     "error": "#CC0000",
+    # Aliases of colors already in use (same value in both themes)
+    "focus": "#3EA6FF",
+    "status_offline": "#CC0000",
 }
+
+_current_theme = "dark"
+
+
+def current_theme() -> str:
+    """Name of the theme applied through ThemeManager ('dark' or 'light')."""
+    return _current_theme
+
+
+def tok(name: str) -> str:
+    """Hex value of a token in the current theme."""
+    return (DARK_TOKENS if _current_theme == "dark" else LIGHT_TOKENS)[name]
+
+
+def qcolor(name: str) -> QColor:
+    return QColor(tok(name))
+
+
+class ThemeManager(QObject):
+    """Applies a theme app-wide and tells painted widgets to repaint."""
+
+    changed = Signal(str)
+    _instance: Optional["ThemeManager"] = None
+
+    @classmethod
+    def instance(cls) -> "ThemeManager":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def apply(self, theme_name: str) -> None:
+        global _current_theme
+        _current_theme = "light" if theme_name.lower() == "light" else "dark"
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(build_qss(_current_theme))
+        self.changed.emit(_current_theme)
 
 
 def _get_arrow_path(theme_name: str) -> str:
@@ -270,6 +317,33 @@ QLabel {{
 
 QLabel[role="muted"] {{
     color: {c["text_muted"]};
+}}
+
+QLabel[role="title"] {{
+    color: {c["text"]};
+    font-size: 18px;
+    font-weight: 600;
+}}
+
+QLabel[role="section"] {{
+    color: {c["text"]};
+    font-size: 15px;
+    font-weight: 600;
+}}
+
+QLabel[role="strong"] {{
+    color: {c["text"]};
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+QLabel[role="meta"] {{
+    color: {c["text_muted"]};
+    font-size: 12px;
+}}
+
+QLabel[role="link"] {{
+    color: {c["info"]};
 }}
 
 QLabel[role="info"] {{

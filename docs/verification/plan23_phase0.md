@@ -13,7 +13,9 @@ Date: 2026-11-02 · Branch: `fix/ui-pass`
   - Not compiled here (no Android SDK in this session). Check with `gradlew assembleRelease` on the owner's PC.
 - `tools/ui_snapshots.py`: renders 10 screens × dark/light into `docs/ui_audit/snapshots/<label>/` using a throwaway app-data copy. Phase 0 run: 20 PNGs, no errors.
 
-## Open owner decision (Task 0.4)
+## Owner decision (Task 0.4)
+**Decision (2026-11-02): rotate the key (option A, APK Signature Scheme v3 lineage).** To be done as a separate step on the next Android build (needs Android build-tools `apksigner`).
+
 The old key and password were public from 2026-10-02 to now. Rotate (A), new key (B), or keep (C); history purge yes/no.
 
 ## Scope

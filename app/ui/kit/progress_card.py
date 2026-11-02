@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from app.core.jobs import DownloadJob
 from app.ui.kit.anim import is_animations_enabled
 from app.ui.kit.thumb_label import ThumbLabel
+from app.ui.theme import ThemeManager, qcolor
 
 
 class ModernProgressBar(QProgressBar):
@@ -41,6 +42,7 @@ class ModernProgressBar(QProgressBar):
         self.setFixedHeight(10)
         self.setTextVisible(False)
         self._highlight_pos = 0.0
+        ThemeManager.instance().changed.connect(self.update)
 
     @Property(float)
     def highlight_pos(self) -> float:
@@ -59,12 +61,12 @@ class ModernProgressBar(QProgressBar):
         h = float(self.height())
         radius = h / 2.0  # 5 px fully rounded ends
 
-        # 1. Background groove (#282828)
+        # 1. Background groove
         groove_path = QPainterPath()
         groove_path.addRoundedRect(0.0, 0.0, w, h, radius, radius)
-        painter.fillPath(groove_path, QColor("#282828"))
+        painter.fillPath(groove_path, qcolor("surface_hover"))
 
-        # 2. Filled chunk (#FF0000)
+        # 2. Filled chunk
         val = self.value()
         max_val = max(1, self.maximum())
         chunk_w = w * (val / max_val)
@@ -72,7 +74,7 @@ class ModernProgressBar(QProgressBar):
         if chunk_w > 0:
             chunk_path = QPainterPath()
             chunk_path.addRoundedRect(0.0, 0.0, chunk_w, h, radius, radius)
-            painter.fillPath(chunk_path, QColor("#FF0000"))
+            painter.fillPath(chunk_path, qcolor("accent"))
 
             # 3. Subtle moving highlight across the filled chunk
             if chunk_w >= 10:
@@ -130,7 +132,7 @@ class ProgressCard(QWidget):
 
         self.title_lbl = QLabel(self.header_widget)
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        self.title_lbl.setProperty("role", "strong")
         h_layout.addWidget(self.title_lbl, 1)
 
         layout.addWidget(self.header_widget)
@@ -139,12 +141,12 @@ class ProgressCard(QWidget):
         meta_layout = QHBoxLayout()
         self.stage_label = QLabel("Starting…", self)
         self.stage_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.stage_label.setStyleSheet("font-size: 12px; font-weight: 500; color: #AAAAAA;")
+        self.stage_label.setProperty("role", "meta")
         meta_layout.addWidget(self.stage_label, 1)
 
         self.percent_label = QLabel("0%", self)
         self.percent_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.percent_label.setStyleSheet("font-size: 12px; font-weight: 600; color: #FFFFFF;")
+        self.percent_label.setProperty("role", "strong")
         meta_layout.addWidget(self.percent_label)
         layout.addLayout(meta_layout)
 
@@ -167,7 +169,7 @@ class ProgressCard(QWidget):
         # 4. Details line (Speed • ETA • Size)
         self.stats_label = QLabel("", self)
         self.stats_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.stats_label.setStyleSheet("font-size: 11px; color: #888888;")
+        self.stats_label.setProperty("role", "meta")
         layout.addWidget(self.stats_label)
 
         self.setVisible(False)

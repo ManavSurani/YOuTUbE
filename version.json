@@ -1,17 +1,14 @@
 {
-  "latest_version": "1.0.5",
-  "version": "1.0.5",
+  "latest_version": "1.0.6",
+  "version": "1.0.6",
   "min_supported_version": "1.0.0",
   "force_update": false,
-  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.5/YOuTUbE_Setup.exe",
-  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.5/YOuTUbE_Setup.exe",
-  "sha256": "9c07bd53662f27b45532149eb0e4aeebc9d6d3296f30e03eae29924894447743",
+  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.6/YOuTUbE_Setup.exe",
+  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.6/YOuTUbE_Setup.exe",
+  "sha256": "28c34c5256fea80f3dbb68fd623f37170cf2b748922202cb1172f4b37713e0f6",
   "release_date": "2026-11-02",
   "notes": [
-    "New look: working light mode and 'Same as Windows' theme",
-    "Size shown for each quality, Pause/Resume, Open and Show in folder when done",
-    "History with local times, day groups and search by channel",
-    "Copied-link offer, drag and drop, keyboard shortcuts, new settings, tray menu"
+    "Quality list sizes now match the real download (uses the same format yt-dlp downloads)"
   ],
   "android": {
     "version": "1.0.1",

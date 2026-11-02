@@ -1,21 +1,15 @@
 {
-  "latest_version": "1.0.2",
-  "version": "1.0.2",
+  "latest_version": "1.0.3",
+  "version": "1.0.3",
   "min_supported_version": "1.0.0",
   "force_update": false,
-  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.2/YOuTUbE_Setup.exe",
-  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.2/YOuTUbE_Setup.exe",
-  "sha256": "cda03a2a0201ee61b391267d25fddf3f97dd6ac15fa4e84ad08f82200ce99aeb",
-  "release_date": "2026-10-05",
+  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.3/YOuTUbE_Setup.exe",
+  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.3/YOuTUbE_Setup.exe",
+  "sha256": "99b47dc8e4415eeb2ff5b4e1448a0e1d407bd5d178aa04cd4d409d4e01c8ff14",
+  "release_date": "2026-11-02",
   "notes": [
-    "YOuTUbE 1.0.2 Release",
-    "Complete UI pass: state machines, progress card, queue, recent downloads",
-    "Robust file and folder actions with Windows native shell integrations",
-    "History tab datetime display, filters, and safe clear/delete workflows",
-    "Settings dialog improvements: content-fit layout, native immersive dark title bar",
-    "Publisher checksum verification for external tools (yt-dlp, ffmpeg, deno)",
-    "Background startup history repair and safe download-active exit prompts",
-    "Secondary instance URL validation and window activation"
+    "Exact download size from the first second, real file size when done",
+    "App updates itself when it starts"
   ],
   "android": {
     "version": "1.0.1",

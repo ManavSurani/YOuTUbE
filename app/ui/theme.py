@@ -329,6 +329,43 @@ QMessageBox {{
     background-color: {c["bg"]};
 }}
 
+QMenu {{
+    background-color: {c["surface"]};
+    color: {c["text"]};
+    border: 1px solid {c["border"]};
+    border-radius: 8px;
+    padding: 4px;
+}}
+
+QMenu::item {{
+    background: transparent;
+    color: {c["text"]};
+    padding: 6px 24px 6px 12px;
+    border-radius: 6px;
+}}
+
+QMenu::item:selected {{
+    background-color: {c["surface_hover"]};
+    color: {c["text"]};
+}}
+
+QMenu::item:disabled {{
+    color: {c["text_muted"]};
+}}
+
+QMenu::separator {{
+    height: 1px;
+    background: {c["border"]};
+    margin: 4px 8px;
+}}
+
+QToolTip {{
+    background-color: {c["surface"]};
+    color: {c["text"]};
+    border: 1px solid {c["border"]};
+    padding: 4px 8px;
+}}
+
 QMessageBox QLabel {{
     color: {c["text"]};
     background-color: transparent;

@@ -96,3 +96,51 @@ def test_done_hides_empty_stats_line():
     assert not card.stats_label.isVisibleTo(card)
     card.bind_job(_job())
     assert card.stats_label.isVisibleTo(card)
+
+
+# Phase 2: menus and tooltips follow the theme -------------------------------------
+
+def _menu_bg(theme_name=None):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QMenu
+    if theme_name:
+        theme.ThemeManager.instance().apply(theme_name)
+    menu = QMenu()
+    for text in ("Copy link", "Re-download", "Delete"):
+        menu.addAction(text)
+    menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
+    menu.popup(QPoint(0, 0))
+    _settle(80)
+    img = menu.grab().toImage()
+    menu.close()
+    return img.pixelColor(img.width() // 2, 3)
+
+
+def _close(a, b, tol=12):
+    return max(abs(a.red() - b.red()), abs(a.green() - b.green()), abs(a.blue() - b.blue())) <= tol
+
+
+@pytest.mark.parametrize("theme_name", ["dark", "light"])
+def test_menu_background_is_theme_surface(theme_name):
+    from PySide6.QtGui import QColor
+    bg = _menu_bg(theme_name)
+    assert _close(bg, QColor(theme.tok("surface"))), f"{theme_name}: menu bg {bg.name()} vs surface {theme.tok('surface')}"
+
+
+def test_menu_follows_live_switch():
+    from PySide6.QtGui import QColor
+    _menu_bg("dark")
+    theme.ThemeManager.instance().apply("light")
+    assert _close(_menu_bg(), QColor(theme.LIGHT_TOKENS["surface"]))
+
+
+@pytest.mark.parametrize("theme_name", ["dark", "light"])
+def test_qss_has_menu_and_tooltip_rules_from_tokens(theme_name):
+    qss = theme.build_qss(theme_name)
+    tokens = theme.DARK_TOKENS if theme_name == "dark" else theme.LIGHT_TOKENS
+    menu = qss.split("QMenu {", 1)[1].split("}", 1)[0]
+    assert tokens["surface"] in menu and tokens["text"] in menu and tokens["border"] in menu
+    selected = qss.split("QMenu::item:selected {", 1)[1].split("}", 1)[0]
+    assert tokens["surface_hover"] in selected
+    tip = qss.split("QToolTip {", 1)[1].split("}", 1)[0]
+    assert tokens["surface"] in tip and tokens["text"] in tip

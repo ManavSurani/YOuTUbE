@@ -676,7 +676,9 @@ class HistoryTab(QWidget):
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._on_scroll)
 
         self.container_widget = QWidget()
-        self.container_widget.setStyleSheet("background: transparent;")
+        # Scoped to the list itself: an unscoped rule reached the row menus and painted them black
+        self.container_widget.setObjectName("historyList")
+        self.container_widget.setStyleSheet("QWidget#historyList { background: transparent; }")
         self.list_layout = QVBoxLayout(self.container_widget)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(8)

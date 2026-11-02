@@ -94,11 +94,14 @@ class AudioTab(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         if scroll.viewport():
-            scroll.viewport().setStyleSheet("background: transparent;")
+            scroll.viewport().setStyleSheet("QWidget#qt_scrollarea_viewport { background: transparent; }")
         self.scroll = scroll
 
         container = QWidget()
-        container.setStyleSheet("background: transparent;")
+        container.setObjectName("audioList")
+        # Scoped (an unscoped rule reaches menus too); link box and dropdown keep their see-through look
+        container.setStyleSheet(
+            "QWidget#audioList, QWidget#audioList QLineEdit, QWidget#audioList QComboBox { background: transparent; }")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 8, 0, 16)
 

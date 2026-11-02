@@ -8,13 +8,20 @@ from typing import Optional
 from PySide6.QtCore import Qt, QThread, Signal, QPropertyAnimation
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QVBoxLayout,
     QLabel,
     QProgressBar,
 )
 from app.ui.kit import AnimatedButton
-from app.version import APP_NAME
+from app.version import APP_NAME, APP_VERSION
+from app.core.app_updater import (
+    UpdateDownloadWorker,
+    check_for_update,
+    launch_silent_installer,
+    parse_version,
+)
 from app.core.paths import BIN_DIR
 from app.core.settings import load_settings, save_settings
 from app.core.tool_manager import missing_tools, install_tool, update_ytdlp
@@ -39,6 +46,19 @@ class StartupWorker(QThread):
     progress = Signal(int)
     offline_blocked = Signal()
     finished = Signal()
+    update_found = Signal(object)  # UpdateInfo
+
+    def __init__(self, parent=None, skip_app_update: bool = False) -> None:
+        super().__init__(parent)
+        self.skip_app_update = skip_app_update
+
+    def _app_update_allowed(self) -> bool:
+        """Only the installed app updates itself, never a source run (python -m app.main)."""
+        return (
+            getattr(sys, "frozen", False)
+            and not self.skip_app_update
+            and load_settings().get("auto_update", True)
+        )
 
     def run(self) -> None:
         logger = get_logger()
@@ -48,6 +68,21 @@ class StartupWorker(QThread):
         self.status.emit("Connecting…")
         self.progress.emit(10)
         is_online = check_internet()
+
+        # 1b. Check for a new app version before anything else
+        if is_online and self._app_update_allowed():
+            self.status.emit("Checking for app update…")
+            info = check_for_update(timeout=5.0)
+            settings = load_settings()
+            if info.status in ("available", "required"):
+                # Loop guard: this version was already installed once and did not apply
+                tried = settings.get("update_attempt_version", "")
+                if not (tried == info.latest_version and parse_version(APP_VERSION) < parse_version(tried)):
+                    self.update_found.emit(info)
+                    return
+            else:
+                settings["last_app_check"] = int(time.time())
+                save_settings(settings)
 
         # 2. Check tools
         missing = missing_tools()
@@ -149,13 +184,43 @@ class SplashScreen(QWidget):
         self.retry_btn.clicked.connect(self._on_retry)
         layout.addWidget(self.retry_btn, 0, Qt.AlignmentFlag.AlignCenter)
 
-    def _start_worker(self) -> None:
-        self.worker = StartupWorker(self)
+    def _start_worker(self, skip_app_update: bool = False) -> None:
+        self.worker = StartupWorker(self, skip_app_update=skip_app_update)
         self.worker.status.connect(self.status_label.setText)
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.offline_blocked.connect(self._on_offline_blocked)
+        self.worker.update_found.connect(self._on_update_found)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
+
+    def _on_update_found(self, info) -> None:
+        self._update_version = info.latest_version
+        self.status_label.setText(f"Downloading update {info.latest_version}…")
+        self.progress_bar.setValue(0)
+        self.update_worker = UpdateDownloadWorker(info, parent=self)
+        self.update_worker.progress.connect(self._on_update_progress)
+        self.update_worker.finished.connect(self._on_update_downloaded)
+        self.update_worker.failed.connect(self._on_update_failed)
+        self.update_worker.start()
+
+    def _on_update_progress(self, percent: float) -> None:
+        self.progress_bar.setValue(int(percent))
+        self.status_label.setText(f"Downloading update {self._update_version}… {int(percent)}%")
+
+    def _on_update_downloaded(self, installer_path: str) -> None:
+        self.status_label.setText("Installing update…")
+        settings = load_settings()
+        settings["update_attempt_version"] = self._update_version
+        save_settings(settings)
+        if launch_silent_installer(installer_path):
+            QApplication.quit()
+            return
+        self._on_update_failed("Failed to start installer.")
+
+    def _on_update_failed(self, error_msg: str) -> None:
+        # Any update problem: start normally, exactly as before
+        get_logger().warning(f"Startup app update skipped: {error_msg}")
+        self._start_worker(skip_app_update=True)
 
     def _on_offline_blocked(self) -> None:
         self.status_label.setText("Internet is required for first-time setup.")

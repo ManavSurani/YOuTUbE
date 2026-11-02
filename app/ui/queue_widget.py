@@ -19,6 +19,7 @@ from app.core.download_manager import DownloadManager, get_download_manager
 from app.core.jobs import DownloadJob
 from app.core.logger import get_logger
 from app.ui.kit.buttons import AnimatedButton, IconButton
+from app.ui.kit.elided_label import ElidedLabel
 from app.ui.kit.progress_card import ModernProgressBar
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.theme import ThemeManager, tok
@@ -79,7 +80,7 @@ class QueueRow(QWidget):
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.setSpacing(2)
 
-        self.title_lbl = QLabel(target_job.title, self)
+        self.title_lbl = ElidedLabel(target_job.title, self)
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.title_lbl.setProperty("role", "strong")
         info_layout.addWidget(self.title_lbl)
@@ -93,6 +94,7 @@ class QueueRow(QWidget):
         self.progress_bar.setFixedHeight(6)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(False)  # queue rows are waiting or failed: no progress to show
         info_layout.addWidget(self.progress_bar)
 
         layout.addLayout(info_layout, 1)
@@ -202,20 +204,12 @@ class QueueWidget(QWidget):
 
         self.setVisible(True)
 
-        # Header: "Up next (N)"
-        header_layout = QHBoxLayout()
-        header_lbl = QLabel(f"Up next ({drawn_count})", self)
-        header_lbl.setProperty("role", "strong")
-        header_layout.addWidget(header_lbl, 1)
+        # 1. Waiting items: "Up next (N)"
+        if waiting_lane:
+            header_lbl = QLabel(f"Up next ({len(waiting_lane)})", self)
+            header_lbl.setProperty("role", "strong")
+            self._layout.addWidget(header_lbl)
 
-        if failed_lane:
-            clear_btn = AnimatedButton("Clear failed", role="ghost", parent=self)
-            clear_btn.clicked.connect(self._clear_failed)
-            header_layout.addWidget(clear_btn)
-
-        self._layout.addLayout(header_layout)
-
-        # 1. Waiting items
         for job in waiting_lane:
             row = QueueRow(
                 job=job,
@@ -225,7 +219,20 @@ class QueueWidget(QWidget):
             )
             self._layout.addWidget(row)
 
-        # 2. Failed items
+        # 2. Failed items: "Failed (N)" with Retry all / Clear failed
+        if failed_lane:
+            failed_header = QHBoxLayout()
+            failed_lbl = QLabel(f"Failed ({len(failed_lane)})", self)
+            failed_lbl.setProperty("role", "strong")
+            failed_header.addWidget(failed_lbl, 1)
+            retry_btn = AnimatedButton("Retry all", role="ghost", parent=self)
+            retry_btn.clicked.connect(self._retry_failed)
+            failed_header.addWidget(retry_btn)
+            clear_btn = AnimatedButton("Clear failed", role="ghost", parent=self)
+            clear_btn.clicked.connect(self._clear_failed)
+            failed_header.addWidget(clear_btn)
+            self._layout.addLayout(failed_header)
+
         for job, reason in failed_lane:
             row = QueueRow(
                 job=job,
@@ -242,6 +249,12 @@ class QueueWidget(QWidget):
         # scroll.widget().adjustSize() explicitly before checking the range.
         self.adjustSize()
         self.updateGeometry()
+
+    def _retry_failed(self) -> None:
+        for item in list(self.manager.failed_jobs):
+            job = item[0] if isinstance(item, tuple) else item
+            if job.kind == self.kind:
+                self.manager.retry_job(job.job_id)
 
     def _clear_failed(self) -> None:
         if hasattr(self.manager, "clear_failed"):

@@ -123,13 +123,14 @@ class UpdateBanner(QWidget):
 
         self.msg_label = QLabel(self)
         layout.addWidget(self.msg_label)
+        layout.addStretch(1)
 
         self.progress_bar = QProgressBar(self)
-        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.setFixedSize(160, 4)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar, 1)
+        layout.addWidget(self.progress_bar)
 
         self.update_btn = QPushButton("Update now", self)
         self.update_btn.setObjectName("updateBtn")
@@ -145,10 +146,10 @@ class UpdateBanner(QWidget):
         self.setStyleSheet(
             f"UpdateBanner {{ background-color: {tok('surface')}; border-radius: 8px; }} "
             f"QLabel {{ color: {tok('info')}; font-size: 13px; font-weight: 500; }} "
-            "QPushButton { font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 6px; } "
-            f"QPushButton#updateBtn {{ background-color: {tok('info')}; color: {tok('bg')}; border: none; }} "
-            f"QPushButton#laterBtn {{ background-color: transparent; color: {tok('text_muted')}; border: 1px solid {tok('border')}; }} "
-            f"QPushButton#laterBtn:hover {{ background-color: {tok('surface_hover')}; color: {tok('text')}; }}"
+            "QPushButton { font-size: 13px; padding: 4px 8px; border: none; } "
+            f"QPushButton#updateBtn {{ background: transparent; color: {tok('info')}; font-weight: 600; }} "
+            f"QPushButton#laterBtn {{ background: transparent; color: {tok('text_muted')}; font-weight: 500; }} "
+            "QPushButton:hover { text-decoration: underline; }"
         )
 
     def show_update(self, info: UpdateInfo) -> None:
@@ -396,12 +397,6 @@ class MainWindow(QMainWindow):
         self.audio_tab.set_online(False)
         get_download_manager("video").set_online(False)
         get_download_manager("audio").set_online(False)
-
-        QMessageBox.information(
-            self,
-            APP_NAME,
-            "Internet is off. You can still view your history.",
-        )
 
     def _on_came_online(self) -> None:
         self.header.set_online(True)

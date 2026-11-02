@@ -14,6 +14,7 @@ from app.ui.history_tab import (
     HistoryDeleteDialog,
     HistoryRowWidget,
     HistoryTab,
+    format_date_str,
 )
 
 
@@ -455,7 +456,9 @@ def test_history_row_shows_date_and_time(tmp_path):
         file_missing=0,
     )
     row = HistoryRowWidget(item)
-    assert "2026-10-02 14:35" in row.meta_label.text()
+    # Plan 23 (owner approved): stored UTC time is shown as friendly local time
+    assert format_date_str("2026-10-02 14:35:20") in row.meta_label.text()
+    assert "2026-10-02 14:35" not in row.meta_label.text()
 
     # If only date exists, show the date
     item_date_only = HistoryItem(
@@ -470,8 +473,8 @@ def test_history_row_shows_date_and_time(tmp_path):
         file_missing=0,
     )
     row_date_only = HistoryRowWidget(item_date_only)
-    assert "2026-10-02" in row_date_only.meta_label.text()
-    assert "2026-10-02 " not in row_date_only.meta_label.text()
+    assert format_date_str("2026-10-02") in row_date_only.meta_label.text()
+    assert "2026-10-02" not in row_date_only.meta_label.text()
 
 
 def test_clear_all_dialog_initial_focus_and_checkbox():

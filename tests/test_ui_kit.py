@@ -1025,8 +1025,9 @@ def test_show_done_shows_real_file_size(tmp_path):
     f.write_bytes(b"\0" * 1536)
     card = ProgressCard()
     card.show_done(out_dir=str(tmp_path), final_path=str(f))
-    assert card.stats_label.text() == "File size: 1.5 KB"
-    assert card.stage_label.text() == f"Done. Saved to {tmp_path.name}."
+    # Plan 23 (owner approved): one line "Saved to <folder> · <size>"
+    assert card.stage_label.text() == f"Saved to {tmp_path.name} · 1.5 KB"
+    assert card.stats_label.text() == ""
 
 
 def test_show_done_without_path_clears_stats():

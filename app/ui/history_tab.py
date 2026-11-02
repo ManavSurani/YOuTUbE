@@ -14,6 +14,7 @@ Implements Phase 5 specifications:
 """
 
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 from PySide6.QtCore import (
     QEasingCurve,
@@ -49,8 +50,10 @@ from app.core.paths import DEFAULT_DOWNLOADS
 from app.ui.kit.anim import is_animations_enabled
 from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.checkbox import AnimatedCheckBox
+from app.ui.kit.elided_label import ElidedLabel
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.kit.toast import Toast
+from app.ui.recent_list import INCOMPLETE_BYTES, display_quality
 from app.ui.theme import ThemeManager, tok
 from app.ui.video_tab import AnimatedLineEdit
 
@@ -68,20 +71,27 @@ def format_size(size_bytes: int) -> str:
     return f"{size:.1f} {units[idx]}"
 
 
-def format_date_str(date_str: Optional[str]) -> str:
-    """Return date and time (e.g. '2026-10-02 14:35') from timestamp. If only date exists, return date."""
+def format_date_str(date_str: Optional[str], now: Optional[datetime] = None) -> str:
+    """Friendly local time for a stored UTC timestamp: 'Today, 9:51 AM', 'Yesterday, 6:30 PM', '17 Oct', '17 Oct 2025'."""
     if not date_str:
         return ""
-    s = date_str.replace("T", " ").strip()
-    parts = s.split(" ")
-    if len(parts) >= 2:
-        date_part = parts[0]
-        time_part = parts[1]
-        time_tokens = time_part.split(":")
-        if len(time_tokens) >= 2:
-            return f"{date_part} {time_tokens[0]}:{time_tokens[1]}"
-        return f"{date_part} {time_part}"
-    return parts[0]
+    try:
+        stamp = datetime.fromisoformat(date_str.replace("T", " ").strip())
+    except ValueError:
+        return date_str
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)  # SQLite CURRENT_TIMESTAMP is UTC
+    local = stamp.astimezone()
+    now = (now or datetime.now()).astimezone()
+    clock = f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
+    days = (now.date() - local.date()).days
+    if days == 0:
+        return f"Today, {clock}"
+    if days == 1:
+        return f"Yesterday, {clock}"
+    if local.year == now.year:
+        return f"{local.day} {local.strftime('%b')}"
+    return f"{local.day} {local.strftime('%b')} {local.year}"
 
 
 class FileCheckWorker(QThread):
@@ -360,7 +370,7 @@ class HistoryRowWidget(QWidget):
         info_layout.setSpacing(3)
         info_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        self.title_label = QLabel(self.item.title, self)
+        self.title_label = ElidedLabel(self.item.title, self)
         self.title_label.setTextFormat(Qt.TextFormat.PlainText)
         self.title_label.setProperty("role", "strong")
         info_layout.addWidget(self.title_label)
@@ -417,7 +427,7 @@ class HistoryRowWidget(QWidget):
     def _update_meta_text(self) -> None:
         parts = [
             self.item.type.capitalize(),
-            self.item.quality,
+            display_quality(self.item),
             format_size(self.item.size_bytes),
         ]
         date_str = format_date_str(self.item.created_at)
@@ -426,6 +436,8 @@ class HistoryRowWidget(QWidget):
 
         if self.item.file_missing:
             parts.append(f'<span style="color: {tok("text_muted")}; font-weight: 500;">File missing</span>')
+        elif self.item.size_bytes < INCOMPLETE_BYTES:
+            parts.append(f'<span style="color: {tok("text_muted")}; font-weight: 500;">Incomplete file</span>')
 
         self.meta_label.setText(" • ".join(parts))
 
@@ -605,6 +617,7 @@ class HistoryTab(QWidget):
         # 2. Scroll area for lazy loading rows
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self.scroll_area.verticalScrollBar().valueChanged.connect(self._on_scroll)
 

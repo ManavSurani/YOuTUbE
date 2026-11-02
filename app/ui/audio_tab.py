@@ -39,6 +39,7 @@ from app.ui.kit import (
 )
 from app.ui.queue_widget import QueueWidget
 from app.ui.recent_list import RecentList
+from app.ui.theme import ThemeManager, tok
 from app.ui.video_tab import (
     _FETCH_CACHE,
     AnimatedComboBox,
@@ -76,10 +77,12 @@ class AudioTab(QWidget):
         # Test compatibility aliases
         self._is_downloading = False
         self._paused_for_offline = False
+        self._input_error = False
 
         self._setup_ui()
         self._wire_manager()
         self.set_state(TabState.IDLE)
+        ThemeManager.instance().changed.connect(self._style_input_error)
 
     def _setup_ui(self) -> None:
         scroll = QScrollArea(self)
@@ -95,6 +98,13 @@ class AudioTab(QWidget):
         container.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 8, 0, 16)
+
+        # Keep the content width constant: reserve the scrollbar's width while it is hidden
+        bar = scroll.verticalScrollBar()
+        def _reserve_scrollbar(_lo: int, hi: int) -> None:
+            layout.setContentsMargins(0, 8, 0 if hi > 0 else bar.sizeHint().width(), 16)
+        bar.rangeChanged.connect(_reserve_scrollbar)
+        _reserve_scrollbar(0, 0)
         layout.setSpacing(12)
 
         # 1. URL Input & Fetch Button
@@ -102,7 +112,7 @@ class AudioTab(QWidget):
         input_row.setSpacing(8)
 
         self.url_input = AnimatedLineEdit(container)
-        self.url_input.setPlaceholderText("Paste a YouTube link for audio extraction")
+        self.url_input.setPlaceholderText("Paste a YouTube link to save its audio")
         self.url_input.setFixedHeight(36)
         self.url_input.textChanged.connect(self._on_url_text_changed)
         self.url_input.returnPressed.connect(self.fetch_url)
@@ -117,6 +127,11 @@ class AudioTab(QWidget):
         # 2. Inline Message (4s auto-hide)
         self.inline_msg = InlineMessage(container)
         layout.addWidget(self.inline_msg)
+
+        self.offline_note = QLabel("You're offline. Downloads will resume automatically.", container)
+        self.offline_note.setProperty("role", "meta")
+        self.offline_note.setVisible(False)
+        layout.addWidget(self.offline_note)
 
         # 3. Fetched Media Info Card
         self.info_card = MediaInfoCard(container)
@@ -328,6 +343,7 @@ class AudioTab(QWidget):
 
     def set_online(self, online: bool) -> None:
         """Handle network status change."""
+        self.offline_note.setVisible(not online)
         if not online:
             self._paused_for_offline = (self._state == TabState.DOWNLOADING)
             self.set_state(TabState.OFFLINE)
@@ -338,8 +354,24 @@ class AudioTab(QWidget):
             )
             self.set_state(target_state)
 
+    def _show_input_error(self, message: str) -> None:
+        """Validation error: red input border and a message that stays until the text changes."""
+        self._input_error = True
+        self.inline_msg.show_error(message, auto_hide_ms=0)
+        self._style_input_error()
+
+    def _clear_input_error(self) -> None:
+        if self._input_error:
+            self._input_error = False
+            self.inline_msg.clear()
+            self._style_input_error()
+
+    def _style_input_error(self, *_) -> None:
+        self.url_input.setStyleSheet(f"QLineEdit {{ border: 1px solid {tok('error')}; }}" if self._input_error else "")
+
     def reset_messages(self) -> None:
         """Clear any inline error or info message."""
+        self._clear_input_error()
         self.inline_msg.clear()
 
     def _clear_inputs(self) -> None:
@@ -369,6 +401,7 @@ class AudioTab(QWidget):
             self._apply_state_visibility(self._state)
 
     def _on_url_text_changed(self, text: str) -> None:
+        self._clear_input_error()
         clean = text.strip()
         if clean and is_youtube_url(clean) and clean != self._last_fetched_url:
             self.fetch_url()
@@ -387,7 +420,14 @@ class AudioTab(QWidget):
         raw_url = self.url_input.text().strip()
         cleaned = clean_url(raw_url)
         if not cleaned:
-            self.inline_msg.show_error("Please paste a valid YouTube link.")
+            # Drop the previous video's card so the error is not shown next to an old title
+            self.info_card.clear()
+            self._current_info = None
+            if self._job_running() or self._state == TabState.DOWNLOADING:
+                self._apply_state_visibility(self._state)
+            else:
+                self.set_state(TabState.IDLE)
+            self._show_input_error("Please paste a valid YouTube link.")
             return
 
         # Cache check BEFORE state transition or showing any banner / spinner
@@ -560,7 +600,7 @@ class AudioTab(QWidget):
         raw_url = self.url_input.text().strip()
         cleaned = clean_url(raw_url)
         if not cleaned:
-            self.inline_msg.show_error("Please paste a valid YouTube link.")
+            self._show_input_error("Please paste a valid YouTube link.")
             return None
 
         settings = load_settings()

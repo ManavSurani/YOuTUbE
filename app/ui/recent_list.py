@@ -20,9 +20,25 @@ from PySide6.QtWidgets import (
 from app.core.file_actions import open_file, reveal_in_folder
 from app.core.history_db import HistoryItem, list_items
 from app.ui.kit.buttons import IconButton
+from app.ui.kit.elided_label import ElidedLabel
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.kit.toast import Toast
 from app.ui.theme import ThemeManager, tok
+
+
+# Files below this size are leftovers of a failed download, not a usable video or song
+INCOMPLETE_BYTES = 1024
+
+_AUDIO_CODECS = {".opus": "Opus", ".webm": "Opus", ".m4a": "M4A", ".mp3": "MP3", ".flac": "FLAC", ".wav": "WAV", ".ogg": "Vorbis"}
+
+
+def display_quality(item: HistoryItem) -> str:
+    """'Best original' becomes 'Original (Opus)' etc. from the saved file's type; other labels are unchanged."""
+    if item.quality == "Best original" and item.file_path:
+        codec = _AUDIO_CODECS.get(Path(item.file_path).suffix.lower())
+        if codec:
+            return f"Original ({codec})"
+    return item.quality
 
 
 def _fmt_size(size_bytes: int) -> str:
@@ -59,14 +75,20 @@ class RecentRow(QWidget):
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.setSpacing(2)
 
-        self.title_lbl = QLabel(item.title, self)
+        self.title_lbl = ElidedLabel(item.title, self)
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.title_lbl.setProperty("role", "strong")
         info_layout.addWidget(self.title_lbl)
 
         file_exists = Path(item.file_path).is_file() if item.file_path else False
-        size_str = _fmt_size(item.size_bytes) if file_exists else "File missing"
-        parts = [p for p in (item.quality, size_str) if p]
+        incomplete = file_exists and item.size_bytes < INCOMPLETE_BYTES
+        if not file_exists:
+            size_str = "File missing"
+        elif incomplete:
+            size_str = "Incomplete file"
+        else:
+            size_str = _fmt_size(item.size_bytes)
+        parts = [p for p in (display_quality(item), size_str) if p]
 
         self.meta_lbl = QLabel(" • ".join(parts), self)
         self.meta_lbl.setTextFormat(Qt.TextFormat.PlainText)
@@ -90,7 +112,7 @@ class RecentRow(QWidget):
 
         layout.addLayout(self.actions_layout)
 
-        self.play_btn.setVisible(file_exists)
+        self.play_btn.setVisible(file_exists and not incomplete)
         self.folder_btn.setVisible(bool(item.file_path))
 
         self._restyle()

@@ -199,11 +199,14 @@ def test_queue_widget_refresh_no_duplicate_ghost_widgets(monkeypatch):
     widget.refresh()
     widget.refresh()
 
+    # Plan 23 (owner approved): a failed item is listed under "Failed (N)", not "Up next"
     headers = [lbl for lbl in widget.findChildren(QLabel) if "Up next" in lbl.text()]
+    failed_headers = [lbl for lbl in widget.findChildren(QLabel) if lbl.text().startswith("Failed (")]
     clear_btns = [btn for btn in widget.findChildren(QPushButton) if btn.text() == "Clear failed"]
 
-    assert len(headers) == 1
-    assert headers[0].text() == "Up next (1)"
+    assert len(headers) == 0
+    assert len(failed_headers) == 1
+    assert failed_headers[0].text() == "Failed (1)"
     assert len(clear_btns) == 1
 
 
@@ -240,9 +243,12 @@ def test_queue_widget_one_failed_job_shows_clear_failed(monkeypatch):
 
     widget.refresh()
     assert widget.isVisible()
+    # Plan 23 (owner approved): a failed item is listed under "Failed (N)", not "Up next"
     headers = [lbl for lbl in widget.findChildren(QLabel) if "Up next" in lbl.text()]
-    assert len(headers) == 1
-    assert headers[0].text() == "Up next (1)"
+    assert len(headers) == 0
+    failed_headers = [lbl for lbl in widget.findChildren(QLabel) if lbl.text().startswith("Failed (")]
+    assert len(failed_headers) == 1
+    assert failed_headers[0].text() == "Failed (1)"
     clear_btns = [btn for btn in widget.findChildren(QPushButton) if btn.text() == "Clear failed"]
     assert len(clear_btns) == 1
 

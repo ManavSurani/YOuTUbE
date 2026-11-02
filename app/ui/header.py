@@ -238,12 +238,14 @@ class Header(QWidget):
         self._style_status()
 
         status_container = QWidget(self)
+        self._status_box = status_container
         s_layout = QHBoxLayout(status_container)
         s_layout.setContentsMargins(0, 0, 0, 0)
         s_layout.setSpacing(6)
         s_layout.addWidget(self.status_dot)
         s_layout.addWidget(self.status_label)
         layout.addWidget(status_container)
+        status_container.setVisible(False)  # only shown while offline
 
         layout.addSpacing(8)
 
@@ -312,6 +314,7 @@ class Header(QWidget):
         self.status_label.setText("Online" if online else "Offline")
         self._online = online
         self._style_status()
+        self._status_box.setVisible(not online)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

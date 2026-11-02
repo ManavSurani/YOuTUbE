@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from app.core.jobs import DownloadJob
 from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.elided_label import ElidedLabel
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.theme import ThemeManager, qcolor
 
@@ -130,7 +131,7 @@ class ProgressCard(QWidget):
         self.thumb = ThumbLabel(size=(48, 27), radius=4, parent=self.header_widget)
         h_layout.addWidget(self.thumb)
 
-        self.title_lbl = QLabel(self.header_widget)
+        self.title_lbl = ElidedLabel(parent=self.header_widget)
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.title_lbl.setProperty("role", "strong")
         h_layout.addWidget(self.title_lbl, 1)
@@ -287,9 +288,10 @@ class ProgressCard(QWidget):
         folder_name = Path(out_dir).name if out_dir else "Downloads"
         self.progress_bar.setValue(100)
         self.percent_label.setText("100%")
-        self.stage_label.setText(f"Done. Saved to {folder_name}.")
         size = Path(final_path).stat().st_size if final_path and Path(final_path).is_file() else 0
-        self.stats_label.setText(f"File size: {self._fmt_bytes(size)}" if size else "")
+        saved = f"Saved to {folder_name}"
+        self.stage_label.setText(f"{saved} · {self._fmt_bytes(size)}" if size else saved)
+        self.stats_label.setText("")
         self.setVisible(True)
         self._collapse_timer.start(1200)
 

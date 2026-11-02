@@ -191,8 +191,10 @@ def test_main_window_network_transitions(monkeypatch):
         assert not win.audio_tab.url_input.isEnabled()
         # History tab stays fully usable
         assert win.history_tab.isEnabled()
-        assert len(popup_calls) == 1
-        assert "Internet is off" in popup_calls[0][1]
+        # Plan 23 (owner approved): no popup; a quiet note under the link box instead
+        assert len(popup_calls) == 0
+        assert win.video_tab.offline_note.isVisibleTo(win.video_tab)
+        assert win.audio_tab.offline_note.isVisibleTo(win.audio_tab)
 
         # Trigger came online
         win._on_came_online()
@@ -200,11 +202,13 @@ def test_main_window_network_transitions(monkeypatch):
         assert win.status_dot._color.name().upper() == "#2BA640"
         assert win.video_tab.url_input.isEnabled()
         assert win.audio_tab.url_input.isEnabled()
-        assert len(popup_calls) == 1  # No popup on coming back online
+        assert len(popup_calls) == 0  # No popup on coming back online
+        assert not win.video_tab.offline_note.isVisibleTo(win.video_tab)
 
-        # Second outage triggers popup again
+        # Second outage shows the note again, still without a popup
         win._on_went_offline()
-        assert len(popup_calls) == 2
+        assert len(popup_calls) == 0
+        assert win.video_tab.offline_note.isVisibleTo(win.video_tab)
     finally:
         win.network_monitor.stop()
         win.network_monitor.wait(1000)

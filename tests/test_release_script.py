@@ -265,3 +265,19 @@ def test_setup_iss_relaunches_after_silent_install():
     line = next(l for l in run_section.splitlines() if "{#MyAppExe}" in l)
     assert "postinstall" in line
     assert "skipifsilent" not in line
+
+
+def test_flaky_test_passing_alone_does_not_block(repo, monkeypatch):
+    """A test that fails in the full run but passes 3/3 alone is an order/timing flake (plan 23, R14)."""
+    class FlakyRunner(FakeRunner):
+        def __call__(self, cmd, check=True):
+            if "pytest" in " ".join(cmd) and any("::" in part for part in cmd):
+                self.calls.append(list(cmd))
+                return FakeResult(0, "1 passed\n")  # passes when run alone
+            return super().__call__(cmd, check)
+
+    runner = FlakyRunner(tests_out="FAILED tests/test_tab_looks.py::test_flaky - timing\n1 failed\n")
+    monkeypatch.setattr(rel, "run", runner)
+    assert rel.release(NEXT, [], dry_run=False) == 0
+    alone = [c for c in runner.calls if any("::test_flaky" in part for part in c)]
+    assert len(alone) == 3

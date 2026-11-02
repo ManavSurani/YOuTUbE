@@ -10,6 +10,8 @@ import tools.release as rel
 from app.core.app_updater import check_manifest_dict
 
 ROOT = Path(__file__).resolve().parent.parent
+# Next patch after the repo's current version, so these tests keep working after each release
+NEXT = rel.bump(rel.current_version())
 
 
 # ---------------------------------------------------------------------------
@@ -30,8 +32,8 @@ def test_validate_new_version():
 
 def test_set_version_py():
     text = (ROOT / "app" / "version.py").read_text(encoding="utf-8")
-    out = rel.set_version_py(text, "1.0.3")
-    assert 'APP_VERSION = "1.0.3"' in out
+    out = rel.set_version_py(text, NEXT)
+    assert f'APP_VERSION = "{NEXT}"' in out
     old_lines, new_lines = text.splitlines(), out.splitlines()
     assert len(old_lines) == len(new_lines)
     changed = [(a, b) for a, b in zip(old_lines, new_lines) if a != b]
@@ -40,8 +42,8 @@ def test_set_version_py():
 
 def test_set_setup_iss():
     text = (ROOT / "installer" / "setup.iss").read_text(encoding="utf-8")
-    out = rel.set_setup_iss(text, "1.0.3")
-    assert '#define MyAppVersion "1.0.3"' in out
+    out = rel.set_setup_iss(text, NEXT)
+    assert f'#define MyAppVersion "{NEXT}"' in out
     changed = [(a, b) for a, b in zip(text.splitlines(), out.splitlines()) if a != b]
     assert len(changed) == 1 and changed[0][0].startswith("#define MyAppVersion")
     assert out.count("\n") == text.count("\n")
@@ -53,16 +55,16 @@ def _old_manifest():
 
 def test_build_manifest():
     old = _old_manifest()
-    new = rel.build_manifest(old, "1.0.3", "a" * 64, "2026-11-02", ["One", "Two"])
-    url = rel.installer_url("1.0.3")
-    assert new["latest_version"] == new["version"] == "1.0.3"
+    new = rel.build_manifest(old, NEXT, "a" * 64, "2026-11-02", ["One", "Two"])
+    url = rel.installer_url(NEXT)
+    assert new["latest_version"] == new["version"] == NEXT
     assert new["installer_url"] == new["download_url"] == url
     assert new["sha256"] == "a" * 64
     assert new["release_date"] == "2026-11-02"
     assert new["notes"] == ["One", "Two"]
     for key in ("min_supported_version", "force_update", "android"):
         assert new[key] == old[key]
-    assert old["latest_version"] != "1.0.3"  # input not mutated
+    assert old["latest_version"] != NEXT  # input not mutated
 
 
 def test_manifest_passes_app_updater():

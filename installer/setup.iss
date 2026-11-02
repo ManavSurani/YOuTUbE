@@ -1,5 +1,5 @@
 #define MyAppName "YOuTUbE"
-#define MyAppVersion "1.0.7"
+#define MyAppVersion "1.0.8"
 #define MyAppExe "YOuTUbE.exe"
 
 [Setup]

@@ -34,3 +34,31 @@ Thumbs.db
 
 # Development scratch
 scratch/
+
+# Android local / secrets
+android/.kotlin/
+*.keystore
+*.jks
+android/keystore.properties
+
+# IDE / tools
+.idea/
+.vscode/
+*.iml
+.claude/settings.local.json
+
+# Env and secrets
+.env
+.env.*
+
+# Test / coverage output
+.coverage
+htmlcov/
+coverage.xml
+
+# Download leftovers
+*.part
+*.ytdl
+
+# Generated UI snapshots and audit images (local review only)
+docs/ui_audit/

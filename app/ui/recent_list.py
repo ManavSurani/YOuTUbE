@@ -22,6 +22,7 @@ from app.core.history_db import HistoryItem, list_items
 from app.ui.kit.buttons import IconButton
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.kit.toast import Toast
+from app.ui.theme import ThemeManager, tok
 
 
 def _fmt_size(size_bytes: int) -> str:
@@ -43,15 +44,6 @@ class RecentRow(QWidget):
         super().__init__(parent)
         self.item = item
         self.setFixedHeight(56)
-        self.setStyleSheet("""
-            RecentRow {
-                background-color: transparent;
-                border-radius: 8px;
-            }
-            RecentRow:hover {
-                background-color: #1A1A1A;
-            }
-        """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -69,7 +61,7 @@ class RecentRow(QWidget):
 
         self.title_lbl = QLabel(item.title, self)
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        self.title_lbl.setProperty("role", "strong")
         info_layout.addWidget(self.title_lbl)
 
         file_exists = Path(item.file_path).is_file() if item.file_path else False
@@ -78,7 +70,6 @@ class RecentRow(QWidget):
 
         self.meta_lbl = QLabel(" • ".join(parts), self)
         self.meta_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.meta_lbl.setStyleSheet("font-size: 11px; color: #AAAAAA;")
         info_layout.addWidget(self.meta_lbl)
 
         layout.addLayout(info_layout, 1)
@@ -101,6 +92,16 @@ class RecentRow(QWidget):
 
         self.play_btn.setVisible(file_exists)
         self.folder_btn.setVisible(bool(item.file_path))
+
+        self._restyle()
+        ThemeManager.instance().changed.connect(self._restyle)
+
+    def _restyle(self, *_) -> None:
+        self.setStyleSheet(
+            "RecentRow { background-color: transparent; border-radius: 8px; } "
+            f"RecentRow:hover {{ background-color: {tok('surface')}; }}"
+        )
+        self.meta_lbl.setStyleSheet(f"font-size: 12px; color: {tok('text_muted')};")
 
     def _show_feedback(self, message: str) -> None:
         parent = self.window() if self.window() else self
@@ -136,6 +137,8 @@ class RecentList(QWidget):
         if parent_widget is not None:
             parent_widget.installEventFilter(self)
 
+        self._see_all_btn: Optional[QPushButton] = None
+        ThemeManager.instance().changed.connect(self._style_see_all)
         self.refresh()
 
     def eventFilter(self, watched, event):
@@ -157,6 +160,13 @@ class RecentList(QWidget):
             if child_layout is not None:
                 self._clear_layout(child_layout)
 
+    def _style_see_all(self, *_) -> None:
+        if self._see_all_btn is not None:
+            self._see_all_btn.setStyleSheet(
+                f"QPushButton {{ background: transparent; border: none; font-size: 12px; color: {tok('info')}; }} "
+                "QPushButton:hover { text-decoration: underline; }"
+            )
+
     def refresh(self) -> None:
         """Reload last 5 items of matching type from history database."""
         self._clear_layout(self._layout)
@@ -169,7 +179,7 @@ class RecentList(QWidget):
         self.setVisible(True)
 
         header = QLabel(f"Recently downloaded", self)
-        header.setStyleSheet("font-size: 13px; font-weight: 600; color: #AAAAAA; margin-bottom: 2px;")
+        header.setProperty("role", "strong")
         self._layout.addWidget(header)
 
         for item in items:
@@ -184,10 +194,8 @@ class RecentList(QWidget):
         link_text = f"See all {self.kind} history →"
         see_all_btn = QPushButton(link_text, self)
         see_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        see_all_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; font-size: 12px; color: #3EA6FF; } "
-            "QPushButton:hover { text-decoration: underline; color: #65B8FF; }"
-        )
+        self._see_all_btn = see_all_btn
+        self._style_see_all()
         see_all_btn.clicked.connect(lambda: self.see_all_clicked.emit(self.kind))
         footer_layout.addWidget(see_all_btn)
 

@@ -21,6 +21,7 @@ from app.core.logger import get_logger
 from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.progress_card import ModernProgressBar
 from app.ui.kit.thumb_label import ThumbLabel
+from app.ui.theme import ThemeManager, tok
 
 
 class QueueRow(QWidget):
@@ -53,15 +54,16 @@ class QueueRow(QWidget):
             cleaned_reason = failure_reason.strip() if (failure_reason and isinstance(failure_reason, str)) else ""
             display_reason = cleaned_reason if cleaned_reason else "Something went wrong"
             status_text = f"Failed: {display_reason}"
-            status_color = status_color or "#FF4E45"
+            status_token = "error"
         elif status_text is None:
             status_text = "Waiting"
-            status_color = status_color or "#AAAAAA"
+            status_token = "text_muted"
         else:
-            status_color = status_color or ("#FF4E45" if "Failed" in status_text else "#AAAAAA")
+            status_token = "error" if "Failed" in status_text else "text_muted"
 
+        self._status_color = status_color  # explicit color from the caller wins over the token
+        self._status_token = status_token
         self.setFixedHeight(58)
-        self.setStyleSheet("QueueRow { background-color: #1A1A1A; border-radius: 6px; }")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -79,12 +81,12 @@ class QueueRow(QWidget):
 
         self.title_lbl = QLabel(target_job.title, self)
         self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        self.title_lbl.setProperty("role", "strong")
         info_layout.addWidget(self.title_lbl)
 
         self.meta_lbl = QLabel(f"{target_job.kind.capitalize()} • {target_job.quality_label}", self)
         self.meta_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.meta_lbl.setStyleSheet("font-size: 11px; color: #AAAAAA;")
+        self.meta_lbl.setProperty("role", "meta")
         info_layout.addWidget(self.meta_lbl)
 
         self.progress_bar = ModernProgressBar(self)
@@ -98,7 +100,6 @@ class QueueRow(QWidget):
         # Status text
         self.status_lbl = QLabel(status_text, self)
         self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_lbl.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {status_color};")
         layout.addWidget(self.status_lbl)
 
         # Action buttons (Retry, Copy details, and/or Remove)
@@ -126,6 +127,14 @@ class QueueRow(QWidget):
             self.remove_btn = IconButton("close", is_danger=True, size=28, tooltip="Remove", parent=self)
             self.remove_btn.clicked.connect(lambda: manager.cancel_job(target_job.job_id))
             layout.addWidget(self.remove_btn)
+
+        self._restyle()
+        ThemeManager.instance().changed.connect(self._restyle)
+
+    def _restyle(self, *_) -> None:
+        self.setStyleSheet(f"QueueRow {{ background-color: {tok('surface')}; border-radius: 6px; }}")
+        color = self._status_color or tok(self._status_token)
+        self.status_lbl.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {color};")
 
 
 class QueueWidget(QWidget):
@@ -196,7 +205,7 @@ class QueueWidget(QWidget):
         # Header: "Up next (N)"
         header_layout = QHBoxLayout()
         header_lbl = QLabel(f"Up next ({drawn_count})", self)
-        header_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #AAAAAA;")
+        header_lbl.setProperty("role", "strong")
         header_layout.addWidget(header_lbl, 1)
 
         if failed_lane:

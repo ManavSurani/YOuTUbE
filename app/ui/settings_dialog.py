@@ -42,7 +42,7 @@ from app.core.logger import get_logger
 from app.core.paths import APP_LOG_FILE, DEFAULT_DOWNLOADS
 from app.core.settings import load_settings, save_settings
 from app.ui.kit import AnimatedButton, AnimatedCheckBox
-from app.ui.theme import build_qss
+from app.ui.theme import ThemeManager, tok
 from app.version import APP_NAME, APP_VERSION
 
 
@@ -96,8 +96,11 @@ class SettingsDialog(QDialog):
         self._latest_update_info: Optional[UpdateInfo] = None
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._dividers = []
+        self._low_space = False
         self._setup_ui()
         self._load_values()
+        ThemeManager.instance().changed.connect(self._restyle)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -122,7 +125,7 @@ class SettingsDialog(QDialog):
         # Section 1: Download Folder
         # -------------------------------------------------------------
         folder_header = QLabel("Download folder", self)
-        folder_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        folder_header.setProperty("role", "section")
         layout.addWidget(folder_header)
 
         folder_row = QHBoxLayout()
@@ -134,17 +137,6 @@ class SettingsDialog(QDialog):
         self.folder_input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.folder_input.setCursor(Qt.CursorShape.ArrowCursor)
         self.folder_input.setFixedHeight(36)
-        self.folder_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #1A1A1A;
-                border: 1px solid #333333;
-                border-radius: 8px;
-                padding: 0 10px;
-                color: #CCCCCC;
-                font-family: 'Segoe UI';
-                font-size: 12px;
-            }
-        """)
         folder_row.addWidget(self.folder_input, 1)
 
         self.browse_btn = AnimatedButton("Browse…", role="secondary", parent=self)
@@ -168,25 +160,12 @@ class SettingsDialog(QDialog):
         helper_row.setContentsMargins(2, 0, 2, 0)
 
         self.free_space_label = QLabel(self)
-        self.free_space_label.setStyleSheet("font-size: 11px; color: #888888;")
         helper_row.addWidget(self.free_space_label)
 
         helper_row.addStretch(1)
 
         self.open_folder_link = QPushButton("Open download folder", self)
         self.open_folder_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.open_folder_link.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-                color: #3EA6FF;
-                font-size: 11px;
-                padding: 0;
-            }
-            QPushButton:hover {
-                text-decoration: underline;
-            }
-        """)
         self.open_folder_link.clicked.connect(self._on_open_download_folder)
         helper_row.addWidget(self.open_folder_link)
 
@@ -198,7 +177,7 @@ class SettingsDialog(QDialog):
         # Section 2: Appearance (instant switch and persist)
         # -------------------------------------------------------------
         theme_header = QLabel("Appearance", self)
-        theme_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        theme_header.setProperty("role", "section")
         layout.addWidget(theme_header)
 
         self.theme_combo = QComboBox(self)
@@ -214,7 +193,7 @@ class SettingsDialog(QDialog):
         # Section 3: Updates
         # -------------------------------------------------------------
         update_header = QLabel("Updates", self)
-        update_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        update_header.setProperty("role", "section")
         layout.addWidget(update_header)
 
         self.auto_update_check = AnimatedCheckBox("Check for updates automatically", parent=self)
@@ -237,7 +216,7 @@ class SettingsDialog(QDialog):
         update_action_row.addWidget(self.install_update_btn)
 
         self.update_status_label = QLabel(self)
-        self.update_status_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
+        self.update_status_label.setProperty("role", "meta")
         update_action_row.addWidget(self.update_status_label, 1)
 
         layout.addLayout(update_action_row)
@@ -248,23 +227,15 @@ class SettingsDialog(QDialog):
         # Section 4: About & Support
         # -------------------------------------------------------------
         about_header = QLabel(f"About {APP_NAME}", self)
-        about_header.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        about_header.setProperty("role", "section")
         layout.addWidget(about_header)
 
         version_label = QLabel(f"Version {APP_VERSION}", self)
-        version_label.setStyleSheet("font-size: 12px; color: #888888;")
+        version_label.setProperty("role", "meta")
         layout.addWidget(version_label)
 
-        self.credits_label = QLabel(
-            "Built with open-source tools:<br>"
-            "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/yt-dlp/yt-dlp\">yt-dlp</a><br>"
-            "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/BtbN/FFmpeg-Builds\">ffmpeg &amp; ffprobe (GPL build)</a> — <a style=\"color: #3EA6FF;\" href=\"https://github.com/FFmpeg/FFmpeg\">source</a><br>"
-            "• <a style=\"color: #3EA6FF;\" href=\"https://deno.com\">deno</a><br>"
-            "• <a style=\"color: #3EA6FF;\" href=\"https://github.com/arsenetar/send2trash\">send2trash</a>",
-            self,
-        )
+        self.credits_label = QLabel(self)
         self.credits_label.setOpenExternalLinks(True)
-        self.credits_label.setStyleSheet("font-size: 11px; color: #888888; line-height: 1.4;")
         layout.addWidget(self.credits_label)
 
         about_actions_row = QHBoxLayout()
@@ -279,6 +250,7 @@ class SettingsDialog(QDialog):
         about_actions_row.addStretch(1)
         layout.addLayout(about_actions_row)
 
+        self._restyle()
         self.adjustSize()
         screen = self.screen() or QApplication.primaryScreen()
         if screen:
@@ -286,11 +258,39 @@ class SettingsDialog(QDialog):
             if self.height() > max_h:
                 self.resize(self.width(), max_h)
 
+    def _style_free_space(self) -> None:
+        color = tok("error" if self._low_space else "text_muted")
+        self.free_space_label.setStyleSheet(f"font-size: 12px; color: {color};")
+
+    def _restyle(self, *_) -> None:
+        """Apply token colors to the widgets styled in code (runs on every theme change)."""
+        self.folder_input.setStyleSheet(
+            f"QLineEdit {{ background-color: {tok('surface')}; border: 1px solid {tok('border')}; "
+            f"border-radius: 8px; padding: 0 10px; color: {tok('text')}; font-family: 'Segoe UI'; font-size: 12px; }}"
+        )
+        self.open_folder_link.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: none; color: {tok('info')}; font-size: 12px; padding: 0; }} "
+            "QPushButton:hover { text-decoration: underline; }"
+        )
+        self._style_free_space()
+        for divider in self._dividers:
+            divider.setStyleSheet(f"background-color: {tok('border')}; border: none;")
+        link = f'style="color: {tok("info")};"'
+        self.credits_label.setText(
+            "Built with open-source tools:<br>"
+            f'• <a {link} href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a><br>'
+            f'• <a {link} href="https://github.com/BtbN/FFmpeg-Builds">ffmpeg &amp; ffprobe (GPL build)</a>'
+            f' — <a {link} href="https://github.com/FFmpeg/FFmpeg">source</a><br>'
+            f'• <a {link} href="https://deno.com">deno</a><br>'
+            f'• <a {link} href="https://github.com/arsenetar/send2trash">send2trash</a>'
+        )
+        self.credits_label.setStyleSheet(f"font-size: 12px; color: {tok('text_muted')}; line-height: 1.4;")
+
     def _create_divider(self, parent: QWidget) -> QFrame:
         divider = QFrame(parent)
         divider.setFrameShape(QFrame.Shape.HLine)
         divider.setFixedHeight(1)
-        divider.setStyleSheet("background-color: #242424; border: none;")
+        self._dividers.append(divider)
         return divider
 
     def _load_values(self) -> None:
@@ -314,10 +314,11 @@ class SettingsDialog(QDialog):
                 free_str = format_size(usage.free)
                 if usage.free < 1024 * 1024 * 1024:
                     self.free_space_label.setText(f"Low disk space: {free_str} available")
-                    self.free_space_label.setStyleSheet("font-size: 11px; color: #FF8800;")
+                    self._low_space = True
                 else:
                     self.free_space_label.setText(f"Free disk space: {free_str}")
-                    self.free_space_label.setStyleSheet("font-size: 11px; color: #888888;")
+                    self._low_space = False
+                self._style_free_space()
                 return
         except Exception:
             pass
@@ -368,9 +369,7 @@ class SettingsDialog(QDialog):
             self._settings["theme"] = chosen_theme
             save_settings(self._settings)
 
-            app = QApplication.instance()
-            if app:
-                app.setStyleSheet(build_qss(chosen_theme))
+            ThemeManager.instance().apply(chosen_theme)
 
             # Apply dark title bar to self and parent window
             self._apply_dark_title_bar(is_dark=(chosen_theme == "dark"))

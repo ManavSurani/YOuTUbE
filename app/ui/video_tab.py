@@ -367,12 +367,12 @@ class MediaInfoCard(QWidget):
         self.title_label = QLabel(self)
         self.title_label.setTextFormat(Qt.TextFormat.PlainText)
         self.title_label.setWordWrap(True)
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #FFFFFF;")
+        self.title_label.setProperty("role", "section")
         text_layout.addWidget(self.title_label)
 
         self.meta_label = QLabel(self)
         self.meta_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.meta_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
+        self.meta_label.setProperty("role", "meta")
         text_layout.addWidget(self.meta_label)
 
         layout.addLayout(text_layout, 1)

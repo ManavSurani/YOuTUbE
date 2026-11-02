@@ -44,6 +44,7 @@ from app.ui.audio_tab import AudioTab
 from app.ui.header import Header, get_asset_path
 from app.ui.history_tab import HistoryTab
 from app.ui.settings_dialog import SettingsDialog
+from app.ui.theme import ThemeManager, current_theme, tok
 from app.ui.video_tab import VideoTab
 from app.version import APP_NAME, APP_VERSION
 
@@ -113,15 +114,8 @@ class UpdateBanner(QWidget):
 
     def _setup_ui(self) -> None:
         self.setFixedHeight(44)
-        self.setStyleSheet(
-            "UpdateBanner { background-color: #212121; border-radius: 8px; } "
-            "QLabel { color: #3EA6FF; font-size: 13px; font-weight: 500; } "
-            "QPushButton { font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 6px; } "
-            "QPushButton#updateBtn { background-color: #3EA6FF; color: #000000; border: none; } "
-            "QPushButton#updateBtn:hover { background-color: #65B8FF; } "
-            "QPushButton#laterBtn { background-color: transparent; color: #AAAAAA; border: 1px solid #333333; } "
-            "QPushButton#laterBtn:hover { background-color: #2A2A2A; color: #FFFFFF; }"
-        )
+        self._restyle()
+        ThemeManager.instance().changed.connect(self._restyle)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 6, 16, 6)
@@ -146,6 +140,16 @@ class UpdateBanner(QWidget):
         self.later_btn.setObjectName("laterBtn")
         self.later_btn.clicked.connect(self._on_later_clicked)
         layout.addWidget(self.later_btn)
+
+    def _restyle(self, *_) -> None:
+        self.setStyleSheet(
+            f"UpdateBanner {{ background-color: {tok('surface')}; border-radius: 8px; }} "
+            f"QLabel {{ color: {tok('info')}; font-size: 13px; font-weight: 500; }} "
+            "QPushButton { font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 6px; } "
+            f"QPushButton#updateBtn {{ background-color: {tok('info')}; color: {tok('bg')}; border: none; }} "
+            f"QPushButton#laterBtn {{ background-color: transparent; color: {tok('text_muted')}; border: 1px solid {tok('border')}; }} "
+            f"QPushButton#laterBtn:hover {{ background-color: {tok('surface_hover')}; color: {tok('text')}; }}"
+        )
 
     def show_update(self, info: UpdateInfo) -> None:
         self._info = info
@@ -295,19 +299,22 @@ class MainWindow(QMainWindow):
         self._update_worker: Optional[UpdateCheckWorker] = None
         self._check_for_updates()
 
+        ThemeManager.instance().changed.connect(self._apply_title_bar)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         # Apply dark title bar (B14 fix)
-        try:
-            settings = load_settings()
-            is_dark = settings.get("theme", "dark").lower() != "light"
-            apply_dark_title_bar(int(self.winId()), is_dark=is_dark)
-        except Exception as exc:
-            get_logger().debug(f"Title bar theming skipped: {exc}")
+        self._apply_title_bar()
 
         if not getattr(self, "_restored_started", False):
             self._restored_started = True
             self._init_network_and_restored_jobs()
+
+    def _apply_title_bar(self, *_) -> None:
+        try:
+            apply_dark_title_bar(int(self.winId()), is_dark=(current_theme() != "light"))
+        except Exception as exc:
+            get_logger().debug(f"Title bar theming skipped: {exc}")
 
     def _init_network_and_restored_jobs(self) -> None:
         """Initialize online state for both lanes and start restored jobs if online."""

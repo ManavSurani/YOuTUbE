@@ -51,6 +51,7 @@ from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.checkbox import AnimatedCheckBox
 from app.ui.kit.thumb_label import ThumbLabel
 from app.ui.kit.toast import Toast
+from app.ui.theme import ThemeManager, tok
 from app.ui.video_tab import AnimatedLineEdit
 
 
@@ -123,31 +124,17 @@ class FilterChip(QPushButton):
         self.setFixedHeight(32)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #212121;
-                color: #AAAAAA;
-                border: none;
-                border-radius: 16px;
-                padding: 0 16px;
-                font-family: 'Segoe UI';
-                font-size: 13px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #303030;
-                color: #FFFFFF;
-            }
-            QPushButton:checked {
-                background-color: #CC0000;
-                color: #FFFFFF;
-                font-weight: 600;
-            }
-            QPushButton:checked:hover {
-                background-color: #B30000;
-                color: #FFFFFF;
-            }
-        """)
+        self._restyle()
+        ThemeManager.instance().changed.connect(self._restyle)
+
+    def _restyle(self, *_) -> None:
+        self.setStyleSheet(
+            f"QPushButton {{ background-color: {tok('surface')}; color: {tok('text_muted')}; border: none; "
+            "border-radius: 16px; padding: 0 16px; font-family: 'Segoe UI'; font-size: 13px; font-weight: 500; } "
+            f"QPushButton:hover {{ background-color: {tok('surface_hover')}; color: {tok('text')}; }} "
+            f"QPushButton:checked {{ background-color: {tok('accent_hover')}; color: white; font-weight: 600; }} "
+            f"QPushButton:checked:hover {{ background-color: {tok('accent_pressed')}; color: white; }}"
+        )
 
 
 class HistoryDeleteDialog(QDialog):
@@ -166,13 +153,9 @@ class HistoryDeleteDialog(QDialog):
         self.setWindowTitle("Delete from history")
         self.setModal(True)
         self.setFixedWidth(420)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1F1F1F;
-                border: 1px solid #333333;
-                border-radius: 12px;
-            }
-        """)
+        self.setStyleSheet(
+            f"QDialog {{ background-color: {tok('surface')}; border: 1px solid {tok('border')}; border-radius: 12px; }}"
+        )
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -181,7 +164,7 @@ class HistoryDeleteDialog(QDialog):
         layout.setSpacing(16)
 
         title_label = QLabel("Delete from history?", self)
-        title_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF;")
+        title_label.setProperty("role", "section")
         layout.addWidget(title_label)
 
         display_title = self.item.title
@@ -194,7 +177,7 @@ class HistoryDeleteDialog(QDialog):
 
         msg_label = QLabel(msg_text, self)
         msg_label.setWordWrap(True)
-        msg_label.setStyleSheet("font-size: 13px; color: #CCCCCC; line-height: 1.4;")
+        msg_label.setStyleSheet(f"font-size: 13px; color: {tok('text')}; line-height: 1.4;")
         layout.addWidget(msg_label)
 
         layout.addSpacing(8)
@@ -236,13 +219,9 @@ class ClearAllDialog(QDialog):
         self.setWindowTitle("Clear download history")
         self.setModal(True)
         self.setFixedWidth(420)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1F1F1F;
-                border: 1px solid #333333;
-                border-radius: 12px;
-            }
-        """)
+        self.setStyleSheet(
+            f"QDialog {{ background-color: {tok('surface')}; border: 1px solid {tok('border')}; border-radius: 12px; }}"
+        )
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -251,12 +230,12 @@ class ClearAllDialog(QDialog):
         layout.setSpacing(16)
 
         title_label = QLabel("Clear download history?", self)
-        title_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF;")
+        title_label.setProperty("role", "section")
         layout.addWidget(title_label)
 
         msg_label = QLabel("This will remove all downloaded items from your history list.", self)
         msg_label.setWordWrap(True)
-        msg_label.setStyleSheet("font-size: 13px; color: #CCCCCC;")
+        msg_label.setStyleSheet(f"font-size: 13px; color: {tok('text')};")
         layout.addWidget(msg_label)
 
         self.chk_files = AnimatedCheckBox("Also delete the files from my computer", parent=self)
@@ -300,13 +279,9 @@ class HistoryWarningDialog(QDialog):
         self.setWindowTitle(title)
         self.setModal(True)
         self.setFixedWidth(420)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1F1F1F;
-                border: 1px solid #333333;
-                border-radius: 12px;
-            }
-        """)
+        self.setStyleSheet(
+            f"QDialog {{ background-color: {tok('surface')}; border: 1px solid {tok('border')}; border-radius: 12px; }}"
+        )
         self._setup_ui(title, message)
 
     def _setup_ui(self, title: str, message: str) -> None:
@@ -315,12 +290,12 @@ class HistoryWarningDialog(QDialog):
         layout.setSpacing(16)
 
         title_label = QLabel(title, self)
-        title_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF;")
+        title_label.setProperty("role", "section")
         layout.addWidget(title_label)
 
         msg_label = QLabel(message, self)
         msg_label.setWordWrap(True)
-        msg_label.setStyleSheet("font-size: 13px; color: #CCCCCC; line-height: 1.4;")
+        msg_label.setStyleSheet(f"font-size: 13px; color: {tok('text')}; line-height: 1.4;")
         layout.addWidget(msg_label)
 
         layout.addSpacing(8)
@@ -352,16 +327,16 @@ class HistoryRowWidget(QWidget):
         self.item = item
         self.setFixedHeight(72)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setStyleSheet("""
-            HistoryRowWidget {
-                background-color: transparent;
-                border-radius: 8px;
-            }
-            HistoryRowWidget:hover {
-                background-color: #1A1A1A;
-            }
-        """)
         self._setup_ui()
+        self._restyle()
+        ThemeManager.instance().changed.connect(self._restyle)
+
+    def _restyle(self, *_) -> None:
+        self.setStyleSheet(
+            "HistoryRowWidget { background-color: transparent; border-radius: 8px; } "
+            f"HistoryRowWidget:hover {{ background-color: {tok('surface')}; }}"
+        )
+        self._update_meta_text()
 
     def _setup_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -387,11 +362,12 @@ class HistoryRowWidget(QWidget):
 
         self.title_label = QLabel(self.item.title, self)
         self.title_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #FFFFFF;")
+        self.title_label.setProperty("role", "strong")
         info_layout.addWidget(self.title_label)
 
         self.meta_label = QLabel(self)
         self.meta_label.setTextFormat(Qt.TextFormat.RichText)
+        self.meta_label.setProperty("role", "meta")
         self._update_meta_text()
         info_layout.addWidget(self.meta_label)
 
@@ -449,7 +425,7 @@ class HistoryRowWidget(QWidget):
             parts.append(date_str)
 
         if self.item.file_missing:
-            parts.append('<span style="color: #AAAAAA; font-weight: 500;">File missing</span>')
+            parts.append(f'<span style="color: {tok("text_muted")}; font-weight: 500;">File missing</span>')
 
         self.meta_label.setText(" • ".join(parts))
 
@@ -650,12 +626,12 @@ class HistoryTab(QWidget):
         empty_layout.setSpacing(6)
 
         self.empty_title = QLabel("Nothing here yet.", self.empty_widget)
-        self.empty_title.setStyleSheet("font-size: 16px; font-weight: 600; color: #FFFFFF;")
+        self.empty_title.setProperty("role", "section")
         self.empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_title)
 
         self.empty_hint = QLabel("Paste a YouTube link in the Video or Audio tab to start downloading.", self.empty_widget)
-        self.empty_hint.setStyleSheet("font-size: 13px; color: #888888;")
+        self.empty_hint.setProperty("role", "muted")
         self.empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_hint)
 

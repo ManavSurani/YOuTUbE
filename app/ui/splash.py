@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
 )
 from app.ui.kit import AnimatedButton
+from app.ui.theme import tok
 from app.version import APP_NAME, APP_VERSION
 from app.core.app_updater import (
     UpdateDownloadWorker,
@@ -132,6 +133,9 @@ class SplashScreen(QWidget):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setFixedSize(360, 260)
+        # Same background as the main window, so the hand-off does not flash
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"SplashScreen {{ background-color: {tok('bg')}; }}")
         self._setup_ui()
         self._start_worker()
 
@@ -161,7 +165,7 @@ class SplashScreen(QWidget):
 
         # App title
         self.title_label = QLabel(APP_NAME, self)
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: 600;")
+        self.title_label.setProperty("role", "title")
         layout.addWidget(self.title_label, 0, Qt.AlignmentFlag.AlignCenter)
 
         # Status text

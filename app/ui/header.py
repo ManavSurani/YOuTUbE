@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from app.ui.kit.anim import is_animations_enabled
 from app.ui.kit.buttons import AnimatedButton
+from app.ui.theme import ThemeManager, qcolor, tok
 
 
 def get_asset_path(filename: str) -> Path:
@@ -45,9 +46,11 @@ def get_asset_path(filename: str) -> Path:
     return base / filename
 
 
-def create_gear_icon(size: int = 16, color: str = "#FFFFFF") -> QIcon:
-    """Render a crisp vector outline gear icon using QPainter."""
+def create_gear_icon(size: int = 16, color: Optional[str] = None) -> QIcon:
+    """Render a crisp vector outline gear icon using QPainter (default: theme text color)."""
     import math
+
+    color = color or tok("text")
 
     pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
@@ -108,9 +111,9 @@ class AnimatedStatusDot(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setFixedSize(8, 8)
-        self._color = QColor("#2BA640")
-        self._start_color = QColor("#2BA640")
-        self._target_color = QColor("#2BA640")
+        self._color = qcolor("success")
+        self._start_color = qcolor("success")
+        self._target_color = qcolor("success")
         self._progress = 1.0
         self._anim: Optional[QPropertyAnimation] = None
 
@@ -130,7 +133,7 @@ class AnimatedStatusDot(QWidget):
         self.update()
 
     def set_online(self, online: bool) -> None:
-        new_color = QColor("#2BA640" if online else "#CC0000")
+        new_color = qcolor("success" if online else "status_offline")
         self._start_color = self._color
         self._color = new_color
         self._target_color = new_color
@@ -210,7 +213,7 @@ class Header(QWidget):
         layout.addWidget(logo_label)
 
         title_label = QLabel("YOuTUbE", self)
-        title_label.setStyleSheet("font-size: 15px; font-weight: 700; color: #FFFFFF;")
+        title_label.setProperty("role", "section")
         layout.addWidget(title_label)
 
         layout.addSpacing(16)
@@ -221,10 +224,7 @@ class Header(QWidget):
             btn = QPushButton(name, self)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFixedHeight(36)
-            btn.setStyleSheet(
-                "QPushButton { background: transparent; border: none; font-size: 13px; font-weight: 600; padding: 0 12px; color: #AAAAAA; } "
-                "QPushButton:hover { color: #FFFFFF; }"
-            )
+            btn.setStyleSheet(self._tab_style(active=False))
             btn.clicked.connect(lambda _, i=idx: self.select_tab(i))
             self._tabs.append(btn)
             layout.addWidget(btn)
@@ -234,7 +234,8 @@ class Header(QWidget):
         # 3. Status Badge (Online/Offline)
         self.status_dot = AnimatedStatusDot(self)
         self.status_label = QLabel("Online", self)
-        self.status_label.setStyleSheet("font-size: 12px; font-weight: 500; color: #2BA640;")
+        self._online = True
+        self._style_status()
 
         status_container = QWidget(self)
         s_layout = QHBoxLayout(status_container)
@@ -247,11 +248,33 @@ class Header(QWidget):
         layout.addSpacing(8)
 
         # 4. Settings Button (Role secondary, 36px, gear icon)
-        gear_icon = create_gear_icon(16, "#FFFFFF")
+        gear_icon = create_gear_icon(16)
         self.settings_btn = AnimatedButton("Settings", role="secondary", icon=gear_icon, parent=self)
         self.settings_btn.setFixedWidth(100)
         self.settings_btn.clicked.connect(self.settings_clicked.emit)
         layout.addWidget(self.settings_btn)
+
+        ThemeManager.instance().changed.connect(self._restyle)
+
+    @staticmethod
+    def _tab_style(active: bool) -> str:
+        if active:
+            return (f"QPushButton {{ background: transparent; border: none; font-size: 13px; font-weight: 700; "
+                    f"padding: 0 12px; color: {tok('text')}; }}")
+        return (f"QPushButton {{ background: transparent; border: none; font-size: 13px; font-weight: 600; "
+                f"padding: 0 12px; color: {tok('text_muted')}; }} "
+                f"QPushButton:hover {{ color: {tok('text')}; }}")
+
+    def _style_status(self) -> None:
+        color = tok("success" if self._online else "status_offline")
+        self.status_label.setStyleSheet(f"font-size: 12px; font-weight: 500; color: {color};")
+
+    def _restyle(self, *_) -> None:
+        for i, btn in enumerate(self._tabs):
+            btn.setStyleSheet(self._tab_style(active=(i == self._current_tab)))
+        self._style_status()
+        self.settings_btn.setIcon(create_gear_icon(16))
+        self.update()
 
     def select_tab(self, index: int) -> None:
         """Switch to tab index and animate red underline."""
@@ -260,15 +283,7 @@ class Header(QWidget):
 
         self._current_tab = index
         for i, btn in enumerate(self._tabs):
-            if i == index:
-                btn.setStyleSheet(
-                    "QPushButton { background: transparent; border: none; font-size: 13px; font-weight: 700; padding: 0 12px; color: #FFFFFF; }"
-                )
-            else:
-                btn.setStyleSheet(
-                    "QPushButton { background: transparent; border: none; font-size: 13px; font-weight: 600; padding: 0 12px; color: #AAAAAA; } "
-                    "QPushButton:hover { color: #FFFFFF; }"
-                )
+            btn.setStyleSheet(self._tab_style(active=(i == index)))
 
         target_btn = self._tabs[index]
         target_x = float(target_btn.pos().x())
@@ -295,9 +310,8 @@ class Header(QWidget):
         """Update network badge text and dot color."""
         self.status_dot.set_online(online)
         self.status_label.setText("Online" if online else "Offline")
-        self.status_label.setStyleSheet(
-            f"font-size: 12px; font-weight: 500; color: {'#2BA640' if online else '#CC0000'};"
-        )
+        self._online = online
+        self._style_status()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -320,6 +334,6 @@ class Header(QWidget):
             rect = QRectF(self._underline_x + 8, underline_y, max(1.0, self._underline_w - 16), underline_h)
             path = QPainterPath()
             path.addRoundedRect(rect, 1.5, 1.5)
-            painter.fillPath(path, QColor("#FF0000"))
+            painter.fillPath(path, qcolor("accent"))
 
         painter.end()

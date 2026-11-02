@@ -156,7 +156,7 @@ class AudioTab(QWidget):
 
         # Hint label (one short line: "Best original keeps the YouTube audio as it is.")
         self.hint_label = QLabel("Best original keeps the YouTube audio as it is.", container)
-        self.hint_label.setStyleSheet("font-size: 11px; color: #777777;")
+        self.hint_label.setProperty("role", "meta")
         self.bitrate_note = self.hint_label
         opts_layout.addWidget(self.hint_label)
 

@@ -144,3 +144,112 @@ def test_qss_has_menu_and_tooltip_rules_from_tokens(theme_name):
     assert tokens["surface_hover"] in selected
     tip = qss.split("QToolTip {", 1)[1].split("}", 1)[0]
     assert tokens["surface"] in tip and tokens["text"] in tip
+
+
+# Phase 3: window chrome and "Same as Windows" -------------------------------------
+
+@pytest.fixture
+def title_bar_calls(monkeypatch):
+    calls = []
+    monkeypatch.setattr(theme, "apply_dark_title_bar", lambda hwnd, is_dark=True: calls.append((hwnd, is_dark)))
+    theme.ThemeManager.instance()  # make sure the window hook is installed
+    return calls
+
+
+@pytest.mark.parametrize("theme_name", ["dark", "light"])
+def test_any_dialog_gets_theme_title_bar(title_bar_calls, theme_name):
+    from PySide6.QtWidgets import QMessageBox
+    theme.ThemeManager.instance().apply(theme_name)
+    title_bar_calls.clear()
+    box = QMessageBox(QMessageBox.Icon.Question, "YOuTUbE", "Quit anyway?")
+    box.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
+    box.show()
+    _settle()
+    assert (int(box.winId()), theme_name == "dark") in title_bar_calls
+    box.close()
+
+
+def test_theme_switch_updates_open_dialogs(title_bar_calls):
+    from app.ui.history_tab import ClearAllDialog
+    theme.ThemeManager.instance().apply("dark")
+    dlg = _show(ClearAllDialog())
+    title_bar_calls.clear()
+    theme.ThemeManager.instance().apply("light")
+    assert (int(dlg.winId()), False) in title_bar_calls
+    dlg.close()
+
+
+def test_same_as_windows_follows_live_change(monkeypatch):
+    tm = theme.ThemeManager.instance()
+    tm.apply("dark")
+    monkeypatch.setattr(theme, "load_settings", lambda *a, **kw: {"theme": "system"})
+    monkeypatch.setattr(theme, "windows_prefers_light", lambda: True)
+    tm._on_system_scheme_changed()
+    assert theme.current_theme() == "light"
+
+
+def test_explicit_theme_ignores_windows_change(monkeypatch):
+    tm = theme.ThemeManager.instance()
+    tm.apply("dark")
+    monkeypatch.setattr(theme, "load_settings", lambda *a, **kw: {"theme": "dark"})
+    monkeypatch.setattr(theme, "windows_prefers_light", lambda: True)
+    tm._on_system_scheme_changed()
+    assert theme.current_theme() == "dark"
+
+
+def test_theme_switch_stays_fast():
+    from PySide6.QtWidgets import QSystemTrayIcon
+    from app.ui.main_window import MainWindow
+    from app.ui.settings_dialog import SettingsDialog
+    QSystemTrayIcon.show = lambda self: None
+    win = _show(MainWindow(), 1000, 800)
+    dlg = _show(SettingsDialog(win))
+    start = time.perf_counter()
+    theme.ThemeManager.instance().apply("light")
+    QApplication.processEvents()
+    elapsed = time.perf_counter() - start
+    dlg.close()
+    win.network_monitor.stop()
+    win.close()
+    assert elapsed < 0.5, f"theme switch took {elapsed:.2f}s"
+
+
+# Phase 4: History never blank on switch -------------------------------------------
+
+def _window_with_history(monkeypatch, rows=50):
+    from PySide6.QtWidgets import QSystemTrayIcon
+    from app.core.history_db import HistoryItem
+    from app.ui import history_tab
+    from app.ui.main_window import MainWindow
+    QSystemTrayIcon.show = lambda self: None
+    items = [HistoryItem(id=i, title=f"Video {i}", url=URL, type="video", quality="1080p", file_path="",
+                         size_bytes=5000, duration=60, created_at="2026-11-01 10:00:00") for i in range(rows)]
+    monkeypatch.setattr(history_tab, "list_items", lambda *a, **kw: list(items))
+    return _show(MainWindow(), 1000, 800)
+
+
+def test_history_is_painted_right_after_switch(monkeypatch):
+    from app.ui.kit.anim import FAST
+    win = _window_with_history(monkeypatch)
+    try:
+        win.header.select_tab(2)
+        _settle(FAST + 100)
+        effect = win.history_tab.graphicsEffect()
+        assert effect is None or effect.opacity() >= 0.99
+    finally:
+        win.network_monitor.stop()
+        win.close()
+
+
+def test_fast_tab_switching_leaves_no_fade_behind(monkeypatch):
+    from app.ui.kit.anim import FAST
+    win = _window_with_history(monkeypatch, rows=5)
+    try:
+        for idx in (1, 2, 0, 2, 1):
+            win.header.select_tab(idx)
+        _settle(FAST + 150)
+        for page in (win.video_tab, win.audio_tab, win.history_tab):
+            assert page.graphicsEffect() is None, type(page).__name__
+    finally:
+        win.network_monitor.stop()
+        win.close()

@@ -1,10 +1,15 @@
+import ctypes
+from ctypes import wintypes
 from pathlib import Path
 import sys
 from typing import Dict, Optional
 
-from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtWidgets import QApplication, QWidget
+
+from app.core.logger import get_logger
+from app.core.settings import load_settings
 
 DARK_TOKENS: Dict[str, str] = {
     "bg": "#0F0F0F",
@@ -49,6 +54,9 @@ _current_theme = "dark"
 
 def windows_prefers_light() -> bool:
     """Windows 'app mode' setting (Settings > Personalization > Colors)."""
+    hints = QGuiApplication.styleHints() if QGuiApplication.instance() else None
+    if hints is not None and hints.colorScheme() != Qt.ColorScheme.Unknown:
+        return hints.colorScheme() == Qt.ColorScheme.Light
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
@@ -78,8 +86,62 @@ def qcolor(name: str) -> QColor:
     return QColor(tok(name))
 
 
+def apply_dark_title_bar(window_hwnd: int, is_dark: bool = True) -> None:
+    """Set Windows title bar to immersive dark mode (Win10 20H1+ and Win11)."""
+    try:
+        dwm = ctypes.windll.dwmapi
+        val = ctypes.c_int(1 if is_dark else 0)
+        # 20 is DWMWA_USE_IMMERSIVE_DARK_MODE
+        res = dwm.DwmSetWindowAttribute(
+            wintypes.HWND(window_hwnd),
+            ctypes.c_uint(20),
+            ctypes.byref(val),
+            ctypes.sizeof(val),
+        )
+        if res != 0:
+            # 19 was used on earlier Windows 10 builds
+            dwm.DwmSetWindowAttribute(
+                wintypes.HWND(window_hwnd),
+                ctypes.c_uint(19),
+                ctypes.byref(val),
+                ctypes.sizeof(val),
+            )
+
+        # On Windows 11 (build >= 22000), set caption colour and text colour to match theme
+        try:
+            if hasattr(sys, "getwindowsversion") and sys.getwindowsversion().build >= 22000:
+                # 35: DWMWA_CAPTION_COLOR, 36: DWMWA_TEXT_COLOR
+                # COLORREF is 0x00BBGGRR
+                if is_dark:
+                    caption_color = 0x000F0F0F  # #0F0F0F
+                    text_color = 0x00FFFFFF     # #FFFFFF
+                else:
+                    caption_color = 0x00FFFFFF  # #FFFFFF
+                    text_color = 0x000F0F0F     # #0F0F0F
+
+                c_color = ctypes.c_uint(caption_color)
+                dwm.DwmSetWindowAttribute(
+                    wintypes.HWND(window_hwnd),
+                    ctypes.c_uint(35),
+                    ctypes.byref(c_color),
+                    ctypes.sizeof(c_color),
+                )
+                t_color = ctypes.c_uint(text_color)
+                dwm.DwmSetWindowAttribute(
+                    wintypes.HWND(window_hwnd),
+                    ctypes.c_uint(36),
+                    ctypes.byref(t_color),
+                    ctypes.sizeof(t_color),
+                )
+        except Exception as win11_exc:
+            get_logger().debug(f"Caption color attribute skipped/failed: {win11_exc}")
+    except Exception as exc:
+        get_logger().debug(f"apply_dark_title_bar skipped/failed: {exc}")
+
+
 class ThemeManager(QObject):
-    """Applies a theme app-wide and tells painted widgets to repaint."""
+    """Applies a theme app-wide, repaints painted widgets, themes every window's title bar,
+    and follows Windows when the saved theme is "system"."""
 
     changed = Signal(str)
     _instance: Optional["ThemeManager"] = None
@@ -90,12 +152,34 @@ class ThemeManager(QObject):
             cls._instance = cls()
         return cls._instance
 
+    def __init__(self) -> None:
+        super().__init__()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)  # title bar for every window as it appears
+            QGuiApplication.styleHints().colorSchemeChanged.connect(self._on_system_scheme_changed)
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Show and isinstance(obj, QWidget) and obj.isWindow():
+            self._style_title_bar(obj)
+        return False
+
+    def _style_title_bar(self, window: QWidget) -> None:
+        apply_dark_title_bar(int(window.winId()), is_dark=(_current_theme != "light"))
+
+    def _on_system_scheme_changed(self, *_) -> None:
+        if load_settings().get("theme", "dark") == "system":
+            self.apply(resolve_theme("system"))
+
     def apply(self, theme_name: str) -> None:
         global _current_theme
         _current_theme = "light" if theme_name.lower() == "light" else "dark"
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(build_qss(_current_theme))
+            for window in app.topLevelWidgets():
+                if window.isVisible():
+                    self._style_title_bar(window)
         self.changed.emit(_current_theme)
 
 

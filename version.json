@@ -1,19 +1,14 @@
 {
-  "latest_version": "1.0.7",
-  "version": "1.0.7",
+  "latest_version": "1.0.8",
+  "version": "1.0.8",
   "min_supported_version": "1.0.0",
   "force_update": false,
-  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.7/YOuTUbE_Setup.exe",
-  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.7/YOuTUbE_Setup.exe",
-  "sha256": "f5ed28f6098770a039a19b3ae631ce6affb7d62a96a434210c9a954b5f867c7c",
+  "installer_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.8/YOuTUbE_Setup.exe",
+  "download_url": "https://github.com/ManavSurani/YOuTUbE/releases/download/v1.0.8/YOuTUbE_Setup.exe",
+  "sha256": "0123c8262be9afd358c5714720f65455b4e2958b6dcf78a19cbcebfc9bd154d0",
   "release_date": "2026-11-02",
   "notes": [
-    "Pause and Resume buttons are no longer cut off",
-    "Light mode: menus, tooltips and dialog title bars now match the theme",
-    "Same as Windows now follows a Windows theme change right away",
-    "History opens faster and is never blank when you switch to it",
-    "Paused downloads show only sizes; no gap under finished downloads",
-    "Streamed videos show no size estimate; quality list sizes are neatly aligned"
+    "History row menu is readable again in light and dark mode (it showed black)"
   ],
   "android": {
     "version": "1.0.1",

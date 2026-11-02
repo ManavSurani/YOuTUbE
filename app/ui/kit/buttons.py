@@ -48,6 +48,8 @@ class AnimatedButton(QPushButton):
         if icon:
             self.setIcon(icon)
 
+        # Painted by this class: opt out of the app-wide QPushButton padding / min-height (theme.py)
+        self.setProperty("kit", True)
         self.setFixedHeight(36)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -80,6 +82,13 @@ class AnimatedButton(QPushButton):
     def role(self, value: str) -> None:
         self._role = value.lower()
         self._update_appearance()
+
+    def sizeHint(self) -> QSize:
+        # Text width plus 16 px on each side (the stylesheet padding no longer applies to kit buttons)
+        width = self.fontMetrics().horizontalAdvance(self.text()) + 32
+        if not self.icon().isNull():
+            width += 24
+        return QSize(max(width, 36), 36)
 
     def set_loading(self, loading: bool) -> None:
         """Enable or disable loading spinner state."""

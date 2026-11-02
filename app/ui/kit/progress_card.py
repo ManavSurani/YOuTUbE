@@ -200,7 +200,7 @@ class ProgressCard(QWidget):
         self.pause_btn = IconButton("pause", size=28, tooltip="Pause (Space)", parent=self.header_widget)
         self.pause_btn.clicked.connect(self.pause_toggled.emit)
         self.pause_btn.setVisible(False)
-        h_layout.addWidget(self.pause_btn)
+        h_layout.addWidget(self.pause_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.open_btn = AnimatedButton("Open", role="ghost", parent=self.header_widget)
         self.open_btn.clicked.connect(lambda: open_file(self._final_path))
@@ -208,8 +208,9 @@ class ProgressCard(QWidget):
         self.folder_btn.clicked.connect(lambda: reveal_in_folder(self._final_path))
         for btn in (self.open_btn, self.folder_btn):
             btn.setVisible(False)
-            h_layout.addWidget(btn)
+            h_layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignVCenter)
         self._final_path = ""
+        self._paused = False
 
         layout.addWidget(self.header_widget)
 
@@ -290,6 +291,7 @@ class ProgressCard(QWidget):
         if job.thumbnail_bytes and (not job.video_id or get_thumbnail_path(job.video_id) is None):
             self.thumb.set_image_bytes(job.thumbnail_bytes)
         self.set_paused(False)
+        self.stats_label.setVisible(True)
         self.pause_btn.setVisible(True)
         self.open_btn.setVisible(False)
         self.folder_btn.setVisible(False)
@@ -312,20 +314,22 @@ class ProgressCard(QWidget):
                 if self.stats_label.text():
                     self._update_stats_label()
 
-    def _update_stats_label(self, stats: str = "") -> None:
-        speed_slot = self._last_speed if self._last_speed else "-- MB/s"
-
+    def _size_slot(self, stats: str = "") -> str:
         if stats:
-            size_slot = stats
-        elif self._last_done > 0:
-            done = self._last_done
+            return stats
+        if self._last_done > 0:
             if self._last_total > 0:
-                total = max(self._last_total, done)
-                size_slot = self._fmt_pair(done, total)
-            else:
-                size_slot = self._fmt_bytes(done)
-        else:
-            size_slot = "calculating…"
+                return self._fmt_pair(self._last_done, max(self._last_total, self._last_done))
+            return self._fmt_bytes(self._last_done)
+        return "calculating…"
+
+    def _update_stats_label(self, stats: str = "") -> None:
+        if self._paused:
+            # Nothing is moving (the stage line says "Paused"): sizes only, no stale speed or ETA
+            self.stats_label.setText(self._size_slot(stats))
+            return
+        speed_slot = self._last_speed if self._last_speed else "-- MB/s"
+        size_slot = self._size_slot(stats)
 
         if self._last_eta:
             eta_slot = self._last_eta if self._last_eta.startswith("ETA ") else f"ETA {self._last_eta}"
@@ -376,6 +380,7 @@ class ProgressCard(QWidget):
         saved = f"Saved to {folder_name}"
         self.stage_label.setText(f"{saved} · {self._fmt_bytes(size)}" if size else saved)
         self.stats_label.setText("")
+        self.stats_label.setVisible(False)  # no empty line (gap) under the finished bar
         self._final_path = final_path if size else ""
         self.pause_btn.setVisible(False)
         self.open_btn.setVisible(bool(self._final_path))
@@ -384,9 +389,14 @@ class ProgressCard(QWidget):
         self._collapse_timer.start(self.DONE_VISIBLE_MS)
 
     def set_paused(self, paused: bool) -> None:
+        self._paused = paused
         self.pause_btn.icon_name = "play" if paused else "pause"
         self.pause_btn.setToolTip("Resume (Space)" if paused else "Pause (Space)")
         self.pause_btn.update()
+        if paused:
+            self._last_speed = ""
+            self._last_eta = ""
+            self._update_stats_label()
 
     def enterEvent(self, event) -> None:
         # Keep the Done card while the pointer is on it

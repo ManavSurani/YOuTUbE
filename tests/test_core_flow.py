@@ -83,8 +83,9 @@ def test_dropdown_shows_size_but_job_keeps_clean_label():
     tab.url_input.blockSignals(False)
     tab._on_info_fetched(_info(quality_sizes={None: 723_600_000, 1080: 723_600_000, 720: 410_000_000}))
     texts = [tab.quality_combo.itemText(i) for i in range(tab.quality_combo.count())]
-    assert texts[1] == "1080p · ≈ 690.1 MB"
-    assert texts[2] == "720p · ≈ 391.0 MB"
+    # Plan 24 (owner request): the size sits in an aligned column after the quality name
+    assert texts[1].startswith("1080p") and texts[1].endswith("≈ 690.1 MB")
+    assert texts[2].startswith("720p") and texts[2].endswith("≈ 391.0 MB")
     tab.quality_combo.setCurrentIndex(1)
     job = tab._build_job()
     assert job.quality_label == "1080p"
@@ -314,10 +315,13 @@ def test_streamed_quality_shows_no_size():
 
 
 def test_dropdown_aligns_size_in_its_own_column():
-    from app.ui.video_tab import QUALITY_LABEL_ROLE, QUALITY_SIZE_ROLE, QualityItemDelegate, VideoTab
+    from app.ui.video_tab import QUALITY_LABEL_ROLE, VideoTab
     tab = _show(VideoTab())
-    tab._on_info_fetched(_info(quality_sizes={1080: 723_600_000}))
-    assert isinstance(tab.quality_combo.view().itemDelegate(), QualityItemDelegate)
-    assert tab.quality_combo.itemData(1, QUALITY_LABEL_ROLE) == "1080p"
-    assert tab.quality_combo.itemData(1, QUALITY_SIZE_ROLE) == "≈ 690.1 MB"
-    assert not tab.quality_combo.itemData(2, QUALITY_SIZE_ROLE)  # 720p: no size known
+    tab._on_info_fetched(_info(quality_sizes={None: 723_600_000, 1080: 723_600_000, 720: 41_000_000}))
+    combo = tab.quality_combo
+    fm = combo.view().fontMetrics()
+    sized = [combo.itemText(i) for i in range(combo.count()) if "≈" in combo.itemText(i)]
+    assert len(sized) == 3
+    ends = [fm.horizontalAdvance(t) for t in sized]
+    assert max(ends) - min(ends) <= fm.horizontalAdvance(" ") + 1  # one right-aligned column
+    assert combo.itemData(1, QUALITY_LABEL_ROLE) == "1080p"

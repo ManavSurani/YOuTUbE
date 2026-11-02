@@ -213,6 +213,13 @@ QPushButton:hover {{
     background-color: {c["surface_hover"]};
 }}
 
+QPushButton[kit="true"] {{
+    padding: 0px;
+    min-height: 0px;
+    border: none;
+    background: transparent;
+}}
+
 QPushButton[role="primary"] {{
     background-color: {c["accent"]};
     color: {button_accent_text};

@@ -252,3 +252,12 @@ def test_resume_mid_audio_with_exact_sizes(monkeypatch, tmp_path, sizes_text):
     pcts = [p for p, _, _ in emitted]
     assert all(b >= a for a, b in zip(pcts, pcts[1:]))
     assert emitted[-1][1] == TRUE_FINAL_BYTES
+
+
+def test_streamed_video_hides_total(monkeypatch, tmp_path):
+    """Streamed (HLS) video: no reliable total, so the UI gets total 0 (shows only downloaded bytes)."""
+    emitted = _replay(monkeypatch, tmp_path, _fixture_lines(), "NA|2040000|m3u8_native\n", duration_seconds=120)
+    assert emitted and all(tot == 0 for _, _, tot in emitted)
+    pcts = [p for p, _, _ in emitted]
+    assert all(b >= a for a, b in zip(pcts, pcts[1:])) and max(pcts) > 50  # the bar still moves
+

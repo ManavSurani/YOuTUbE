@@ -1307,3 +1307,21 @@ class TestExactStreamSizes:
 
         assert not sizes.exists()
         assert other.exists()
+
+    def test_sizes_file_records_video_protocol(self):
+        cmd = build_video_cmd("https://www.youtube.com/watch?v=abc12345678", job_id="j1")
+        template = next(cmd[i + 1] for i, a in enumerate(cmd) if a == "--print-to-file" and cmd[i + 2].endswith("j1.sizes"))
+        assert "requested_formats.0.protocol" in template
+
+    @pytest.mark.parametrize("content,streamed", [
+        ("NA|2040000|m3u8_native\n", True),
+        ("18000000|2040000|https\n", False),
+        ("18000000|2040000\n", False),
+        ("", False),
+    ])
+    def test_is_streamed(self, tmp_path, content, streamed):
+        from app.core.downloader import is_streamed
+        f = tmp_path / "job.sizes"
+        f.write_text(content, encoding="utf-8")
+        assert is_streamed(f) is streamed
+

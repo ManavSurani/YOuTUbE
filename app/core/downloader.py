@@ -44,8 +44,10 @@ _POST_TEMPLATE = (
     "|%(progress.postprocessor)s"
 )
 
-# Exact stream sizes, written before the download starts (video+audio jobs)
-_SIZES_TEMPLATE = "video:%(requested_formats.0.filesize)s|%(requested_formats.1.filesize)s"
+# Exact stream sizes and the video's protocol, written before the download starts (video+audio jobs)
+_SIZES_TEMPLATE = (
+    "video:%(requested_formats.0.filesize)s|%(requested_formats.1.filesize)s|%(requested_formats.0.protocol)s"
+)
 
 # Minimum bytes threshold to consider an estimate real (filters fragment-only noise)
 MIN_ESTIMATE_BYTES: int = 100_000
@@ -401,6 +403,17 @@ def read_stream_sizes(sizes_file: Path) -> tuple[int, int]:
     return (video, audio) if video and audio else (0, 0)
 
 
+def is_streamed(sizes_file: Path) -> bool:
+    """True when the chosen video is a streamed (HLS/m3u8) format: YouTube gives no reliable total for it."""
+    try:
+        lines = sizes_file.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return False
+    last = next((l.strip() for l in reversed(lines) if l.strip()), "")
+    parts = last.split("|")
+    return len(parts) >= 3 and parts[2].strip().lower().startswith("m3u8")
+
+
 # ---------------------------------------------------------------------------
 # Download worker — fully rewritten for Phase 1
 # ---------------------------------------------------------------------------
@@ -472,6 +485,7 @@ class DownloadWorker(QThread):
         stall_count: int = 0
         exact_video: int = 0
         exact_audio: int = 0
+        streamed: Optional[bool] = None  # read from the sizes file on the first progress line
 
         while not self._is_cancelled and not self._is_paused:
             try:
@@ -559,6 +573,8 @@ class DownloadWorker(QThread):
 
                     if self.is_dual_stream and not exact_video:
                         exact_video, exact_audio = read_stream_sizes(self._sizes_file)
+                    if streamed is None:
+                        streamed = is_streamed(self._sizes_file)
 
                     # Calculate whole-job done and total
                     if self.is_dual_stream and exact_video and exact_audio:
@@ -599,14 +615,14 @@ class DownloadWorker(QThread):
                     overall = min(stream_cap, max(0.0, overall))
                     self._max_percent = overall
                     self.stage.emit(p.stage)
-                    self.progress.emit(overall, p.speed, p.eta, overall_done, overall_total)
+                    self.progress.emit(overall, p.speed, p.eta, overall_done, 0 if streamed else overall_total)
 
                 elif parsed.kind == "stage" and parsed.stage:
                     self._current_stage = parsed.stage
                     self.stage.emit(parsed.stage)
                     if parsed.stage == "Merging":
                         self._max_percent = min(99.9, max(self._max_percent, 95.0))
-                        self.progress.emit(self._max_percent, "", "", overall_done, overall_total)
+                        self.progress.emit(self._max_percent, "", "", overall_done, 0 if streamed else overall_total)
 
             watchdog_stop.set()
             watchdog_thread.join(timeout=1.0)
@@ -638,7 +654,7 @@ class DownloadWorker(QThread):
 
             if returncode == 0:
                 self._max_percent = 100.0
-                self.progress.emit(100.0, "", "", overall_done, overall_total)
+                self.progress.emit(100.0, "", "", overall_done, 0 if streamed else overall_total)
                 self.stage.emit("Done")
 
                 final_path = resolve_final_path(self._path_file, self.video_id, self.out_dir)

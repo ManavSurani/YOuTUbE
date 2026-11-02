@@ -17,6 +17,7 @@ from PySide6.QtCore import (
     QEvent,
     QObject,
     QPropertyAnimation,
+    QSize,
     Qt,
     QThread,
     Signal,
@@ -32,10 +33,13 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QScrollArea,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
-from app.ui.theme import DARK_TOKENS, LIGHT_TOKENS, ThemeManager, tok
+from app.ui.theme import DARK_TOKENS, LIGHT_TOKENS, ThemeManager, qcolor, tok
 
 from app.core.download_manager import DownloadManager, get_download_manager
 from app.core.history_db import find_duplicate
@@ -59,6 +63,39 @@ from app.ui.recent_list import RecentList
 
 _FETCH_CACHE: dict[str, VideoInfo] = {}
 QUALITY_LABEL_ROLE = Qt.ItemDataRole.UserRole + 1  # clean quality label without the size suffix
+QUALITY_SIZE_ROLE = Qt.ItemDataRole.UserRole + 2   # "≈ 690.1 MB", or empty when no size is known
+
+
+class QualityItemDelegate(QStyledItemDelegate):
+    """Dropdown row: quality on the left, the approximate size right-aligned in muted text."""
+
+    def _texts(self, option, index):
+        label = index.data(QUALITY_LABEL_ROLE) or index.data(Qt.ItemDataRole.DisplayRole) or ""
+        return label, index.data(QUALITY_SIZE_ROLE) or ""
+
+    def paint(self, painter, option, index) -> None:
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        label, size = self._texts(opt, index)
+        opt.text = ""  # background, hover and selection only; the two texts are drawn below
+        style = opt.widget.style() if opt.widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
+        rect = opt.rect.adjusted(12, 0, -12, 0)
+        painter.save()
+        painter.setFont(opt.font)
+        painter.setPen(qcolor("text"))
+        painter.drawText(rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), label)
+        if size:
+            painter.setPen(qcolor("text_muted"))
+            painter.drawText(rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight), size)
+        painter.restore()
+
+    def sizeHint(self, option, index) -> QSize:
+        hint = super().sizeHint(option, index)
+        label, size = self._texts(option, index)
+        fm = option.fontMetrics
+        width = fm.horizontalAdvance(label) + (fm.horizontalAdvance(size) + 32 if size else 0) + 24
+        return QSize(max(hint.width(), width), hint.height())
 
 
 def get_current_theme_tokens() -> dict[str, str]:
@@ -529,6 +566,8 @@ class VideoTab(QWidget):
         actions_row.setSpacing(8)
 
         self.quality_combo = AnimatedComboBox(container)
+        self.quality_combo.view().setItemDelegate(QualityItemDelegate(self.quality_combo))
+        self.quality_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.quality_combo.setFixedHeight(36)
         self.quality_combo.setMinimumWidth(160)
         actions_row.addWidget(self.quality_combo)
@@ -914,6 +953,9 @@ class VideoTab(QWidget):
             shown = f"{label} · ≈ {ProgressCard._fmt_bytes(size)}" if size else label
             self.quality_combo.addItem(shown, height)
             self.quality_combo.setItemData(self.quality_combo.count() - 1, label, QUALITY_LABEL_ROLE)
+            if size:
+                self.quality_combo.setItemData(
+                    self.quality_combo.count() - 1, f"≈ {ProgressCard._fmt_bytes(size)}", QUALITY_SIZE_ROLE)
 
         if self._preselected_quality:
             target = self._preselected_quality.strip().lower()

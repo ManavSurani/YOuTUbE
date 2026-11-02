@@ -302,21 +302,22 @@ def test_quality_size_skipped_when_chosen_format_has_no_size():
     assert build_quality_sizes(formats, [2160]) == {}
 
 
-def test_quality_size_estimated_from_bitrate_for_streams():
-    """Streamed (HLS) formats have no published size: estimate it from bitrate x duration."""
+def test_streamed_quality_shows_no_size():
+    """Streamed (HLS) formats publish no size: show none rather than a guess (owner's choice)."""
     formats = [
         {"format_id": "251", "vcodec": "none", "acodec": "opus", "filesize": 68_000_000},
+        {"format_id": "398", "vcodec": "av01", "acodec": "none", "height": 720, "filesize": 184_188_378},
         {"format_id": "399", "vcodec": "av01", "acodec": "none", "height": 1080, "filesize": 317_841_603},
-        {"format_id": "616", "vcodec": "vp9", "acodec": "none", "height": 1080, "tbr": 5195.238, "protocol": "m3u8_native"},
+        {"format_id": "616", "vcodec": "vp9", "acodec": "none", "height": 1080, "tbr": 5195.2, "protocol": "m3u8_native"},
     ]
-    sizes = build_quality_sizes(formats, [None, 1080], duration=3960)
-    expected_video = int(5195.238 * 1000 / 8 * 3960)
-    assert sizes[None] == sizes[1080] == expected_video + 68_000_000
+    assert build_quality_sizes(formats, [None, 1080, 720]) == {720: 184_188_378 + 68_000_000}
 
 
-def test_no_bitrate_and_no_size_still_skipped():
-    formats = [
-        {"format_id": "251", "vcodec": "none", "acodec": "opus", "filesize": 3_000_000},
-        {"format_id": "616", "vcodec": "vp9", "acodec": "none", "height": 1080},
-    ]
-    assert build_quality_sizes(formats, [1080], duration=3960) == {}
+def test_dropdown_aligns_size_in_its_own_column():
+    from app.ui.video_tab import QUALITY_LABEL_ROLE, QUALITY_SIZE_ROLE, QualityItemDelegate, VideoTab
+    tab = _show(VideoTab())
+    tab._on_info_fetched(_info(quality_sizes={1080: 723_600_000}))
+    assert isinstance(tab.quality_combo.view().itemDelegate(), QualityItemDelegate)
+    assert tab.quality_combo.itemData(1, QUALITY_LABEL_ROLE) == "1080p"
+    assert tab.quality_combo.itemData(1, QUALITY_SIZE_ROLE) == "≈ 690.1 MB"
+    assert not tab.quality_combo.itemData(2, QUALITY_SIZE_ROLE)  # 720p: no size known

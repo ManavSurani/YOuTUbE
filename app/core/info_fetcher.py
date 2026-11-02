@@ -75,22 +75,16 @@ def build_quality_list(formats: List[Dict[str, Any]]) -> List[Tuple[str, Optiona
     return result
 
 
-def build_quality_sizes(
-    formats: List[Dict[str, Any]], heights: List[Optional[int]], duration: int = 0
-) -> Dict[Optional[int], int]:
+def build_quality_sizes(formats: List[Dict[str, Any]], heights: List[Optional[int]]) -> Dict[Optional[int], int]:
     """Download size for each quality, using the formats yt-dlp itself would pick (None = best overall).
 
     yt-dlp lists formats from worst to best, so the last video format at or below a height is what
     'bv*[height<=h]+ba' downloads (e.g. AV1 over a bigger VP9), and the last audio-only format is 'ba'.
-    Streamed (HLS) formats publish no size, so their size is estimated as bitrate x duration.
-    A height is skipped only when its chosen format has neither, rather than guessing from another format.
+    A height is skipped when its chosen format has no size (e.g. a streamed HLS format): no size is
+    better than a guess, and no other format's size is borrowed.
     """
     def size(f: Dict[str, Any]) -> int:
-        known = f.get("filesize") or f.get("filesize_approx")
-        if known:
-            return int(known)
-        tbr = f.get("tbr") or 0  # kbit/s
-        return int(tbr * 1000 / 8 * duration) if tbr and duration > 0 else 0
+        return int(f.get("filesize") or f.get("filesize_approx") or 0)
 
     valid = [f for f in formats if isinstance(f, dict)]
     videos = [f for f in valid if f.get("vcodec") not in (None, "none") and isinstance(f.get("height"), int)]
@@ -151,7 +145,7 @@ def fetch_info(url: str, timeout: float = 30.0) -> VideoInfo:
         thumbnail_url=thumbnail_url,
         qualities=qualities,
         filesize_approx=filesize_approx,
-        quality_sizes=build_quality_sizes(formats, [h for _, h in qualities], duration),
+        quality_sizes=build_quality_sizes(formats, [h for _, h in qualities]),
     )
 
 

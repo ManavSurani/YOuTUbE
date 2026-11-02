@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.anim import FAST, is_animations_enabled
 from app.ui.theme import ThemeManager, qcolor
 
 
@@ -75,7 +75,7 @@ class AnimatedCheckBox(QAbstractButton):
             self._anim.stop()
 
         self._anim = QPropertyAnimation(self, b"check_progress", self)
-        self._anim.setDuration(150)
+        self._anim.setDuration(FAST)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim.setStartValue(self._check_progress)
         self._anim.setEndValue(1.0 if checked else 0.0)

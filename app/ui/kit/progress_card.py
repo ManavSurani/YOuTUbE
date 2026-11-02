@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from app.core.file_actions import open_file, reveal_in_folder
 from app.core.jobs import DownloadJob
 from app.core.thumbnails import get_thumbnail_path
-from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.anim import BASE, CELEBRATE, SHIMMER_MS, is_animations_enabled
 from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.elided_label import ElidedLabel
 from app.ui.kit.thumb_label import ThumbLabel
@@ -47,7 +47,57 @@ class ModernProgressBar(QProgressBar):
         self.setFixedHeight(10)
         self.setTextVisible(False)
         self._highlight_pos = 0.0
+        self._shown = 0.0  # value as drawn: glides toward value(); logic always reads value()
+        self._glow = 0.0   # 0..1, the "done" pulse
+        self._value_anim: Optional[QPropertyAnimation] = None
+        self._pulse_anim: Optional[QPropertyAnimation] = None
         ThemeManager.instance().changed.connect(self.update)
+
+    def _get_shown(self) -> float:
+        return self._shown
+
+    def _set_shown(self, value: float) -> None:
+        self._shown = value
+        self.update()
+
+    shown_value = Property(float, _get_shown, _set_shown)
+
+    def _get_glow(self) -> float:
+        return self._glow
+
+    def _set_glow(self, value: float) -> None:
+        self._glow = value
+        self.update()
+
+    glow = Property(float, _get_glow, _set_glow)
+
+    def setValue(self, value: int) -> None:
+        super().setValue(value)
+        target = float(self.value())
+        if self._value_anim is not None:
+            self._value_anim.stop()
+            self._value_anim = None
+        if target <= self._shown or not is_animations_enabled():
+            self._set_shown(target)  # resets and reduced motion jump at once
+            return
+        self._value_anim = QPropertyAnimation(self, b"shown_value", self)
+        self._value_anim.setDuration(BASE)
+        self._value_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._value_anim.setStartValue(self._shown)
+        self._value_anim.setEndValue(target)
+        self._value_anim.start()
+
+    def pulse(self) -> None:
+        """One soft glow over the filled bar when a download finishes."""
+        if not is_animations_enabled():
+            self._pulse_anim = None
+            return
+        self._pulse_anim = QPropertyAnimation(self, b"glow", self)
+        self._pulse_anim.setDuration(CELEBRATE)
+        self._pulse_anim.setKeyValueAt(0.0, 0.0)
+        self._pulse_anim.setKeyValueAt(0.4, 1.0)
+        self._pulse_anim.setKeyValueAt(1.0, 0.0)
+        self._pulse_anim.start()
 
     @Property(float)
     def highlight_pos(self) -> float:
@@ -72,7 +122,7 @@ class ModernProgressBar(QProgressBar):
         painter.fillPath(groove_path, qcolor("surface_hover"))
 
         # 2. Filled chunk
-        val = self.value()
+        val = self._shown
         max_val = max(1, self.maximum())
         chunk_w = w * (val / max_val)
 
@@ -96,6 +146,9 @@ class ModernProgressBar(QProgressBar):
 
                 painter.fillRect(0, 0, int(chunk_w), int(h), grad)
                 painter.restore()
+
+            if self._glow > 0:
+                painter.fillPath(chunk_path, QColor(255, 255, 255, int(80 * self._glow)))
 
         painter.end()
 
@@ -181,7 +234,7 @@ class ProgressCard(QWidget):
 
         # Subtle moving highlight animation across filled chunk
         self.highlight_anim = QPropertyAnimation(self.progress_bar, b"highlight_pos", self)
-        self.highlight_anim.setDuration(1600)
+        self.highlight_anim.setDuration(SHIMMER_MS)
         self.highlight_anim.setStartValue(0.0)
         self.highlight_anim.setEndValue(1.0)
         self.highlight_anim.setLoopCount(-1)
@@ -304,9 +357,11 @@ class ProgressCard(QWidget):
             self._last_speed = speed
             if eta:
                 self._last_eta = eta
+            self._start_highlight_anim()
         else:
-            # Stall / missing speed: clear stale ETA
+            # Stall / missing speed: clear stale ETA and stop the shimmer (nothing is moving)
             self._last_eta = ""
+            self._stop_highlight_anim()
 
         self._update_stats_label(stats=stats)
 
@@ -315,6 +370,7 @@ class ProgressCard(QWidget):
         self._stop_highlight_anim()
         folder_name = Path(out_dir).name if out_dir else "Downloads"
         self.progress_bar.setValue(100)
+        self.progress_bar.pulse()
         self.percent_label.setText("100%")
         size = Path(final_path).stat().st_size if final_path and Path(final_path).is_file() else 0
         saved = f"Saved to {folder_name}"

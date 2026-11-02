@@ -13,12 +13,13 @@ import sys
 import time
 from typing import Optional
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractButton,
     QApplication,
     QComboBox,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -47,6 +48,7 @@ from app.core.settings import load_settings, save_settings
 from app.core.url_tools import clean_url, is_youtube_url
 from app.ui.audio_tab import AudioTab
 from app.ui.header import Header, get_asset_path
+from app.ui.kit.anim import FAST, is_animations_enabled
 from app.ui.history_tab import HistoryTab
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.theme import ThemeManager, current_theme, tok
@@ -224,6 +226,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+        self._page_fade: Optional[QPropertyAnimation] = None
         self.setWindowTitle(APP_NAME)
         self.resize(800, 600)
         self.setMinimumSize(760, 520)
@@ -442,6 +445,7 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int) -> None:
         self.stacked_widget.setCurrentIndex(index)
+        self._fade_in_page(self.stacked_widget.currentWidget())
         if hasattr(self.video_tab, "reset_messages"):
             self.video_tab.reset_messages()
         if hasattr(self.audio_tab, "reset_messages"):
@@ -449,6 +453,21 @@ class MainWindow(QMainWindow):
         # Refresh history tab if switched to history
         if index == 2 and hasattr(self.history_tab, "refresh_items"):
             self.history_tab.refresh_items()
+
+    def _fade_in_page(self, page) -> None:
+        """Short cross-fade for the newly shown tab; the effect is removed when done."""
+        self._page_fade = None
+        if page is None or not is_animations_enabled():
+            return
+        effect = QGraphicsOpacityEffect(page)
+        page.setGraphicsEffect(effect)
+        fade = QPropertyAnimation(effect, b"opacity", self)
+        fade.setDuration(FAST)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.finished.connect(lambda: page.setGraphicsEffect(None))
+        fade.start()
+        self._page_fade = fade
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self)

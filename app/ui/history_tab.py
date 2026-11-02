@@ -48,7 +48,7 @@ from app.core.history_db import HistoryItem, list_items
 import app.core.history_service as history_service
 from app.core.logger import get_logger
 from app.core.paths import DEFAULT_DOWNLOADS
-from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.anim import BASE, is_animations_enabled
 from app.ui.kit.buttons import AnimatedButton, IconButton
 from app.ui.kit.checkbox import AnimatedCheckBox
 from app.ui.kit.elided_label import ElidedLabel
@@ -578,14 +578,14 @@ class HistoryRowWidget(QWidget):
         self._anim_group = QParallelAnimationGroup(self)
 
         fade = QPropertyAnimation(opacity_effect, b"opacity", self)
-        fade.setDuration(150)
+        fade.setDuration(BASE)
         fade.setStartValue(1.0)
         fade.setEndValue(0.0)
         fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim_group.addAnimation(fade)
 
         collapse = QPropertyAnimation(self, b"maximumHeight", self)
-        collapse.setDuration(150)
+        collapse.setDuration(BASE)
         collapse.setStartValue(self.height())
         collapse.setEndValue(0)
         collapse.setEasingCurve(QEasingCurve.Type.OutCubic)

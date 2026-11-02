@@ -47,6 +47,7 @@ from app.core.file_actions import reveal_in_folder
 from app.core.settings import load_settings
 from app.core.thumbnails import save_thumbnail
 from app.core.url_tools import clean_url, extract_video_id, is_youtube_url
+from app.ui.kit.anim import FAST, shake
 from app.ui.kit import (
     AnimatedButton,
     InlineMessage,
@@ -174,7 +175,7 @@ class AnimatedComboBox(QComboBox):
         self._container.installEventFilter(self._filter)
 
         self._anim = QPropertyAnimation(self._container, b"windowOpacity", self)
-        self._anim.setDuration(150)
+        self._anim.setDuration(FAST)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._update_popup_style()
@@ -225,7 +226,7 @@ class AnimatedLineEdit(QLineEdit):
         super().__init__(parent)
         self._anim = QPropertyAnimation(self)
         self._anim.setPropertyName(b"windowOpacity")
-        self._anim.setDuration(150)
+        self._anim.setDuration(FAST)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._current_menu: Optional[QMenu] = None
 
@@ -456,6 +457,7 @@ class VideoTab(QWidget):
         self._is_downloading = False
         self._paused_for_offline = False
         self._input_error = False
+        self._shake_anim = None
 
         self._setup_ui()
         self._wire_manager()
@@ -766,6 +768,7 @@ class VideoTab(QWidget):
         self._input_error = True
         self.inline_msg.show_error(message, auto_hide_ms=0)
         self._style_input_error()
+        self._shake_anim = shake(self.url_input)
 
     def _clear_input_error(self) -> None:
         if self._input_error:

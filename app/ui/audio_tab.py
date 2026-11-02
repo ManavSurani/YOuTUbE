@@ -33,6 +33,7 @@ from app.core.file_actions import reveal_in_folder
 from app.core.settings import load_settings
 from app.core.thumbnails import save_thumbnail
 from app.core.url_tools import clean_url, extract_video_id, is_youtube_url
+from app.ui.kit.anim import shake
 from app.ui.kit import (
     AnimatedButton,
     InlineMessage,
@@ -79,6 +80,7 @@ class AudioTab(QWidget):
         self._is_downloading = False
         self._paused_for_offline = False
         self._input_error = False
+        self._shake_anim = None
 
         self._setup_ui()
         self._wire_manager()
@@ -406,6 +408,7 @@ class AudioTab(QWidget):
         self._input_error = True
         self.inline_msg.show_error(message, auto_hide_ms=0)
         self._style_input_error()
+        self._shake_anim = shake(self.url_input)
 
     def _clear_input_error(self) -> None:
         if self._input_error:

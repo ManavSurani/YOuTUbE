@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.anim import BASE, is_animations_enabled
 from app.ui.kit.buttons import AnimatedButton
 from app.ui.theme import ThemeManager, qcolor, tok
 
@@ -146,7 +146,7 @@ class AnimatedStatusDot(QWidget):
             self._anim.stop()
 
         self._anim = QPropertyAnimation(self, b"progress", self)
-        self._anim.setDuration(150)
+        self._anim.setDuration(BASE)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim.setStartValue(0.0)
         self._anim.setEndValue(1.0)
@@ -300,7 +300,7 @@ class Header(QWidget):
             if self._underline_anim:
                 self._underline_anim.stop()
             self._underline_anim = QPropertyAnimation(self, b"underline_x", self)
-            self._underline_anim.setDuration(150)
+            self._underline_anim.setDuration(BASE)
             self._underline_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
             self._underline_anim.setStartValue(self._underline_x)
             self._underline_anim.setEndValue(target_x)

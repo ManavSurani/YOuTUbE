@@ -53,7 +53,17 @@
 
 ## 4. Motion
 
-Only two animations are allowed: the progress fill moves smoothly, and the splash fades in/out (150 ms). Nothing bounces, glows, pulses or slides.
+Motion is quick, quiet and always optional: every animation goes through `app/ui/kit/anim.py` and is skipped when **Reduce motion** is on (Settings > Appearance).
+
+| Token | Duration | Use |
+|---|---|---|
+| `FAST` | 120 ms | Hover/press, checkbox, small fades, tab content cross-fade, splash fade |
+| `BASE` | 180 ms | Show/hide, tab underline slide, status dot, progress value glide, toast slide-in, error shake (3 × 4 px) |
+| `SLOW` | 260 ms | Height expand/collapse |
+| `CELEBRATE` | 300 ms | The single "done" glow on the progress bar |
+| `SHIMMER_MS` | 1600 ms loop | Highlight on the active progress bar, **only while bytes are moving** |
+
+Easing: OutCubic. Nothing bounces or loops except the shimmer above; the done glow is the only pulse.
 
 ## 5. Copy
 
@@ -65,7 +75,7 @@ Short, plain, no exclamation marks, no emoji. Examples: "Paste a YouTube link", 
 - No emoji or decorative icons. If an icon is truly needed, use a simple one-colour line icon in `text_muted`.
 - No cards inside cards, no big hero banners, no marketing text, no "welcome" screens.
 - No extra colours beyond the table above.
-- No tooltips on everything, no animated loaders other than the progress bar.
+- No tooltips on everything, no animated loaders other than the progress bar and its shimmer. No motion outside the tokens in §4.
 
 ## 7. Logo
 

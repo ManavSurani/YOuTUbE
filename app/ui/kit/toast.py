@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.kit.anim import is_animations_enabled
+from app.ui.kit.anim import BASE, is_animations_enabled
 from app.ui.theme import tok
 
 
@@ -79,7 +79,7 @@ class Toast(QWidget):
 
         if is_animations_enabled():
             self._anim = QPropertyAnimation(self, b"pos", self)
-            self._anim.setDuration(180)
+            self._anim.setDuration(BASE)
             self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
             self._anim.setStartValue(start_pos)
             self._anim.setEndValue(end_pos)

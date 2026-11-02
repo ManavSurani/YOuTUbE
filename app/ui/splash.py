@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
 )
 from app.ui.kit import AnimatedButton
+from app.ui.kit.anim import FAST
 from app.ui.theme import tok
 from app.version import APP_NAME, APP_VERSION
 from app.core.app_updater import (
@@ -237,7 +238,7 @@ class SplashScreen(QWidget):
     def _on_finished(self) -> None:
         # 150 ms fade-out animation
         self.anim = QPropertyAnimation(self, b"windowOpacity")
-        self.anim.setDuration(150)
+        self.anim.setDuration(FAST)
         self.anim.setStartValue(1.0)
         self.anim.setEndValue(0.0)
         self.anim.finished.connect(self._finish_close)

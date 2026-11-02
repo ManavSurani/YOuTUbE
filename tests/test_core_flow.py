@@ -280,3 +280,23 @@ def test_progress_card_uses_job_thumbnail_bytes():
     card.bind_job(job)
     px = card.thumb.pixmap().toImage().pixelColor(24, 13)
     assert px.green() > 150 and px.red() < 80
+
+
+def test_quality_sizes_follow_ytdlp_choice_not_bitrate():
+    """yt-dlp lists formats worst -> best and downloads the last match (e.g. AV1 over a bigger VP9)."""
+    formats = [
+        {"format_id": "251", "vcodec": "none", "acodec": "opus", "abr": 130, "filesize": 3_433_755},
+        {"format_id": "313", "vcodec": "vp9", "acodec": "none", "height": 2160, "tbr": 13466, "filesize": 358_608_461},
+        {"format_id": "401", "vcodec": "av01.0.12M.08", "acodec": "none", "height": 2160, "tbr": 9025, "filesize": 240_334_643},
+    ]
+    sizes = build_quality_sizes(formats, [None, 2160])
+    assert sizes[None] == sizes[2160] == 240_334_643 + 3_433_755  # what yt-dlp really downloads
+
+
+def test_quality_size_skipped_when_chosen_format_has_no_size():
+    formats = [
+        {"format_id": "251", "vcodec": "none", "acodec": "opus", "filesize": 3_000_000},
+        {"format_id": "313", "vcodec": "vp9", "acodec": "none", "height": 2160, "filesize": 358_000_000},
+        {"format_id": "625", "vcodec": "vp9", "acodec": "none", "height": 2160},  # chosen, but no size
+    ]
+    assert build_quality_sizes(formats, [2160]) == {}

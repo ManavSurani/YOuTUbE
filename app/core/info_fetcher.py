@@ -76,31 +76,27 @@ def build_quality_list(formats: List[Dict[str, Any]]) -> List[Tuple[str, Optiona
 
 
 def build_quality_sizes(formats: List[Dict[str, Any]], heights: List[Optional[int]]) -> Dict[Optional[int], int]:
-    """Approximate bytes for 'best video at or below each height + best audio' (None = best overall).
+    """Download size for each quality, using the formats yt-dlp itself would pick (None = best overall).
 
-    Approximate because yt-dlp's own format ranking may pick a different codec of the same height.
+    yt-dlp lists formats from worst to best, so the last video format at or below a height is what
+    'bv*[height<=h]+ba' downloads (e.g. AV1 over a bigger VP9), and the last audio-only format is 'ba'.
+    A height is skipped when its chosen format has no size, rather than guessing from another format.
     """
     def size(f: Dict[str, Any]) -> int:
         return int(f.get("filesize") or f.get("filesize_approx") or 0)
 
-    videos = [
-        f for f in formats
-        if isinstance(f, dict) and f.get("vcodec") not in (None, "none") and f.get("acodec") in (None, "none")
-        and isinstance(f.get("height"), int) and size(f) > 0
-    ]
-    audios = [f for f in formats if isinstance(f, dict) and f.get("vcodec") == "none" and size(f) > 0]
-    if not videos or not audios:
+    valid = [f for f in formats if isinstance(f, dict)]
+    videos = [f for f in valid if f.get("vcodec") not in (None, "none") and isinstance(f.get("height"), int)]
+    audios = [f for f in valid if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
+    if not videos or not audios or size(audios[-1]) <= 0:
         return {}
-    audio = max(audios, key=lambda f: f.get("abr") or f.get("tbr") or 0)
+    audio_size = size(audios[-1])
 
     sizes: Dict[Optional[int], int] = {}
     for h in heights:
         candidates = [f for f in videos if h is None or f["height"] <= h]
-        if not candidates:
-            continue
-        top = max(f["height"] for f in candidates)
-        video = max((f for f in candidates if f["height"] == top), key=lambda f: f.get("tbr") or 0)
-        sizes[h] = size(video) + size(audio)
+        if candidates and size(candidates[-1]) > 0:
+            sizes[h] = size(candidates[-1]) + audio_size
     return sizes
 
 
